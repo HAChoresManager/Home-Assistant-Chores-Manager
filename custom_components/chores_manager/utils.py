@@ -74,7 +74,7 @@ def update_index_html(target_dir: str) -> None:
 async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
     """Generate configuration file without trying to generate a token."""
     try:
-        # Save a minimal config without token - modern auth will use Home Assistant session
+        # Create a basic config without token - modern auth will use Home Assistant session
         config_path = os.path.join(target_dir, "config.json")
         _LOGGER.info(f"Creating config file at {config_path}")
 
