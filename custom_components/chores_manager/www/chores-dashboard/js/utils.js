@@ -260,7 +260,7 @@ window.choreUtils.fetchWithAuth = async function(url, options = {}) {
     
     // Fallback to token in config if available
     try {
-        const configResponse = await fetch('/local/chores_manager/chores-dashboard/config.json');
+        const configResponse = await fetch('/local/chores-dashboard/config.json?nocache=' + new Date().getTime());
         if (configResponse.ok) {
             const config = await configResponse.json();
             if (config.api_token) {
@@ -278,5 +278,3 @@ window.choreUtils.fetchWithAuth = async function(url, options = {}) {
     // If all else fails, make request without auth
     return fetch(url, fetchOptions);
 };
-
-console.log('ChoreUtils initialized');
