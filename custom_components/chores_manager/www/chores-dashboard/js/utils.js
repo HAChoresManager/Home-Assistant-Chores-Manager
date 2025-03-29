@@ -246,35 +246,40 @@ window.choreUtils.formatTime = function(minutes) {
 // Authentication helper function
 window.choreUtils.fetchWithAuth = async function(url, options = {}) {
     // Clone options to avoid modifying the original
-    const fetchOptions = { ...options };
+    const fetchOptions = { 
+        ...options,
+        credentials: 'same-origin' // This is critical - include cookies/session
+    };
     
-    // Try to use browser session authentication first (modern approach)
     try {
+        // First attempt - use user's current session
         const resp = await fetch(url, fetchOptions);
         if (resp.ok) {
             return resp;
         }
-    } catch (e) {
-        console.log("Session auth failed, trying fallback methods");
-    }
-    
-    // Fallback to token in config if available
-    try {
-        const configResponse = await fetch('/local/chores-dashboard/config.json?nocache=' + new Date().getTime());
-        if (configResponse.ok) {
-            const config = await configResponse.json();
-            if (config.api_token) {
-                fetchOptions.headers = {
-                    ...fetchOptions.headers,
-                    'Authorization': `Bearer ${config.api_token}`
-                };
-                return fetch(url, fetchOptions);
+        
+        // If that failed with 401/403, try token auth
+        if (resp.status === 401 || resp.status === 403) {
+            const configResponse = await fetch('/local/chores-dashboard/config.json?nocache=' + new Date().getTime(), 
+                {credentials: 'same-origin'});
+                
+            if (configResponse.ok) {
+                const config = await configResponse.json();
+                if (config.api_token) {
+                    fetchOptions.headers = {
+                        ...fetchOptions.headers,
+                        'Authorization': `Bearer ${config.api_token}`
+                    };
+                    return fetch(url, fetchOptions);
+                }
             }
         }
+        
+        // If we get here, the original response failed but not due to auth
+        // Return it anyway so the error can be handled
+        return resp;
     } catch (e) {
-        console.error("Failed to load config for token auth:", e);
+        console.error("Fetch error:", e);
+        throw e;
     }
-    
-    // If all else fails, make request without auth
-    return fetch(url, fetchOptions);
 };
