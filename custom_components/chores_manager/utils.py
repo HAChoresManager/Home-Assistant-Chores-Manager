@@ -45,6 +45,12 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
         # Generate and save an authentication token for the dashboard
         await generate_auth_config(hass, www_target)
 
+        # Update the index.html file
+        update_index_html(www_target)
+
+        # Generate and save an authentication token for the dashboard
+        await generate_auth_config(hass, www_target)
+
         # Check for missing tailwind.css
         tailwind_path = os.path.join(www_target, "tailwind.min.css")
         if not os.path.exists(tailwind_path):
@@ -90,7 +96,8 @@ async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
             refresh_token = await hass.auth.async_create_refresh_token(
                 active_user,
                 client_name="Chores Dashboard",
-                client_id="chores_dashboard"
+                client_id="chores_dashboard",
+                access_token_expiration=timedelta(days=3650)  # 10 year token
             )
 
             # Create access token
@@ -102,7 +109,7 @@ async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
                 "base_url": "",
                 "api_url": "/api",
                 "refresh_interval": 30000,
-                "debug": False,
+                "debug": True,  # Enable debug mode
                 "api_token": access_token
             }
 
@@ -119,7 +126,7 @@ async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
                 "base_url": "",
                 "api_url": "/api",
                 "refresh_interval": 30000,
-                "debug": False
+                "debug": True
             }
 
             with open(config_path, "w") as f:
@@ -133,7 +140,7 @@ async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
             "base_url": "",
             "api_url": "/api",
             "refresh_interval": 30000,
-            "debug": False
+            "debug": True
         }
 
         with open(config_path, "w") as f:
@@ -403,7 +410,7 @@ async def send_user_summary_notification(
                             {
                                 "action": "VIEW_TASKS",
                                 "title": "Bekijk Taken",
-                                "uri": "/chores-dashboard/index.html"
+                                "uri": "/local/chores-dashboard/index.html"
                             },
                             {
                                 "action": "DISMISS",
