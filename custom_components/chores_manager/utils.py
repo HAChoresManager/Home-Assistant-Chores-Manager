@@ -14,34 +14,134 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 async def setup_web_assets(hass: HomeAssistant) -> None:
-    """Set up web assets by creating a symlink."""
-    # Create symlink for web assets
-    www_source = os.path.join(os.path.dirname(__file__), "www")
-    www_target = os.path.join(hass.config.path("www"), "chores_manager")
+    """Set up web assets by copying files to www directory."""
+    # Get source and destination paths
+    www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
+    www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
 
-    # Remove old symlink if it exists
-    if os.path.islink(www_target):
-        os.unlink(www_target)
-    elif os.path.isdir(www_target):
-        shutil.rmtree(www_target)
+    # Create directories if they don't exist
+    os.makedirs(os.path.dirname(www_target), exist_ok=True)
 
-    # Create new symlink
-    try:
-        os.symlink(www_source, www_target)
-        _LOGGER.info("Created symlink from %s to %s", www_source, www_target)
-    except Exception as e:
-        _LOGGER.error("Failed to create symlink: %s", e)
-
-        # If symlink fails, try copy instead
+    # Remove old directory if it exists
+    if os.path.exists(www_target):
         try:
-            _LOGGER.info("Symlink failed, attempting direct copy")
-            import shutil
-            if os.path.exists(www_target):
-                shutil.rmtree(www_target)
-            shutil.copytree(www_source, www_target)
-            _LOGGER.info("Successfully copied web assets")
-        except Exception as copy_error:
-            _LOGGER.error("Failed to copy web assets: %s", copy_error)
+            shutil.rmtree(www_target)
+            _LOGGER.info("Removed old directory at %s", www_target)
+        except Exception as e:
+            _LOGGER.error("Failed to remove old directory: %s", e)
+
+    # Copy files directly (no symlink)
+    try:
+        shutil.copytree(www_source, www_target)
+        _LOGGER.info("Copied web assets from %s to %s", www_source, www_target)
+
+        # Check for missing tailwind.css
+        tailwind_path = os.path.join(www_target, "tailwind.min.css")
+        if not os.path.exists(tailwind_path):
+            # If missing, try to create a minimal version
+            create_minimal_tailwind(tailwind_path)
+    except Exception as e:
+        _LOGGER.error("Failed to copy web assets: %s", e)
+
+
+def create_minimal_tailwind(tailwind_path: str) -> None:
+    """Create a minimal tailwind.css file if it's missing."""
+    try:
+        # Create a minimal version with basic styles needed
+        min_css = """
+/* Minimal Tailwind styles for Chores Dashboard */
+*,::after,::before{box-sizing:border-box;border:0 solid #e5e7eb}
+html{line-height:1.5;-webkit-text-size-adjust:100%;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji"}
+body{margin:0;font-family:inherit;line-height:inherit}
+hr{height:0;color:inherit;border-top-width:1px}
+p{margin:0}
+a{color:inherit;text-decoration:inherit}
+h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit;margin:0}
+table{text-indent:0;border-color:inherit;border-collapse:collapse}
+button,input,select,textarea{font-family:inherit;font-size:100%;line-height:1.15;margin:0;padding:0;border-width:0}
+.text-xs{font-size:.75rem;line-height:1rem}
+.text-sm{font-size:.875rem;line-height:1.25rem}
+.text-base{font-size:1rem;line-height:1.5rem}
+.text-lg{font-size:1.125rem;line-height:1.75rem}
+.text-xl{font-size:1.25rem;line-height:1.75rem}
+.text-2xl{font-size:1.5rem;line-height:2rem}
+.text-3xl{font-size:1.875rem;line-height:2.25rem}
+.font-medium{font-weight:500}
+.font-semibold{font-weight:600}
+.font-bold{font-weight:700}
+.mb-1{margin-bottom:.25rem}
+.mb-2{margin-bottom:.5rem}
+.mb-4{margin-bottom:1rem}
+.mt-1{margin-top:.25rem}
+.mt-2{margin-top:.5rem}
+.mt-4{margin-top:1rem}
+.mt-6{margin-top:1.5rem}
+.mt-8{margin-top:2rem}
+.ml-2{margin-left:.5rem}
+.mr-2{margin-right:.5rem}
+.mr-3{margin-right:.75rem}
+.mx-auto{margin-left:auto;margin-right:auto}
+.p-2{padding:.5rem}
+.p-4{padding:1rem}
+.px-4{padding-left:1rem;padding-right:1rem}
+.py-2{padding-top:.5rem;padding-bottom:.5rem}
+.bg-white{background-color:#fff}
+.bg-blue-500{background-color:#3b82f6}
+.bg-red-500{background-color:#ef4444}
+.bg-green-500{background-color:#10b981}
+.bg-yellow-500{background-color:#f59e0b}
+.bg-gray-100{background-color:#f3f4f6}
+.bg-gray-200{background-color:#e5e7eb}
+.text-white{color:#fff}
+.text-gray-500{color:#6b7280}
+.text-gray-700{color:#374151}
+.text-red-500{color:#ef4444}
+.text-green-500{color:#10b981}
+.text-blue-500{color:#3b82f6}
+.rounded{border-radius:.25rem}
+.rounded-lg{border-radius:.5rem}
+.rounded-full{border-radius:9999px}
+.border{border-width:1px}
+.border-gray-300{border-color:#d1d5db}
+.shadow{box-shadow:0 1px 3px 0 rgba(0,0,0,0.1),0 1px 2px 0 rgba(0,0,0,0.06)}
+.shadow-lg{box-shadow:0 10px 15px -3px rgba(0,0,0,0.1),0 4px 6px -2px rgba(0,0,0,0.05)}
+.flex{display:flex}
+.grid{display:grid}
+.hidden{display:none}
+.flex-1{flex:1 1 0%}
+.flex-row{flex-direction:row}
+.flex-col{flex-direction:column}
+.items-start{align-items:flex-start}
+.items-center{align-items:center}
+.justify-start{justify-content:flex-start}
+.justify-end{justify-content:flex-end}
+.justify-center{justify-content:center}
+.justify-between{justify-content:space-between}
+.space-x-2>:not([hidden])~:not([hidden]){margin-left:.5rem}
+.space-y-2>:not([hidden])~:not([hidden]){margin-top:.5rem}
+.space-y-4>:not([hidden])~:not([hidden]){margin-top:1rem}
+.whitespace-nowrap{white-space:nowrap}
+.w-full{width:100%}
+.w-4{width:1rem}
+.w-6{width:1.5rem}
+.h-4{height:1rem}
+.h-6{height:1.5rem}
+.max-w-md{max-width:28rem}
+.max-w-lg{max-width:32rem}
+.max-w-xl{max-width:36rem}
+.max-w-2xl{max-width:42rem}
+.max-w-3xl{max-width:48rem}
+.max-w-4xl{max-width:56rem}
+.max-w-5xl{max-width:64rem}
+.max-w-6xl{max-width:72rem}
+.max-w-7xl{max-width:80rem}
+"""
+        with open(tailwind_path, "w") as f:
+            f.write(min_css)
+        _LOGGER.info("Created minimal tailwind css file at %s", tailwind_path)
+    except Exception as e:
+        _LOGGER.error("Failed to create minimal tailwind css: %s", e)
+
 
 async def async_check_due_notifications(hass: HomeAssistant, database_path: str) -> None:
     """Check for tasks due today and send summary notifications."""
