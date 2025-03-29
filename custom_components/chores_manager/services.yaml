@@ -1,0 +1,197 @@
+add_chore:
+  name: Add Chore
+  description: Create or update a chore
+  fields:
+    chore_id:
+      name: Chore ID
+      description: Unique identifier for the chore
+      required: true
+      example: "dishes"
+      selector:
+        text:
+    name:
+      name: Name
+      description: Display name for the chore
+      example: "Dishes"
+      selector:
+        text:
+    frequency_type:
+      name: Frequency Type
+      description: How often this chore should be performed
+      example: "Wekelijks"
+      selector:
+        select:
+          options:
+            - "Dagelijks"
+            - "Wekelijks"
+            - "Meerdere keren per week"
+            - "Maandelijks"
+            - "Meerdere keren per maand"
+            - "Per kwartaal"
+            - "Halfjaarlijks"
+            - "Jaarlijks"
+    assigned_to:
+      name: Assigned To
+      description: Who is responsible for this chore
+      example: "Laura"
+      selector:
+        text:
+    priority:
+      name: Priority
+      description: Importance level of the chore
+      example: "Middel"
+      selector:
+        select:
+          options:
+            - "Hoog"
+            - "Middel"
+            - "Laag"
+    duration:
+      name: Duration
+      description: Estimated time to complete in minutes
+      example: 15
+      selector:
+        number:
+          min: 5
+          max: 120
+          unit_of_measurement: min
+    notify_when_due:
+      name: Notify When Due
+      description: Send notification when task is due
+      required: false
+      default: false
+      selector:
+        boolean:
+
+mark_done:
+  name: Mark Chore Done
+  description: Mark a chore as completed
+  fields:
+    chore_id:
+      name: Chore ID
+      description: Unique identifier for the chore
+      required: true
+      example: "dishes"
+      selector:
+        text:
+    person:
+      name: Person
+      description: Who completed the chore
+      required: true
+      example: "Laura"
+      selector:
+        text:
+
+update_description:
+  name: Update Chore Description
+  description: Update the description of a chore
+  fields:
+    chore_id:
+      name: Chore ID
+      description: Unique identifier for the chore
+      required: true
+      example: "dishes"
+      selector:
+        text:
+    description:
+      name: Description
+      description: Detailed description or instructions for the chore
+      required: true
+      example: "Wash all dishes and empty the dishwasher"
+      selector:
+        text:
+          multiline: true
+
+reset_chore:
+  name: Reset Chore
+  description: Reset a chore's completion status completely, including removing today's history entries
+  fields:
+    chore_id:
+      name: Chore ID
+      description: Unique identifier for the chore to reset
+      required: true
+      example: "dishes"
+      selector:
+        text:
+
+add_user:
+  name: Add or Update User
+  description: Add a new user or update an existing one
+  fields:
+    id:
+      name: User ID
+      description: Unique identifier for the user
+      required: true
+      example: "noud"
+      selector:
+        text:
+    name:
+      name: Name
+      description: Display name for the user
+      required: true
+      example: "Noud"
+      selector:
+        text:
+    color:
+      name: Color
+      description: Color for this user's tasks (hex code)
+      required: false
+      example: "#A3C1D3"
+      selector:
+        color:
+    active:
+      name: Active
+      description: Whether this user is active
+      required: false
+      default: true
+      selector:
+        boolean:
+    ha_user_id:
+      name: Home Assistant User ID
+      description: Associate with a Home Assistant user
+      required: false
+      example: "abc123def456"
+      selector:
+        text:
+
+delete_user:
+  name: Delete User
+  description: Delete a user (cannot delete default users)
+  fields:
+    user_id:
+      name: User ID
+      description: Unique identifier for the user to delete
+      required: true
+      example: "noud"
+      selector:
+        text:
+
+get_ha_users:
+  name: Get Home Assistant Users
+  description: Get a list of available Home Assistant users
+
+force_due:
+  name: Force Chore Due Today
+  description: Force a chore to appear as due today (useful for automations)
+  fields:
+    chore_id:
+      name: Chore ID
+      description: Unique identifier for the chore
+      required: true
+      example: "was_ophangen"
+      selector:
+        text:
+    notify:
+      name: Send Notification
+      description: Whether to send a notification to the assigned person
+      required: false
+      default: false
+      selector:
+        boolean:
+    message:
+      name: Custom Message
+      description: Custom notification message (if notify enabled)
+      required: false
+      example: "Wasmachine is klaar, tijd om de was op te hangen!"
+      selector:
+        text:
