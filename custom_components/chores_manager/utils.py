@@ -18,6 +18,10 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
     # Get source and destination paths
     www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
     www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
+    """Set up web assets by copying files to www directory."""
+    # Get source and destination paths
+    www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
+    www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
 
     # Create directories if they don't exist
     os.makedirs(os.path.dirname(www_target), exist_ok=True)
