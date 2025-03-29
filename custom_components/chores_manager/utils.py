@@ -13,6 +13,7 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def setup_web_assets(hass: HomeAssistant) -> None:
     """Set up web assets by copying files to www directory."""
     # Get source and destination paths
@@ -51,6 +52,12 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
         # Generate and save an authentication token for the dashboard
         await generate_auth_config(hass, www_target)
 
+        # Update the index.html file
+        update_index_html(www_target)
+
+        # Generate and save an authentication token for the dashboard
+        await generate_auth_config(hass, www_target)
+
         # Check for missing tailwind.css
         tailwind_path = os.path.join(www_target, "tailwind.min.css")
         if not os.path.exists(tailwind_path):
@@ -58,6 +65,7 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
             create_minimal_tailwind(tailwind_path)
     except Exception as e:
         _LOGGER.error("Failed to copy web assets: %s", e)
+
 
 def update_index_html(target_dir: str) -> None:
     """Update the index.html file to ensure it works correctly."""
@@ -78,74 +86,82 @@ def update_index_html(target_dir: str) -> None:
     except Exception as e:
         _LOGGER.error("Failed to update index.html: %s", e)
 
+
 async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
     """Generate an auth token and create the config file."""
     try:
-        # Find the active user with admin privileges to generate a token
-        refresh_token = None
-        active_user = None
+        # Find an admin user
+        _LOGGER.info("Starting token generation process")
+        admin_user = None
 
         for user in await hass.auth.async_get_users():
             if user.is_admin and user.is_active:
-                active_user = user
+                admin_user = user
+                _LOGGER.info(f"Found admin user: {user.name}")
                 break
 
-        if active_user:
-            _LOGGER.info("Found active admin user to generate token for dashboard")
-            # Create a long-lived access token for the dashboard
-            refresh_token = await hass.auth.async_create_refresh_token(
-                active_user,
-                client_name="Chores Dashboard",
-                client_id="chores_dashboard",
-                access_token_expiration=timedelta(days=3650)  # 10 year token
-            )
+        if not admin_user:
+            _LOGGER.warning("No admin user found!")
+            raise Exception("No admin user found for token generation")
 
-            # Create access token
-            access_token = hass.auth.async_create_access_token(refresh_token)
+        # Create a long-lived refresh token
+        _LOGGER.info("Creating refresh token")
+        refresh_token = await hass.auth.async_create_refresh_token(
+            admin_user,
+            client_name="Chores Dashboard Automation",
+            client_id="chores_dashboard_automation"
+        )
 
-            # Create config file with the token
-            config_path = os.path.join(target_dir, "config.json")
-            config = {
-                "base_url": "",
-                "api_url": "/api",
-                "refresh_interval": 30000,
-                "debug": True,  # Enable debug mode
-                "api_token": access_token
-            }
+        # Create an access token
+        _LOGGER.info("Creating access token")
+        access_token = hass.auth.async_create_access_token(refresh_token)
+        _LOGGER.info(f"Token created successfully (length: {len(access_token)})")
 
-            with open(config_path, "w") as f:
-                import json
-                json.dump(config, f, indent=2)
-
-            _LOGGER.info("Created config with authentication token for dashboard")
-        else:
-            _LOGGER.warning("No active admin user found, dashboard will require manual auth")
-            # Create a default config file
-            config_path = os.path.join(target_dir, "config.json")
-            config = {
-                "base_url": "",
-                "api_url": "/api",
-                "refresh_interval": 30000,
-                "debug": True
-            }
-
-            with open(config_path, "w") as f:
-                import json
-                json.dump(config, f, indent=2)
-    except Exception as e:
-        _LOGGER.error("Failed to create auth token: %s", e)
-        # Create a default config file as fallback
+        # Save token to config
         config_path = os.path.join(target_dir, "config.json")
+        _LOGGER.info(f"Saving token to {config_path}")
+
         config = {
             "base_url": "",
             "api_url": "/api",
             "refresh_interval": 30000,
-            "debug": True
+            "debug": True,
+            "api_token": access_token
         }
 
+        # Write config file
         with open(config_path, "w") as f:
             import json
             json.dump(config, f, indent=2)
+
+        # Verify the file was written correctly
+        with open(config_path, "r") as f:
+            saved_config = json.load(f)
+            if "api_token" in saved_config:
+                _LOGGER.info("Token successfully saved to config file!")
+            else:
+                _LOGGER.error("Token not found in saved config file!")
+
+    except Exception as e:
+        _LOGGER.error(f"Error generating token: {str(e)}", exc_info=True)
+
+        # Create a minimal config without token as fallback
+        try:
+            config_path = os.path.join(target_dir, "config.json")
+            config = {
+                "base_url": "",
+                "api_url": "/api",
+                "refresh_interval": 30000,
+                "debug": True,
+                "error": f"Token generation failed: {str(e)}"
+            }
+
+            with open(config_path, "w") as f:
+                import json
+                json.dump(config, f, indent=2)
+        except Exception as write_error:
+            _LOGGER.error(f"Failed to write fallback config: {str(write_error)}")
+
 
 def create_minimal_tailwind(tailwind_path: str) -> None:
     """Create a minimal tailwind.css file if it's missing."""
@@ -244,6 +260,7 @@ button,input,select,textarea{font-family:inherit;font-size:100%;line-height:1.15
         _LOGGER.info("Created minimal tailwind css file at %s", tailwind_path)
     except Exception as e:
         _LOGGER.error("Failed to create minimal tailwind css: %s", e)
+
 
 async def async_check_due_notifications(hass: HomeAssistant, database_path: str) -> None:
     """Check for tasks due today and send summary notifications."""
@@ -374,6 +391,7 @@ async def async_check_due_notifications(hass: HomeAssistant, database_path: str)
     except Exception as e:
         _LOGGER.error("Error sending due task notifications: %s", e)
 
+
 async def send_user_summary_notification(
     hass: HomeAssistant,
     ha_user_id: str,
@@ -410,6 +428,7 @@ async def send_user_summary_notification(
                             {
                                 "action": "VIEW_TASKS",
                                 "title": "Bekijk Taken",
+                                "uri": "/local/chores-dashboard/index.html"
                                 "uri": "/local/chores-dashboard/index.html"
                             },
                             {
