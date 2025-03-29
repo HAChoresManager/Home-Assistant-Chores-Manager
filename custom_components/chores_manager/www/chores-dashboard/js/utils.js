@@ -243,11 +243,8 @@ window.choreUtils.formatTime = function(minutes) {
     return `${hours}u ${mins > 0 ? mins + 'm' : ''}`;
 };
 
-// Authentication helper function with enhanced debugging
+// Authentication helper function with enhanced authentication methods
 window.choreUtils.fetchWithAuth = async function(url, options = {}) {
-    const DEBUG = true;
-    if (DEBUG) console.log(`[Auth] Fetching: ${url}`);
-    
     // Clone options to avoid modifying the original
     const fetchOptions = { 
         ...options,
@@ -255,16 +252,15 @@ window.choreUtils.fetchWithAuth = async function(url, options = {}) {
     };
     
     try {
-        // APPROACH 1: Try accessing Home Assistant auth from parent window (iframe scenario)
+        // APPROACH 1: Try to extract token from Home Assistant frontend
         if (window.parent) {
-            // Method 1: Try directly from hassConnection
             try {
+                // Check if hassConnection exists (newer versions of HA)
                 if (window.parent.hassConnection && 
                     window.parent.hassConnection.auth && 
                     window.parent.hassConnection.auth.data && 
                     window.parent.hassConnection.auth.data.access_token) {
                     
-                    if (DEBUG) console.log('[Auth] Using hassConnection token');
                     fetchOptions.headers = {
                         ...fetchOptions.headers,
                         Authorization: `Bearer ${window.parent.hassConnection.auth.data.access_token}`
@@ -273,40 +269,27 @@ window.choreUtils.fetchWithAuth = async function(url, options = {}) {
                     const resp = await fetch(url, fetchOptions);
                     if (resp.ok) return resp;
                 }
-            } catch (e) {
-                console.log('[Auth] Error accessing hassConnection:', e);
-            }
-            
-            // Method 2: Try from localStorage
-            try {
-                const authData = window.parent.localStorage.getItem('hass_auth');
-                if (authData) {
-                    const auth = JSON.parse(authData);
-                    if (auth && auth.access_token) {
-                        if (DEBUG) console.log('[Auth] Using localStorage token');
-                        fetchOptions.headers = {
-                            ...fetchOptions.headers,
-                            Authorization: `Bearer ${auth.access_token}`
-                        };
-                        
-                        const resp = await fetch(url, fetchOptions);
-                        if (resp.ok) return resp;
-                    }
+                
+                // Try accessing 'hass' object directly (alternate method)
+                if (window.parent.hass && window.parent.hass.auth) {
+                    fetchOptions.headers = {
+                        ...fetchOptions.headers,
+                        Authorization: `Bearer ${window.parent.hass.auth.access_token}`
+                    };
+                    
+                    const resp = await fetch(url, fetchOptions);
+                    if (resp.ok) return resp;
                 }
             } catch (e) {
-                console.log('[Auth] Error accessing localStorage:', e);
+                console.log('Error accessing auth from parent:', e);
             }
         }
         
-        // APPROACH 2: Simple session-based auth
-        if (DEBUG) console.log('[Auth] Trying with session credentials');
+        // APPROACH 2: Simple credentials-based auth
         const resp = await fetch(url, fetchOptions);
-        if (resp.ok) return resp;
-        
-        // If none of the methods worked, return the last response
         return resp;
     } catch (e) {
-        console.error("[Auth] Fetch error:", e);
+        console.error("Fetch error:", e);
         throw e;
     }
 };

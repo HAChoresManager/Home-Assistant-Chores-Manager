@@ -4,13 +4,63 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Huishoudelijke Taken</title>
-    
-    <!-- Load theme integration first -->
-    <script src="js/theme-integration.js?v=2025031005" type="text/javascript"></script>
-    
-    <!-- Then load styles -->
-    <link rel="stylesheet" href="tailwind.min.css" type="text/css">
+    <!-- Force cache refresh with timestamp -->
+    <link rel="stylesheet" href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" type="text/css">
     <link rel="stylesheet" href="css/styles.css?v=2025031005" type="text/css">
+    <!-- Add styling for processing state visibility -->
+    <style>
+        /* Make processing state more visible */
+        .task-processing {
+            position: relative;
+            opacity: 0.7 !important;
+            border: 2px dashed #3b82f6 !important;
+            background-color: rgba(219, 234, 254, 0.7) !important;
+            animation: processingPulse 1.5s infinite ease-in-out !important;
+        }
+
+        @keyframes processingPulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+            50% { transform: scale(1.01); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+
+        /* Add visual indicator for optimistic updates */
+        .optimistic-update {
+            position: relative;
+        }
+
+        .optimistic-update::after {
+            content: "✓";
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            font-size: 18px;
+            color: #10b981;
+            background-color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+
+        .task-card {
+            transition: all 0.5s ease-in-out !important;
+        }
+
+        /* Add completion animation */
+        @keyframes completionAnimation {
+            0% { transform: scale(1); background-color: rgba(74, 222, 128, 0.1); }
+            50% { transform: scale(1.03); background-color: rgba(74, 222, 128, 0.2); }
+            100% { transform: scale(1); background-color: rgba(74, 222, 128, 0); }
+        }
+
+        .completion-animation {
+            animation: completionAnimation 0.8s ease-out;
+        }
+    </style>
 </head>
 <body>
     <div id="root">Loading dashboard...</div>
@@ -26,6 +76,18 @@
     <!-- Load React first -->
     <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+
+    <!-- Clear localStorage for fresh start -->
+    <script>
+        // Clear any localStorage items that might be causing issues
+        try {
+            // Don't delete important configs, just reset any cached state
+            localStorage.removeItem('chores_cache');
+            localStorage.removeItem('chores_ui_state');
+        } catch (e) {
+            console.error("Error clearing localStorage:", e);
+        }
+    </script>
 
     <!-- Load our scripts with explicit type, timestamp and defer -->
     <script src="js/utils.js?v=2025031005" type="text/javascript"></script>
@@ -148,7 +210,7 @@
         }
 
         // Add version info to global object
-        window.CHORES_APP_VERSION = "1.0.0";
+        window.CHORES_APP_VERSION = "1.2.0-2025031005";
         
         // Use a more robust initialization approach
         document.addEventListener('DOMContentLoaded', function() {
@@ -189,7 +251,7 @@
                     const [lastCompletedTask, setLastCompletedTask] = React.useState(null);
                     // Track optimistic updates with expiry times
                     const [optimisticUpdates, setOptimisticUpdates] = React.useState({});
-                    // Debug mode (disabled for production)
+                    // Add debug mode
                     const [debugMode] = React.useState(false);
                     // Show user management modal
                     const [showUserManagement, setShowUserManagement] = React.useState(false);
@@ -206,7 +268,7 @@
                     React.useEffect(() => {
                         const loadConfig = async () => {
                             try {
-                                const response = await fetch('/local/chores_manager/chores-dashboard/config.json?nocache=' + new Date().getTime());
+                                const response = await fetch('/local/chores-dashboard/config.json?nocache=' + new Date().getTime());
                                 if (!response.ok) {
                                     throw new Error(`Failed to load config: ${response.status} ${response.statusText}`);
                                 }
@@ -225,6 +287,7 @@
                         if (!config) return;
                     
                         if (skipNextRefresh) {
+                            //debugLog('Skipping refresh due to skipNextRefresh flag');
                             return;
                         }
                     
@@ -244,6 +307,7 @@
                             }
                         
                             const data = await response.json();
+                            //debugLog('Chores data refreshed successfully', data);
                         
                             // Process the tasks with respect to optimistic updates
                             processChoreTasks(data);
@@ -1103,6 +1167,15 @@
                                 { className: "bg-white p-4 rounded-lg shadow-lg" },
                                 "Bezig met laden..."
                             )
+                        ),
+
+                        // Debug information (only in debug mode)
+                        debugMode && React.createElement('div',
+                            { className: "fixed bottom-0 right-0 bg-white p-2 text-xs text-gray-500 border border-gray-300 rounded-tl-md max-w-xs overflow-hidden" },
+                            "Debug Mode | ",
+                            Object.keys(optimisticUpdates).length > 0
+                                ? `Optimistic updates: ${Object.keys(optimisticUpdates).length}`
+                                : "No optimistic updates"
                         )
                     );
                 };
