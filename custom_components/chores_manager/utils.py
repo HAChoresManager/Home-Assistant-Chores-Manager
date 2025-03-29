@@ -88,12 +88,12 @@ async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
             _LOGGER.warning("No admin user found!")
             raise Exception("No admin user found for token generation")
 
-        # Create a long-lived refresh token
+        # Create a long-lived refresh token with a unique identifier
         _LOGGER.info("Creating refresh token")
         refresh_token = await hass.auth.async_create_refresh_token(
             admin_user,
-            client_name="Chores Dashboard Automation",
-            client_id="chores_dashboard_automation"
+            client_name="Chores Dashboard",
+            client_id=f"chores_dashboard_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         )
 
         # Create an access token
