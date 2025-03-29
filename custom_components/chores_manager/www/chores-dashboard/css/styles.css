@@ -1,0 +1,289 @@
+:root {
+    /* Default fallback values */
+    --chores-primary-color: #03a9f4;
+    --chores-primary-background: #f9fafb;
+    --chores-secondary-background: #ffffff;
+    --chores-primary-text: #212121;
+    --chores-secondary-text: #727272;
+    --chores-card-radius: 0.5rem;
+    --chores-box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+body { 
+    margin: 0; 
+    padding: 0;
+    background-color: var(--chores-primary-background);
+    color: var(--chores-primary-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+#root { 
+    min-height: 100vh;
+    padding: 1rem;
+}
+
+.task-card {
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border-radius: var(--chores-card-radius);
+}
+
+.task-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.task-icon {
+    font-size: 1.5rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.icon-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.5rem;
+}
+
+.icon-option {
+    padding: 0.5rem;
+    font-size: 1.5rem;
+    text-align: center;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    border: 1px solid #e5e7eb;
+}
+
+.icon-option:hover {
+    background-color: #f3f4f6;
+}
+
+.icon-option.selected {
+    background-color: #e5e7eb;
+    border-color: #9ca3af;
+}
+
+.section-divider {
+    margin: 1.5rem 0;
+    border-top: 1px solid #e5e7eb;
+    position: relative;
+}
+
+.section-divider-text {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--chores-primary-background);
+    padding: 0 1rem;
+    font-weight: 500;
+    color: var(--chores-secondary-text);
+}
+
+.past-due {
+    border-left-width: 4px;
+    border-left-style: solid;
+    border-left-color: #ef4444;
+}
+
+.due-today {
+    border-left-width: 4px;
+    border-left-style: solid;
+    border-left-color: #f59e0b;
+}
+
+/* Mobile scrolling fix for modal */
+.modal-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 50;
+    background-color: rgba(0, 0, 0, 0.5);
+    overflow-y: auto;
+}
+
+.modal-content {
+    background-color: var(--chores-secondary-background);
+    color: var(--chores-primary-text);
+    border-radius: var(--chores-card-radius);
+    max-width: 28rem;
+    width: 100%;
+    margin: 2rem;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 1.5rem;
+    box-shadow: var(--chores-box-shadow);
+}
+
+/* Progress bar styles - UPDATED to fix overflow */
+.progress-container {
+    width: 100%;
+    height: 8px;
+    background-color: #f3f4f6;
+    border-radius: 4px;
+    margin-top: 4px;
+    overflow: hidden; /* Added to prevent overflow */
+}
+
+.progress-bar {
+    height: 100%;
+    border-radius: 4px;
+    max-width: 100%; /* Added to prevent overflow */
+}
+
+/* Add pulse animation to the streak flame */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+.streak-flame {
+    display: inline-block;
+    animation: pulse 1.5s infinite;
+}
+
+/* Task description styles */
+.task-description {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.3s ease-out, opacity 0.3s ease-out, margin 0.3s ease-out;
+    opacity: 0;
+    margin: 0;
+}
+
+.task-description.expanded {
+    max-height: 500px; /* Adjust as needed */
+    opacity: 1;
+    margin-top: 0.5rem;
+}
+
+/* Task completion animation */
+@keyframes completionPulse {
+    0% { transform: scale(1); background-color: rgba(74, 222, 128, 0.2); }
+    50% { transform: scale(1.03); background-color: rgba(74, 222, 128, 0.3); }
+    100% { transform: scale(1); background-color: rgba(74, 222, 128, 0); }
+}
+
+.completion-animation {
+    animation: completionPulse 0.6s ease-out;
+}
+
+/* Processing state for tasks */
+.task-processing {
+    opacity: 0.6;
+    background-color: rgba(203, 213, 225, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.task-processing::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    animation: processingShimmer 1.5s infinite;
+}
+
+@keyframes processingShimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+/* Dark theme overrides */
+.ha-dark-theme {
+    --task-bg-color: rgba(40, 40, 40, 0.7);
+    --card-bg-color: rgba(50, 50, 50, 0.8);
+}
+
+.ha-dark-theme .bg-white {
+    background-color: var(--chores-secondary-background) !important;
+    color: var(--chores-primary-text) !important;
+}
+
+.ha-dark-theme .text-gray-700 {
+    color: var(--chores-primary-text) !important;
+}
+
+.ha-dark-theme .text-gray-600,
+.ha-dark-theme .text-gray-500,
+.ha-dark-theme .text-gray-400 {
+    color: var(--chores-secondary-text) !important;
+}
+
+.ha-dark-theme .border-gray-300 {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.ha-dark-theme .progress-container {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.ha-dark-theme .border-dashed {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Add visual indicator for optimistic updates */
+.optimistic-update {
+    position: relative;
+}
+
+.optimistic-update::after {
+    content: "✓";
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 18px;
+    color: #10b981;
+    background-color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.task-card {
+    transition: all 0.5s ease-in-out !important;
+}
+
+/* Add completion animation */
+@keyframes completionAnimation {
+    0% { transform: scale(1); background-color: rgba(74, 222, 128, 0.1); }
+    50% { transform: scale(1.03); background-color: rgba(74, 222, 128, 0.2); }
+    100% { transform: scale(1); background-color: rgba(74, 222, 128, 0); }
+}
+
+.completion-animation {
+    animation: completionAnimation 0.8s ease-out;
+}
+
+/* Make processing state more visible */
+.task-processing {
+    position: relative;
+    opacity: 0.7 !important;
+    border: 2px dashed #3b82f6 !important;
+    background-color: rgba(219, 234, 254, 0.7) !important;
+    animation: processingPulse 1.5s infinite ease-in-out !important;
+}
+
+@keyframes processingPulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+    50% { transform: scale(1.01); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
