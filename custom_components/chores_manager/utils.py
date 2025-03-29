@@ -52,6 +52,12 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
         # Generate and save an authentication token for the dashboard
         await generate_auth_config(hass, www_target)
 
+        # Update the index.html file
+        update_index_html(www_target)
+
+        # Generate and save an authentication token for the dashboard
+        await generate_auth_config(hass, www_target)
+
         # Check for missing tailwind.css
         tailwind_path = os.path.join(www_target, "tailwind.min.css")
         if not os.path.exists(tailwind_path):
@@ -422,6 +428,7 @@ async def send_user_summary_notification(
                             {
                                 "action": "VIEW_TASKS",
                                 "title": "Bekijk Taken",
+                                "uri": "/local/chores-dashboard/index.html"
                                 "uri": "/local/chores-dashboard/index.html"
                             },
                             {
