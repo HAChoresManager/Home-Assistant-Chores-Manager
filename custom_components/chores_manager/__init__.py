@@ -2,7 +2,7 @@
 import logging
 import os
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
@@ -49,11 +49,22 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     await async_register_services(hass, str(database_path))
 
     # Schedule daily notification check
-    notification_time_str = config[DOMAIN].get("notification_time", DEFAULT_NOTIFICATION_TIME)
-    try:
-        notification_time = datetime.strptime(notification_time_str, "%H:%M").time()
-    except ValueError:
-        _LOGGER.error(f"Invalid notification_time format: {notification_time_str}. Using default {DEFAULT_NOTIFICATION_TIME}.")
+    notification_time_config = config[DOMAIN].get("notification_time", DEFAULT_NOTIFICATION_TIME)
+
+    # Handle the notification time correctly based on its type
+    if isinstance(notification_time_config, time):
+        # Already a time object, use it directly
+        notification_time = notification_time_config
+    elif isinstance(notification_time_config, str):
+        # Parse string into time object
+        try:
+            notification_time = datetime.strptime(notification_time_config, "%H:%M").time()
+        except ValueError:
+            _LOGGER.error(f"Invalid notification_time format: {notification_time_config}. Using default {DEFAULT_NOTIFICATION_TIME}.")
+            notification_time = datetime.strptime(DEFAULT_NOTIFICATION_TIME, "%H:%M").time()
+    else:
+        # Fallback to default
+        _LOGGER.error(f"Unexpected notification_time type: {type(notification_time_config)}. Using default.")
         notification_time = datetime.strptime(DEFAULT_NOTIFICATION_TIME, "%H:%M").time()
 
     async def _async_daily_notification_check(now=None):
