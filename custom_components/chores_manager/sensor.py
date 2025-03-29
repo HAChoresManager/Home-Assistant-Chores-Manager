@@ -188,7 +188,7 @@ class ChoresOverviewSensor(SensorEntity):
                     if done_by in stats:
                         stats[done_by]['tasks_completed'] += 1
                         stats[done_by]['time_completed'] += duration
-                        
+
                         # Also add to total tasks for this person
                         stats[done_by]['total_tasks'] += 1
                         stats[done_by]['total_time'] += duration
@@ -207,37 +207,37 @@ class ChoresOverviewSensor(SensorEntity):
                         ORDER BY date(completion_date) DESC
                         LIMIT 30
                     ''', (assignee,))
-                
+
                     dates = [row[0] for row in cursor.fetchall()]
-                    
+
                     if dates:
                         streak = 0
                         current_date = datetime.now().date()
-                        
+
                         # Check if there are tasks due today for this assignee
                         cursor.execute('''
-                            SELECT COUNT(*) 
-                            FROM chores 
+                            SELECT COUNT(*)
+                            FROM chores
                             WHERE assigned_to = ?
                         ''', (assignee,))
-                        
+
                         has_assigned_tasks = cursor.fetchone()[0] > 0
-                        
+
                         # Check if there are tasks done today
                         if today_str in dates or current_date.strftime('%Y-%m-%d') in dates:
                             streak = 1
                             # Check consecutive days backwards
                             for i in range(1, 30):
                                 prev_date = (current_date - timedelta(days=i)).strftime('%Y-%m-%d')
-                                
+
                                 # Check if had assigned tasks for that day
                                 cursor.execute('''
-                                    SELECT COUNT(*) FROM chores 
+                                    SELECT COUNT(*) FROM chores
                                     WHERE assigned_to = ? AND date(last_done) = ?
                                 ''', (assignee, prev_date))
-                                
+
                                 had_tasks_on_date = cursor.fetchone()[0] > 0
-                                
+
                                 # Either completed a task on that day, or had no tasks assigned
                                 if prev_date in dates:
                                     streak += 1
@@ -247,7 +247,7 @@ class ChoresOverviewSensor(SensorEntity):
                                 else:
                                     # Had tasks but didn't complete any - break streak
                                     break
-                                
+
                         stats[assignee]['streak'] = streak
 
                 # Get monthly completed tasks by assignee (based on who completed them)
