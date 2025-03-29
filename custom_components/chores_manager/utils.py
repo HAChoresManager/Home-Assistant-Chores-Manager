@@ -19,10 +19,6 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
     # Get source and destination paths
     www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
     www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
-    """Set up web assets by copying files to www directory."""
-    # Get source and destination paths
-    www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
-    www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
 
     # Create directories if they don't exist
     os.makedirs(os.path.dirname(www_target), exist_ok=True)
@@ -39,18 +35,6 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
     try:
         shutil.copytree(www_source, www_target)
         _LOGGER.info("Copied web assets from %s to %s", www_source, www_target)
-
-        # Update the index.html file
-        update_index_html(www_target)
-
-        # Generate and save an authentication token for the dashboard
-        await generate_auth_config(hass, www_target)
-
-        # Update the index.html file
-        update_index_html(www_target)
-
-        # Generate and save an authentication token for the dashboard
-        await generate_auth_config(hass, www_target)
 
         # Update the index.html file
         update_index_html(www_target)
@@ -104,12 +88,12 @@ async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
             _LOGGER.warning("No admin user found!")
             raise Exception("No admin user found for token generation")
 
-        # Create a long-lived refresh token
+        # Create a long-lived refresh token with a unique identifier
         _LOGGER.info("Creating refresh token")
         refresh_token = await hass.auth.async_create_refresh_token(
             admin_user,
-            client_name="Chores Dashboard Automation",
-            client_id="chores_dashboard_automation"
+            client_name="Chores Dashboard",
+            client_id=f"chores_dashboard_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         )
 
         # Create an access token
@@ -428,7 +412,6 @@ async def send_user_summary_notification(
                             {
                                 "action": "VIEW_TASKS",
                                 "title": "Bekijk Taken",
-                                "uri": "/local/chores-dashboard/index.html"
                                 "uri": "/local/chores-dashboard/index.html"
                             },
                             {
