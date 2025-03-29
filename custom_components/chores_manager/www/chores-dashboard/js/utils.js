@@ -243,43 +243,70 @@ window.choreUtils.formatTime = function(minutes) {
     return `${hours}u ${mins > 0 ? mins + 'm' : ''}`;
 };
 
-// Authentication helper function
+// Authentication helper function with enhanced debugging
 window.choreUtils.fetchWithAuth = async function(url, options = {}) {
+    const DEBUG = true;
+    if (DEBUG) console.log(`[Auth] Fetching: ${url}`);
+    
     // Clone options to avoid modifying the original
     const fetchOptions = { 
         ...options,
-        credentials: 'same-origin' // This is critical - include cookies/session
+        credentials: 'include' // Changed from 'same-origin' to 'include'
     };
     
     try {
-        // First attempt - use user's current session
-        const resp = await fetch(url, fetchOptions);
-        if (resp.ok) {
-            return resp;
-        }
-        
-        // If that failed with 401/403, try token auth
-        if (resp.status === 401 || resp.status === 403) {
-            const configResponse = await fetch('/local/chores-dashboard/config.json?nocache=' + new Date().getTime(), 
-                {credentials: 'same-origin'});
-                
-            if (configResponse.ok) {
-                const config = await configResponse.json();
-                if (config.api_token) {
+        // APPROACH 1: Try accessing Home Assistant auth from parent window (iframe scenario)
+        if (window.parent) {
+            // Method 1: Try directly from hassConnection
+            try {
+                if (window.parent.hassConnection && 
+                    window.parent.hassConnection.auth && 
+                    window.parent.hassConnection.auth.data && 
+                    window.parent.hassConnection.auth.data.access_token) {
+                    
+                    if (DEBUG) console.log('[Auth] Using hassConnection token');
                     fetchOptions.headers = {
                         ...fetchOptions.headers,
-                        'Authorization': `Bearer ${config.api_token}`
+                        Authorization: `Bearer ${window.parent.hassConnection.auth.data.access_token}`
                     };
-                    return fetch(url, fetchOptions);
+                    
+                    const resp = await fetch(url, fetchOptions);
+                    if (resp.ok) return resp;
                 }
+            } catch (e) {
+                console.log('[Auth] Error accessing hassConnection:', e);
+            }
+            
+            // Method 2: Try from localStorage
+            try {
+                const authData = window.parent.localStorage.getItem('hass_auth');
+                if (authData) {
+                    const auth = JSON.parse(authData);
+                    if (auth && auth.access_token) {
+                        if (DEBUG) console.log('[Auth] Using localStorage token');
+                        fetchOptions.headers = {
+                            ...fetchOptions.headers,
+                            Authorization: `Bearer ${auth.access_token}`
+                        };
+                        
+                        const resp = await fetch(url, fetchOptions);
+                        if (resp.ok) return resp;
+                    }
+                }
+            } catch (e) {
+                console.log('[Auth] Error accessing localStorage:', e);
             }
         }
         
-        // If we get here, the original response failed but not due to auth
-        // Return it anyway so the error can be handled
+        // APPROACH 2: Simple session-based auth
+        if (DEBUG) console.log('[Auth] Trying with session credentials');
+        const resp = await fetch(url, fetchOptions);
+        if (resp.ok) return resp;
+        
+        // If none of the methods worked, return the last response
         return resp;
     } catch (e) {
-        console.error("Fetch error:", e);
+        console.error("[Auth] Fetch error:", e);
         throw e;
     }
 };
