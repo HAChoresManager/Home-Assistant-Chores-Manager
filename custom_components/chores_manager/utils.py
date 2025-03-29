@@ -32,6 +32,17 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
     except Exception as e:
         _LOGGER.error("Failed to create symlink: %s", e)
 
+        # If symlink fails, try copy instead
+        try:
+            _LOGGER.info("Symlink failed, attempting direct copy")
+            import shutil
+            if os.path.exists(www_target):
+                shutil.rmtree(www_target)
+            shutil.copytree(www_source, www_target)
+            _LOGGER.info("Successfully copied web assets")
+        except Exception as copy_error:
+            _LOGGER.error("Failed to copy web assets: %s", copy_error)
+
 async def async_check_due_notifications(hass: HomeAssistant, database_path: str) -> None:
     """Check for tasks due today and send summary notifications."""
     from .database import get_ha_user_id_for_assignee
