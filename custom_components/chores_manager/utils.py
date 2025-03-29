@@ -72,79 +72,31 @@ def update_index_html(target_dir: str) -> None:
 
 
 async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
-    """Generate an auth token and create the config file."""
+    """Generate configuration file without trying to generate a token."""
     try:
-        # Find an admin user
-        _LOGGER.info("Starting token generation process")
-        admin_user = None
-
-        for user in await hass.auth.async_get_users():
-            if user.is_admin and user.is_active:
-                admin_user = user
-                _LOGGER.info(f"Found admin user: {user.name}")
-                break
-
-        if not admin_user:
-            _LOGGER.warning("No admin user found!")
-            raise Exception("No admin user found for token generation")
-
-        # Create a long-lived refresh token with a unique identifier
-        _LOGGER.info("Creating refresh token")
-        refresh_token = await hass.auth.async_create_refresh_token(
-            admin_user,
-            client_name="Chores Dashboard",
-            client_id=f"chores_dashboard_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        )
-
-        # Create an access token
-        _LOGGER.info("Creating access token")
-        access_token = hass.auth.async_create_access_token(refresh_token)
-        _LOGGER.info(f"Token created successfully (length: {len(access_token)})")
-
-        # Save token to config
+        # Save a minimal config without token - modern auth will use Home Assistant session
         config_path = os.path.join(target_dir, "config.json")
-        _LOGGER.info(f"Saving token to {config_path}")
+        _LOGGER.info(f"Creating config file at {config_path}")
 
         config = {
             "base_url": "",
             "api_url": "/api",
             "refresh_interval": 30000,
             "debug": True,
-            "api_token": access_token
+            "use_modern_auth": True
         }
 
-        # Write config file
-        with open(config_path, "w") as f:
-            import json
-            json.dump(config, f, indent=2)
-
-        # Verify the file was written correctly
-        with open(config_path, "r") as f:
-            saved_config = json.load(f)
-            if "api_token" in saved_config:
-                _LOGGER.info("Token successfully saved to config file!")
-            else:
-                _LOGGER.error("Token not found in saved config file!")
-
-    except Exception as e:
-        _LOGGER.error(f"Error generating token: {str(e)}", exc_info=True)
-
-        # Create a minimal config without token as fallback
-        try:
-            config_path = os.path.join(target_dir, "config.json")
-            config = {
-                "base_url": "",
-                "api_url": "/api",
-                "refresh_interval": 30000,
-                "debug": True,
-                "error": f"Token generation failed: {str(e)}"
-            }
-
+        # Write config file using async executor
+        def write_config():
             with open(config_path, "w") as f:
                 import json
                 json.dump(config, f, indent=2)
-        except Exception as write_error:
-            _LOGGER.error(f"Failed to write fallback config: {str(write_error)}")
+
+        await hass.async_add_executor_job(write_config)
+        _LOGGER.info("Config file created successfully")
+
+    except Exception as e:
+        _LOGGER.error(f"Error creating config: {str(e)}", exc_info=True)
 
 
 def create_minimal_tailwind(tailwind_path: str) -> None:

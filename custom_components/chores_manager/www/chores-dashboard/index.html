@@ -15,27 +15,138 @@
 <body>
     <div id="root">Loading dashboard...</div>
 
+    <!-- Auth Debug Panel -->
+    <div id="auth-debug" style="display: none; position: fixed; top: 0; left: 0; right: 0; background: rgba(0,0,0,0.8); color: white; z-index: 9999; padding: 10px; font-family: monospace; max-height: 50vh; overflow: auto;">
+        <h3>Auth Debug Info</h3>
+        <div id="auth-debug-content">Loading...</div>
+        <button onclick="document.getElementById('auth-debug').style.display='none'" style="position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; padding: 3px 8px; cursor: pointer;">X</button>
+    </div>
+    <button onclick="document.getElementById('auth-debug').style.display='block';runAuthTest();" style="position: fixed; bottom: 10px; right: 10px; z-index: 9998; background: blue; color: white; border: none; padding: 5px 10px; cursor: pointer;">Debug</button>
+
     <!-- Load React first -->
     <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
-
-    <!-- Clear localStorage for fresh start -->
-    <script>
-        // Clear any localStorage items that might be causing issues
-        try {
-            // Don't delete important configs, just reset any cached state
-            localStorage.removeItem('chores_cache');
-            localStorage.removeItem('chores_ui_state');
-        } catch (e) {
-            console.error("Error clearing localStorage:", e);
-        }
-    </script>
 
     <!-- Load our scripts with explicit type, timestamp and defer -->
     <script src="js/utils.js?v=2025031005" type="text/javascript"></script>
     <script src="js/components.js?v=2025031005" type="text/javascript"></script>
 
     <script type="text/javascript">
+        // Auth debug function
+        function runAuthTest() {
+            const debugContent = document.getElementById('auth-debug-content');
+            debugContent.innerHTML = 'Running auth tests...<br>';
+            
+            async function testAuth() {
+                try {
+                    // Test 1: Direct fetch with credentials
+                    debugContent.innerHTML += '<br><b>Test 1: Direct fetch with credentials</b><br>';
+                    try {
+                        const resp1 = await fetch('/api/states', { credentials: 'include' });
+                        if (resp1.ok) {
+                            const data1 = await resp1.json();
+                            debugContent.innerHTML += `✅ Success! Got ${data1.length} states.<br>`;
+                        } else {
+                            debugContent.innerHTML += `❌ Failed: ${resp1.status} ${resp1.statusText}<br>`;
+                        }
+                    } catch (e) {
+                        debugContent.innerHTML += `❌ Error: ${e.message}<br>`;
+                    }
+                    
+                    // Test 2: Check parent window auth
+                    debugContent.innerHTML += '<br><b>Test 2: Check parent window auth</b><br>';
+                    try {
+                        if (window.parent) {
+                            debugContent.innerHTML += `Parent window exists<br>`;
+                            if (window.parent.document) {
+                                debugContent.innerHTML += `Can access parent document<br>`;
+                            }
+                            
+                            // Try to get auth from window.hassConnection
+                            if (window.parent.hassConnection) {
+                                const auth = window.parent.hassConnection.auth;
+                                debugContent.innerHTML += `Found hassConnection auth<br>`;
+                                
+                                // Try using it
+                                if (auth && auth.data && auth.data.access_token) {
+                                    debugContent.innerHTML += `✅ Found token in hassConnection (length: ${auth.data.access_token.length})<br>`;
+                                    const resp2 = await fetch('/api/states', {
+                                        headers: {
+                                            Authorization: `Bearer ${auth.data.access_token}`
+                                        }
+                                    });
+                                    
+                                    if (resp2.ok) {
+                                        const data2 = await resp2.json();
+                                        debugContent.innerHTML += `✅ Success! Got ${data2.length} states using hassConnection token.<br>`;
+                                    } else {
+                                        debugContent.innerHTML += `❌ hassConnection token failed: ${resp2.status} ${resp2.statusText}<br>`;
+                                    }
+                                }
+                            } else {
+                                debugContent.innerHTML += `❌ No hassConnection found in parent window<br>`;
+                            }
+                            
+                            // Try getting token from localStorage
+                            debugContent.innerHTML += `Checking localStorage token...<br>`;
+                            try {
+                                const hass_auth = window.parent.localStorage.getItem('hass_auth');
+                                if (hass_auth) {
+                                    debugContent.innerHTML += `✅ Found hass_auth in localStorage<br>`;
+                                    const authData = JSON.parse(hass_auth);
+                                    if (authData && authData.access_token) {
+                                        debugContent.innerHTML += `✅ Found token in localStorage (length: ${authData.access_token.length})<br>`;
+                                        
+                                        // Try using token
+                                        const resp3 = await fetch('/api/states', {
+                                            headers: {
+                                                Authorization: `Bearer ${authData.access_token}`
+                                            }
+                                        });
+                                        
+                                        if (resp3.ok) {
+                                            const data3 = await resp3.json();
+                                            debugContent.innerHTML += `✅ Success! Got ${data3.length} states using localStorage token.<br>`;
+                                        } else {
+                                            debugContent.innerHTML += `❌ localStorage token failed: ${resp3.status} ${resp3.statusText}<br>`;
+                                        }
+                                    } else {
+                                        debugContent.innerHTML += `❌ No valid token in localStorage auth data<br>`;
+                                    }
+                                } else {
+                                    debugContent.innerHTML += `❌ No hass_auth in localStorage<br>`;
+                                }
+                            } catch (e) {
+                                debugContent.innerHTML += `❌ Error accessing localStorage: ${e.message}<br>`;
+                            }
+                        } else {
+                            debugContent.innerHTML += `❌ No parent window found<br>`;
+                        }
+                    } catch (e) {
+                        debugContent.innerHTML += `❌ Error in parent window check: ${e.message}<br>`;
+                    }
+                    
+                    // Test 4: Using fetchWithAuth helper
+                    debugContent.innerHTML += '<br><b>Test 3: Using fetchWithAuth helper</b><br>';
+                    try {
+                        const resp4 = await window.choreUtils.fetchWithAuth('/api/states');
+                        if (resp4.ok) {
+                            const data4 = await resp4.json();
+                            debugContent.innerHTML += `✅ Success! Got ${data4.length} states.<br>`;
+                        } else {
+                            debugContent.innerHTML += `❌ Failed: ${resp4.status} ${resp4.statusText}<br>`;
+                        }
+                    } catch (e) {
+                        debugContent.innerHTML += `❌ Error: ${e.message}<br>`;
+                    }
+                } catch (e) {
+                    debugContent.innerHTML += `❌ Fatal error in auth test: ${e.message}<br>`;
+                }
+            }
+            
+            testAuth();
+        }
+
         // Add version info to global object
         window.CHORES_APP_VERSION = "1.0.0";
         
