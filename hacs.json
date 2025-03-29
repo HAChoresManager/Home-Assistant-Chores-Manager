@@ -1,9 +1,8 @@
 {
-    "name": "Chores Manager",
-    "render_readme": true,
-    "domain": "chores_manager",
-    "documentation": "https://github.com/yourusername/ha-chores-manager",
-    "issue_tracker": "https://github.com/yourusername/ha-chores-manager/issues",
-    "country": "NL",
-    "homeassistant": "2023.12.0"
-  }
+  "name": "Chores Manager",
+  "render_readme": true,
+  "domain": "chores_manager",
+  "documentation": "https://github.com/HAChoresManager/Home-Assistant-Chores-Manager/",
+  "issue_tracker": "https://github.com/HAChoresManager/Home-Assistant-Chores-Manager/issues",
+  "homeassistant": "2023.12.0"
+}
