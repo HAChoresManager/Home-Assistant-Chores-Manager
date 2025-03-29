@@ -6,27 +6,39 @@ import re
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.config_entries import ConfigEntry
 
 from . import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def async_setup_platform(
     hass: HomeAssistant,
     config: ConfigType,
     async_add_entities: AddEntitiesCallback,
-    discovery_info=None
+    discovery_info: DiscoveryInfoType = None
 ) -> None:
-    """Set up the sensor platform."""
-    _LOGGER.info("Setting up chores sensor platform")
-
+    """Set up the sensor platform for YAML config (legacy)."""
     if discovery_info is None:
         return
 
     database_path = discovery_info["database_path"]
     _LOGGER.info("Using database at: %s", database_path)
     async_add_entities([ChoresOverviewSensor(database_path)], True)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback
+) -> None:
+    """Set up sensor from a config entry."""
+    database_path = hass.data[DOMAIN][entry.entry_id]["database_path"]
+    _LOGGER.info("Using database at: %s (from config entry)", database_path)
+    async_add_entities([ChoresOverviewSensor(database_path)], True)
+
 
 class ChoresOverviewSensor(SensorEntity):
     """Representation of a Chores Overview sensor."""

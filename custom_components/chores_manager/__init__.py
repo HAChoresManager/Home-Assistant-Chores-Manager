@@ -6,11 +6,11 @@ from datetime import datetime, timedelta, time
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers.event import async_track_time_change
 
 from .const import DOMAIN, DEFAULT_DB, DEFAULT_NOTIFICATION_TIME
-from .schemas import CONFIG_SCHEMA
 from .database import init_database, verify_database
 from .utils import setup_web_assets, async_check_due_notifications
 from .services import async_register_services
@@ -18,15 +18,35 @@ from .services import async_register_services
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the chores manager component."""
-    _LOGGER.info("Setting up chores_manager integration")
+    """Set up the chores manager component from YAML (legacy)."""
+    _LOGGER.info("Setting up chores_manager from YAML (legacy)")
 
     if DOMAIN not in config:
-        _LOGGER.info("No configuration found for %s", DOMAIN)
         return True
 
+    # If we have YAML config but there's already a config entry,
+    # don't set up from YAML (prefer the config entry)
+    if hass.config_entries.async_entries(DOMAIN):
+        _LOGGER.info("Configuration entry exists, ignoring YAML config")
+        return True
+
+    # Create a config entry from the YAML config
+    hass.async_create_task(
+        hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "import"},
+            data=config[DOMAIN],
+        )
+    )
+
+    return True
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up chores_manager from a config entry."""
+    _LOGGER.info("Setting up chores_manager from config entry")
+
     # Handle database path - allow relative or absolute
-    database_name = config[DOMAIN].get("database", DEFAULT_DB)
+    database_name = entry.data.get("database", DEFAULT_DB)
     if not os.path.isabs(database_name):
         database_path = Path(hass.config.path(database_name))
     else:
@@ -40,8 +60,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Set up web assets
     await setup_web_assets(hass)
 
-    # Store the database path
-    hass.data[DOMAIN] = {
+    # Store the database path and other config
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = {
         "database_path": str(database_path),
     }
 
@@ -49,7 +70,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     await async_register_services(hass, str(database_path))
 
     # Schedule daily notification check
-    notification_time_config = config[DOMAIN].get("notification_time", DEFAULT_NOTIFICATION_TIME)
+    notification_time_config = entry.data.get("notification_time", DEFAULT_NOTIFICATION_TIME)
 
     # Handle the notification time correctly based on its type
     if isinstance(notification_time_config, time):
@@ -81,11 +102,21 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         second=0
     )
 
-    # Set up sensor platform using discovery
-    hass.async_create_task(
-        hass.helpers.discovery.async_load_platform(
-            Platform.SENSOR, DOMAIN, {"database_path": str(database_path)}, config
-        )
-    )
+    # Set up platform
+    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
+
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     return True
+
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Update options for the entry."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, [Platform.SENSOR])
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id)
+
+    return unload_ok
