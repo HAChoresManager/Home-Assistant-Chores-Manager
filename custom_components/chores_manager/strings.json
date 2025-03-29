@@ -1,0 +1,33 @@
+{
+    "config": {
+        "title": "Chores Manager",
+        "step": {
+            "user": {
+                "title": "Configure Chores Manager",
+                "description": "Set up your household chores management system",
+                "data": {
+                    "database": "Database path (relative to Home Assistant config or absolute)",
+                    "notification_time": "Daily notification time (HH:MM)"
+                }
+            }
+        },
+        "error": {
+            "invalid_path": "The database path is invalid or not writable"
+        },
+        "abort": {
+            "already_configured": "Chores Manager is already configured"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Chores Manager Options",
+                "description": "Update your Chores Manager settings",
+                "data": {
+                    "database": "Database path",
+                    "notification_time": "Daily notification time (HH:MM)"
+                }
+            }
+        }
+    }
+}
