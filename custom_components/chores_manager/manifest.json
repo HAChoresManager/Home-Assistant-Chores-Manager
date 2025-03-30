@@ -3,7 +3,7 @@
   "name": "Chores Manager",
   "version": "1.0.0",
   "documentation": "https://github.com/HomeTaskManager/ha-chores-manager",
-  "dependencies": ["sensor"],
+  "dependencies": ["sensor", "panel_custom"],
   "codeowners": [],
   "requirements": [],
   "iot_class": "local_push",
