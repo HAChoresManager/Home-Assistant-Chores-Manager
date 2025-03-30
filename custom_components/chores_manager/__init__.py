@@ -64,6 +64,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from homeassistant.helpers.entity_component import EntityComponent
     from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 
+    # Initialize database and register services
+    await hass.async_add_executor_job(init_database, str(database_path))
+
+    # Set up services
+    await async_register_services(hass, str(database_path))
+
+    # Register sensor platform
+    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
+
     # Initialize database
     await hass.async_add_executor_job(
         verify_database, str(database_path)
