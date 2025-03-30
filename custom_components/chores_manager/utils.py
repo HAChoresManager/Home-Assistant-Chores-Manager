@@ -17,66 +17,8 @@ _LOGGER = logging.getLogger(__name__)
 
 async def setup_web_assets(hass: HomeAssistant) -> None:
     """Set up web assets by copying files to www directory."""
-    try:
-        # Get source and destination paths
-        www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
-        www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
-
-        def copy_files():
-            """Copy files with correct permissions."""
-            _LOGGER.info("Setting up web assets from %s to %s", www_source, www_target)
-
-            # Make parent directory if needed
-            os.makedirs(os.path.dirname(www_target), exist_ok=True)
-
-            # Remove existing directory if it exists
-            if os.path.exists(www_target):
-                _LOGGER.info("Removing existing directory at %s", www_target)
-                shutil.rmtree(www_target)
-
-            # Copy files
-            shutil.copytree(www_source, www_target)
-            _LOGGER.info("Files copied successfully")
-
-            # Set correct permissions
-            for root, dirs, files in os.walk(www_target):
-                for d in dirs:
-                    os.chmod(os.path.join(root, d), 0o755)
-                for f in files:
-                    os.chmod(os.path.join(root, f), 0o644)
-
-            # Update index file paths
-            index_path = os.path.join(www_target, "index.html")
-            if os.path.exists(index_path):
-                with open(index_path, "r") as f:
-                    content = f.read()
-
-                # Make sure all paths use /local/chores-dashboard/
-                content = content.replace("./js/", "js/")
-                content = content.replace("./css/", "css/")
-                content = content.replace('"/js/', '"/local/chores-dashboard/js/')
-                content = content.replace('"/css/', '"/local/chores-dashboard/css/')
-
-                with open(index_path, "w") as f:
-                    f.write(content)
-
-            # Verify files were created
-            _LOGGER.info("Verifying copied files:")
-            for root, dirs, files in os.walk(www_target):
-                for f in files:
-                    full_path = os.path.join(root, f)
-                    rel_path = os.path.relpath(full_path, www_target)
-                    size = os.path.getsize(full_path)
-                    _LOGGER.info(" - %s (%d bytes)", rel_path, size)
-
-        # Use executor to avoid blocking
-        await hass.async_add_executor_job(copy_files)
-
-        # Generate auth config
-        await generate_auth_config(hass, www_target)
-
-    except Exception as e:
-        _LOGGER.error("Failed to copy web assets: %s", e, exc_info=True)
+    # Implementation is in __init__.py
+    pass
 
 
 async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
