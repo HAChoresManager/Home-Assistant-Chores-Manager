@@ -1,5 +1,3 @@
-// File: /config/www/chores-dashboard/js/components.js
-
 // Wait for choreUtils to be available
 (function() {
     // Check if choreUtils is ready
