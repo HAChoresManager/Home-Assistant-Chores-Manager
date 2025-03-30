@@ -74,7 +74,59 @@ window.choreUtils.getAuthToken = function() {
     return null;
 };
 
-// Improved fetch with auth - multiple fallback methods
+// Improved token retrieval and fetch with auth
+window.choreUtils.getAuthToken = function() {
+    // First check session storage (where auth-helper.js stored it)
+    const sessionToken = sessionStorage.getItem('chores_auth_token');
+    if (sessionToken) {
+        return sessionToken;
+    }
+    
+    // Try getting from URL search params
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('auth');
+        if (token) {
+            // Store for future use
+            sessionStorage.setItem('chores_auth_token', token);
+            return token;
+        }
+    } catch (e) {
+        console.warn('Error extracting token from URL:', e);
+    }
+    
+    // Check localStorage for tokens
+    try {
+        const authData = localStorage.getItem('hassTokens');
+        if (authData) {
+            const tokens = JSON.parse(authData);
+            if (tokens && tokens.access_token) {
+                sessionStorage.setItem('chores_auth_token', tokens.access_token);
+                return tokens.access_token;
+            }
+        }
+    } catch (e) {
+        console.warn('Error retrieving from localStorage:', e);
+    }
+    
+    // Try extracting it directly from parent window
+    try {
+        if (window.parent && window.parent.hassConnection) {
+            const auth = window.parent.hassConnection.auth;
+            if (auth && auth.data && auth.data.access_token) {
+                // Store for future use
+                sessionStorage.setItem('chores_auth_token', auth.data.access_token);
+                return auth.data.access_token;
+            }
+        }
+    } catch (e) {
+        console.warn('Could not access parent window:', e);
+    }
+    
+    return null;
+};
+
+// Improved fetch with auth
 window.choreUtils.fetchWithAuth = async function(url, options = {}) {
     // Get auth token
     const token = window.choreUtils.getAuthToken();
@@ -96,12 +148,34 @@ window.choreUtils.fetchWithAuth = async function(url, options = {}) {
             ...fetchOptions.headers,
             'Authorization': `Bearer ${token}`
         };
+    } else {
+        console.warn('No auth token available for API request');
     }
     
     try {
         // Use credentials to maintain session cookies too
         fetchOptions.credentials = 'same-origin';
         const response = await fetch(url, fetchOptions);
+        
+        if (response.status === 401) {
+            // Try to refresh token on auth failure
+            console.warn('Authentication failed, attempting to refresh token...');
+            sessionStorage.removeItem('chores_auth_token');
+            const newToken = window.choreUtils.getAuthToken();
+            
+            if (newToken && newToken !== token) {
+                // Retry with new token
+                const retryOptions = {
+                    ...fetchOptions,
+                    headers: {
+                        ...fetchOptions.headers,
+                        'Authorization': `Bearer ${newToken}`
+                    }
+                };
+                return fetch(url, retryOptions);
+            }
+        }
+        
         return response;
     } catch (e) {
         console.error('Fetch error:', e);
