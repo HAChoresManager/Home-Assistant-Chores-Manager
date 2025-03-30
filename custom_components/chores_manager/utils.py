@@ -2,6 +2,7 @@
 import os
 import shutil
 import logging
+import stat
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
@@ -16,87 +17,98 @@ _LOGGER = logging.getLogger(__name__)
 
 async def setup_web_assets(hass: HomeAssistant) -> None:
     """Set up web assets by copying files to www directory."""
-    # Get source and destination paths
-    www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
-    www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
-
-    # Create directories if they don't exist
-    os.makedirs(os.path.dirname(www_target), exist_ok=True)
-
-    # Remove old directory if it exists
-    if os.path.exists(www_target):
-        try:
-            shutil.rmtree(www_target)
-            _LOGGER.info("Removed old directory at %s", www_target)
-        except Exception as e:
-            _LOGGER.error("Failed to remove old directory: %s", e)
-
-    # Copy files directly (no symlink)
     try:
-        shutil.copytree(www_source, www_target)
-        _LOGGER.info("Copied web assets from %s to %s", www_source, www_target)
+        # Get source and destination paths
+        www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
+        www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
 
-        # Update the index.html file
-        update_index_html(www_target)
+        def copy_files():
+            """Copy files with correct permissions."""
+            _LOGGER.info("Setting up web assets from %s to %s", www_source, www_target)
 
-        # Generate and save an authentication token for the dashboard
+            # Make parent directory if needed
+            os.makedirs(os.path.dirname(www_target), exist_ok=True)
+
+            # Remove existing directory if it exists
+            if os.path.exists(www_target):
+                _LOGGER.info("Removing existing directory at %s", www_target)
+                shutil.rmtree(www_target)
+
+            # Copy files
+            shutil.copytree(www_source, www_target)
+            _LOGGER.info("Files copied successfully")
+
+            # Set correct permissions
+            for root, dirs, files in os.walk(www_target):
+                for d in dirs:
+                    os.chmod(os.path.join(root, d), 0o755)
+                for f in files:
+                    os.chmod(os.path.join(root, f), 0o644)
+
+            # Update index file paths
+            index_path = os.path.join(www_target, "index.html")
+            if os.path.exists(index_path):
+                with open(index_path, "r") as f:
+                    content = f.read()
+
+                # Make sure all paths use /local/chores-dashboard/
+                content = content.replace("./js/", "js/")
+                content = content.replace("./css/", "css/")
+                content = content.replace('"/js/', '"/local/chores-dashboard/js/')
+                content = content.replace('"/css/', '"/local/chores-dashboard/css/')
+
+                with open(index_path, "w") as f:
+                    f.write(content)
+
+            # Verify files were created
+            _LOGGER.info("Verifying copied files:")
+            for root, dirs, files in os.walk(www_target):
+                for f in files:
+                    full_path = os.path.join(root, f)
+                    rel_path = os.path.relpath(full_path, www_target)
+                    size = os.path.getsize(full_path)
+                    _LOGGER.info(" - %s (%d bytes)", rel_path, size)
+
+        # Use executor to avoid blocking
+        await hass.async_add_executor_job(copy_files)
+
+        # Generate auth config
         await generate_auth_config(hass, www_target)
 
-        # Check for missing tailwind.css
-        tailwind_path = os.path.join(www_target, "tailwind.min.css")
-        if not os.path.exists(tailwind_path):
-            # If missing, try to create a minimal version
-            create_minimal_tailwind(tailwind_path)
     except Exception as e:
-        _LOGGER.error("Failed to copy web assets: %s", e)
-
-
-def update_index_html(target_dir: str) -> None:
-    """Update the index.html file to ensure it works correctly."""
-    try:
-        index_path = os.path.join(target_dir, "index.html")
-
-        with open(index_path, "r") as f:
-            content = f.read()
-
-        # Update all paths to use the new location
-        content = content.replace("/local/chores_manager/chores-dashboard/", "/local/chores-dashboard/")
-
-        # Save the updated file
-        with open(index_path, "w") as f:
-            f.write(content)
-
-        _LOGGER.info("Updated index.html file with correct paths")
-    except Exception as e:
-        _LOGGER.error("Failed to update index.html: %s", e)
+        _LOGGER.error("Failed to copy web assets: %s", e, exc_info=True)
 
 
 async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
-    """Generate configuration file without trying to generate a token."""
+    """Generate simple config file for frontend authentication."""
     try:
-        # Create a basic config without token - modern auth will use Home Assistant session
         config_path = os.path.join(target_dir, "config.json")
-        _LOGGER.info(f"Creating config file at {config_path}")
+        _LOGGER.info("Creating config file at %s", config_path)
 
         config = {
             "base_url": "",
             "api_url": "/api",
             "refresh_interval": 30000,
             "debug": True,
-            "use_modern_auth": True
+            "use_modern_auth": True,
+            "version": "1.0.0",
+            "build_timestamp": datetime.now().strftime('%Y%m%d%H%M%S')
         }
 
-        # Write config file using async executor
         def write_config():
             with open(config_path, "w") as f:
                 import json
                 json.dump(config, f, indent=2)
 
+            # Ensure file is readable
+            os.chmod(config_path, 0o644)
+            _LOGGER.info("Config file created with content: %s", config)
+
         await hass.async_add_executor_job(write_config)
         _LOGGER.info("Config file created successfully")
 
     except Exception as e:
-        _LOGGER.error(f"Error creating config: {str(e)}", exc_info=True)
+        _LOGGER.error("Error creating config: %s", str(e), exc_info=True)
 
 
 def create_minimal_tailwind(tailwind_path: str) -> None:
@@ -193,6 +205,9 @@ button,input,select,textarea{font-family:inherit;font-size:100%;line-height:1.15
 """
         with open(tailwind_path, "w") as f:
             f.write(min_css)
+
+        # Set read permissions
+        os.chmod(tailwind_path, 0o644)
         _LOGGER.info("Created minimal tailwind css file at %s", tailwind_path)
     except Exception as e:
         _LOGGER.error("Failed to create minimal tailwind css: %s", e)
