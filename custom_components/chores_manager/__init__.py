@@ -10,12 +10,14 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.entity_component import EntityComponent
 
 from .const import DOMAIN, DEFAULT_DB, DEFAULT_NOTIFICATION_TIME
 from .database import init_database, verify_database
 from .utils import async_check_due_notifications
 from .services import async_register_services
 from .panel import async_setup_panel
+from .sensor import ChoresOverviewSensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -101,11 +103,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         second=0
     )
 
-    # Set up platform
-    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
-
     # Register panel
     await async_setup_panel(hass)
+
+    # Set up platform - IMPORTANT: This ensures the sensor is registered
+    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
+
+    # Wait for entity to be registered and create a default empty state if not exists
+    async def ensure_sensor_exists():
+        """Ensure the chores overview sensor exists in the state machine."""
+        await hass.async_add_executor_job(
+            verify_database, str(database_path)
+        )
+        # Force an update of the sensor entity
+        for entity_id in hass.states.async_entity_ids("sensor"):
+            if entity_id == "sensor.chores_overview":
+                return
+
+        # If not found, we need to manually add the sensor
+        sensor = ChoresOverviewSensor(str(database_path))
+        sensor.hass = hass
+        sensor.entity_id = "sensor.chores_overview"
+        await sensor.async_update()
+
+    # Make sure sensor exists
+    await ensure_sensor_exists()
 
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 

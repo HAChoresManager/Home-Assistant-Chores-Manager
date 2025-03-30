@@ -155,31 +155,47 @@
                         if (skipNextRefresh) {
                             return;
                         }
-
+                    
                         try {
                             setLastUpdated(new Date());
-
+                    
                             const response = await window.choreUtils.fetchWithAuth('/api/states/sensor.chores_overview');
-
+                    
+                            if (response.status === 404) {
+                                // Handle missing sensor - clear loading state and show setup instructions
+                                setError('The Chores Manager sensor (sensor.chores_overview) is not available yet. ' +
+                                         'This might happen if you just installed the integration. ' +
+                                         'Please restart Home Assistant and reload this page.');
+                                setRetryCount(prev => prev + 1);
+                                
+                                if (retryCount < 10) {
+                                    // Keep trying for a bit longer in case the sensor is just slow to initialize
+                                    console.log(`Sensor not found (404). Retry attempt ${retryCount + 1} in 10 seconds...`);
+                                    setTimeout(fetchChores, 10000);
+                                }
+                                return;
+                            }
+                    
                             if (!response.ok) {
                                 throw new Error(`API error: ${response.status}`);
                             }
-
+                    
                             const data = await response.json();
                             processChoreTasks(data);
-
+                    
                         } catch (err) {
                             console.error('Error loading chores:', err);
                             setRetryCount(prev => prev + 1);
-
-                            if (retryCount < 3) {
+                    
+                            if (retryCount < 5) {
                                 console.log(`Retry attempt ${retryCount + 1} in 5 seconds...`);
-                                if (retryCount >= 2) {
+                                if (retryCount >= 3) {
                                     setError('Trying to reconnect... ' + err.message);
                                 }
                                 setTimeout(fetchChores, 5000);
                             } else {
-                                setError('Failed to load chores: ' + err.message);
+                                setError('Failed to load chores: ' + err.message + 
+                                        '. If this is a new installation, please restart Home Assistant.');
                             }
                         }
                     };
