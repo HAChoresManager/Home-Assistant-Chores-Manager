@@ -23,6 +23,92 @@ window.choreUtils.availableIcons = {
     'general': '📋'
 };
 
+// Authentication helper functions
+window.choreUtils.getAuthToken = function() {
+    // First check session storage (where auth-helper.js stored it)
+    const sessionToken = sessionStorage.getItem('chores_auth_token');
+    if (sessionToken) {
+        return sessionToken;
+    }
+    
+    // Try extracting it directly if not found
+    try {
+        if (window.parent && window.parent.hassConnection) {
+            const auth = window.parent.hassConnection.auth;
+            if (auth && auth.data && auth.data.access_token) {
+                // Store for future use
+                sessionStorage.setItem('chores_auth_token', auth.data.access_token);
+                return auth.data.access_token;
+            }
+        }
+    } catch (e) {
+        console.warn('Could not access parent window:', e);
+    }
+    
+    // Last resort - try getting from config.json
+    try {
+        const configResponse = fetch('/local/chores-dashboard/config.json?nocache=' + Date.now(), {
+            method: 'GET',
+            cache: 'no-store'
+        }).then(response => {
+            if (response.ok) {
+                return response.json();
+            }
+            throw new Error('Failed to load config');
+        }).then(config => {
+            if (config && config.api_token) {
+                sessionStorage.setItem('chores_auth_token', config.api_token);
+                return config.api_token;
+            }
+            return null;
+        }).catch(error => {
+            console.warn('Error loading config.json:', error);
+            return null;
+        });
+        
+        if (configResponse) return configResponse;
+    } catch (e) {
+        console.warn('Error loading from config.json:', e);
+    }
+    
+    return null;
+};
+
+// Improved fetch with auth - multiple fallback methods
+window.choreUtils.fetchWithAuth = async function(url, options = {}) {
+    // Get auth token
+    const token = window.choreUtils.getAuthToken();
+    
+    // Create fetch options with authentication
+    const fetchOptions = { 
+        ...options,
+        headers: {
+            ...options.headers,
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        }
+    };
+    
+    // Add auth token if available
+    if (token) {
+        fetchOptions.headers = {
+            ...fetchOptions.headers,
+            'Authorization': `Bearer ${token}`
+        };
+    }
+    
+    try {
+        // Use credentials to maintain session cookies too
+        fetchOptions.credentials = 'same-origin';
+        const response = await fetch(url, fetchOptions);
+        return response;
+    } catch (e) {
+        console.error('Fetch error:', e);
+        throw e;
+    }
+};
+
 window.choreUtils.isToday = function(dateString) {
     if (!dateString) return false;
     const today = new Date();
@@ -227,105 +313,6 @@ window.choreUtils.formatTime = function(minutes) {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return `${hours}u ${mins > 0 ? mins + 'm' : ''}`;
-};
-
-// Get Home Assistant auth token directly
-window.choreUtils.getHassAuthToken = function() {
-    // Try to get token from parent window (most reliable in iframe)
-    if (window.parent && window.parent.hassConnection) {
-        try {
-            const auth = window.parent.hassConnection.auth;
-            if (auth && auth.data && auth.data.access_token) {
-                return auth.data.access_token;
-            }
-        } catch (e) {
-            console.warn('Cannot access parent window auth:', e);
-        }
-    }
-    
-    // Try to get from localStorage as fallback
-    try {
-        const hassAuth = localStorage.getItem('hass_auth');
-        if (hassAuth) {
-            const authData = JSON.parse(hassAuth);
-            if (authData && authData.access_token) {
-                return authData.access_token;
-            }
-        }
-    } catch (e) {
-        console.warn('Cannot access localStorage auth:', e);
-    }
-    
-    return null;
-};
-
-// Improved fetch with authentication
-window.choreUtils.fetchWithAuth = async function(url, options = {}) {
-    // Get auth token
-    const token = window.choreUtils.getHassAuthToken();
-    
-    // Create fetch options with proper headers
-    const fetchOptions = { 
-        ...options,
-        credentials: 'same-origin' // Include cookies/session
-    };
-    
-    // Add auth token if available
-    if (token) {
-        fetchOptions.headers = {
-            ...fetchOptions.headers,
-            'Authorization': `Bearer ${token}`,
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-        };
-    }
-    
-    // Multiple auth methods with fallbacks
-    try {
-        // Try direct fetch with auth token first
-        if (token) {
-            const tokenResponse = await fetch(url, fetchOptions);
-            if (tokenResponse.ok) {
-                return tokenResponse;
-            }
-        }
-        
-        // Try session/cookie based auth as fallback
-        const sessionResponse = await fetch(url, {
-            ...options,
-            credentials: 'same-origin'
-        });
-        
-        // If session auth works, return it
-        if (sessionResponse.ok) {
-            return sessionResponse;
-        }
-        
-        // Try using window.hass directly as last resort
-        if (window.hass && window.hass.connection && window.hass.connection.options && 
-            window.hass.connection.options.auth && window.hass.connection.options.auth.data && 
-            window.hass.connection.options.auth.data.access_token) {
-            
-            const directToken = window.hass.connection.options.auth.data.access_token;
-            const directOptions = {
-                ...options,
-                headers: {
-                    ...options.headers,
-                    'Authorization': `Bearer ${directToken}`
-                }
-            };
-            
-            return fetch(url, directOptions);
-        }
-        
-        // If none of the methods worked, return the last attempt result
-        return sessionResponse;
-        
-    } catch (e) {
-        console.error('Fetch error:', e);
-        throw e;
-    }
 };
 
 // Force refresh to avoid caching problems

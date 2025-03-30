@@ -22,7 +22,7 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
             "embed_iframe": True,
             "trust_external": False,
         },
-        js_url="/local/chores-dashboard/chores-dashboard.js?v=20250330",
+        js_url="/local/chores-dashboard/chores-dashboard.js?v=20250331",
     )
 
     _LOGGER.info("Chores Manager panel registered")

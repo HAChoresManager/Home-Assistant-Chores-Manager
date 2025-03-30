@@ -6,7 +6,7 @@
     <title>Huishoudelijke Taken</title>
     <!-- Force cache refresh with timestamp -->
     <link rel="stylesheet" href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" type="text/css">
-    <link rel="stylesheet" href="css/styles.css?v=20250330" type="text/css">
+    <link rel="stylesheet" href="css/styles.css?v=20250331" type="text/css">
     <style>
         /* Make processing state more visible */
         .task-processing {
@@ -68,14 +68,15 @@
     <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
 
+    <!-- Load auth-helper first to extract token before other scripts -->
+    <script src="js/auth-helper.js?v=20250331" type="text/javascript"></script>
     <!-- Load our scripts with explicit type, timestamp and defer -->
     <script src="js/utils.js?v=20250331" type="text/javascript"></script>
-    <script src="js/components.js?v=20250330" type="text/javascript"></script>
-    <script src="js/theme-integration.js?v=20250330" type="text/javascript"></script>
+    <script src="js/components.js?v=20250331" type="text/javascript"></script>
 
     <script type="text/javascript">
         // Add version info to global object
-        window.CHORES_APP_VERSION = "1.3.0-20250330";
+        window.CHORES_APP_VERSION = "1.3.0-20250331";
         
         // Use a more robust initialization approach
         document.addEventListener('DOMContentLoaded', function() {
@@ -133,7 +134,9 @@
                     React.useEffect(() => {
                         const loadConfig = async () => {
                             try {
-                                const response = await fetch('/local/chores-dashboard/config.json?nocache=' + new Date().getTime());
+                                const response = await fetch('/local/chores-dashboard/config.json?nocache=' + new Date().getTime(), {
+                                    cache: 'no-store'
+                                });
                                 if (!response.ok) {
                                     throw new Error(`Failed to load config: ${response.status} ${response.statusText}`);
                                 }
@@ -149,38 +152,26 @@
 
                     // Fetch chores data with robust optimistic update handling
                     const fetchChores = async () => {
-                        if (!config) return;
-                    
                         if (skipNextRefresh) {
-                            //debugLog('Skipping refresh due to skipNextRefresh flag');
                             return;
                         }
-                    
+
                         try {
                             setLastUpdated(new Date());
 
-                            const response = await window.choreUtils.fetchWithAuth('/api/states/sensor.chores_overview', {
-                                headers: {
-                                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                                    'Pragma': 'no-cache',
-                                    'Expires': '0'
-                                },
-                            });
-                        
+                            const response = await window.choreUtils.fetchWithAuth('/api/states/sensor.chores_overview');
+
                             if (!response.ok) {
                                 throw new Error(`API error: ${response.status}`);
                             }
-                        
+
                             const data = await response.json();
-                            //debugLog('Chores data refreshed successfully', data);
-                        
-                            // Process the tasks with respect to optimistic updates
                             processChoreTasks(data);
-                        
+
                         } catch (err) {
                             console.error('Error loading chores:', err);
                             setRetryCount(prev => prev + 1);
-                        
+
                             if (retryCount < 3) {
                                 console.log(`Retry attempt ${retryCount + 1} in 5 seconds...`);
                                 if (retryCount >= 2) {
@@ -272,7 +263,6 @@
 
                     // Add chore function
                     const addChore = async (choreData) => {
-                        if (!config) return;
                         setLoading(true);
                         try {
                             console.log('Adding/updating chore');
@@ -317,9 +307,7 @@
                                 normalizedData.frequency_times = 1;
                             }
 
-                            const serviceUrl = '/api/services/chores_manager/add_chore';
-
-                            const response = await window.choreUtils.fetchWithAuth(serviceUrl, {
+                            const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/add_chore', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -347,7 +335,6 @@
 
                     // Update task description
                     const updateDescription = async (choreId, description) => {
-                        if (!config) return;
                         setLoading(true);
                         try {
                             const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/update_description', {
@@ -377,7 +364,6 @@
 
                     // Delete chore function
                     const deleteChore = async (choreId) => {
-                        if (!config) return;
                         setLoading(true);
                         try {
                             const response = await window.choreUtils.fetchWithAuth('/api/services/sqlite_db/query', {
@@ -408,7 +394,7 @@
 
                     // Mark done function with user selection
                     const markDone = async (chore_id, selectedPerson = null) => {
-                        if (!config || !chore_id) return;
+                        if (!chore_id) return;
                     
                         try {
                             // Find the chore
@@ -516,7 +502,7 @@
 
                     // Reset completion function with improved alternating handling
                     const resetCompletion = async (chore_id) => {
-                        if (!config || !chore_id) return;
+                        if (!chore_id) return;
                         setLoading(true);
                     
                         try {
@@ -545,11 +531,7 @@
                             if (chore.use_alternating && chore.alternate_with) {
                                 try {
                                     // Get up-to-date data from API
-                                    const response = await window.choreUtils.fetchWithAuth(`/api/states/sensor.chores_overview?nocache=${Date.now()}`, {
-                                        headers: {
-                                            'Cache-Control': 'no-cache'
-                                        }
-                                    });
+                                    const response = await window.choreUtils.fetchWithAuth(`/api/states/sensor.chores_overview?nocache=${Date.now()}`);
 
                                     if (response.ok) {
                                         const data = await response.json();
@@ -655,7 +637,6 @@
 
                     // Add user function
                     const addUser = async (userData) => {
-                        if (!config) return;
                         setLoading(true);
                         try {
                             const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/add_user', {
@@ -682,7 +663,6 @@
 
                     // Delete user function
                     const deleteUser = async (userId) => {
-                        if (!config) return;
                         setLoading(true);
                         try {
                             const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/delete_user', {
@@ -721,7 +701,7 @@
                     const confirmUndoLastCompleted = async () => {
                         setShowUndoConfirm(false);
                     
-                        if (!config || !lastCompletedTask) return;
+                        if (!lastCompletedTask) return;
                         setLoading(true);
                     
                         try {                    
