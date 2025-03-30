@@ -162,14 +162,32 @@
                             const response = await window.choreUtils.fetchWithAuth('/api/states/sensor.chores_overview');
                     
                             if (response.status === 404) {
-                                // Handle missing sensor - clear loading state and show setup instructions
+                                // Create default empty data to make the UI usable even without the sensor
+                                const emptyData = {
+                                    state: "0",
+                                    attributes: {
+                                        friendly_name: "Chores Overview",
+                                        overdue_tasks: [],
+                                        stats: {},
+                                        assignees: [
+                                            {id: "laura", name: "Laura", color: "#F5B7B1", active: true},
+                                            {id: "martijn", name: "Martijn", color: "#F9E79F", active: true},
+                                            {id: "wie_kan", name: "Wie kan", color: "#A9DFBF", active: true}
+                                        ]
+                                    }
+                                };
+                    
+                                // Handle missing sensor - show UI with empty data
                                 setError('The Chores Manager sensor (sensor.chores_overview) is not available yet. ' +
-                                         'This might happen if you just installed the integration. ' +
-                                         'Please restart Home Assistant and reload this page.');
+                                         'You can still add tasks, but you\'ll need to restart Home Assistant for them to appear.');
+                                         
+                                // Process empty data to make UI usable
+                                processChoreTasks(emptyData);
+                                
                                 setRetryCount(prev => prev + 1);
                                 
                                 if (retryCount < 10) {
-                                    // Keep trying for a bit longer in case the sensor is just slow to initialize
+                                    // Keep trying in background
                                     console.log(`Sensor not found (404). Retry attempt ${retryCount + 1} in 10 seconds...`);
                                     setTimeout(fetchChores, 10000);
                                 }
