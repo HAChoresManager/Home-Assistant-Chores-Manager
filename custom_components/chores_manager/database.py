@@ -3,9 +3,10 @@ import sqlite3
 import logging
 import os
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 _LOGGER = logging.getLogger(__name__)
+
 
 def init_database(database_path: str) -> None:
     """Initialize the database with required tables."""
@@ -87,6 +88,7 @@ def init_database(database_path: str) -> None:
     conn.close()
     _LOGGER.info("Database initialized successfully")
 
+
 def verify_database(database_path: str) -> bool:
     """Verify database is accessible."""
     try:
@@ -101,6 +103,7 @@ def verify_database(database_path: str) -> bool:
     except Exception as e:
         _LOGGER.error("Database verification failed: %s", e)
         return False
+
 
 def add_chore_to_db(database_path: str, chore_data: Dict[str, Any]) -> Dict[str, Any]:
     """Add or update a chore in the database."""
@@ -161,6 +164,7 @@ def add_chore_to_db(database_path: str, chore_data: Dict[str, Any]) -> Dict[str,
     finally:
         conn.close()
 
+
 def mark_chore_done(database_path: str, chore_id: str, person: str) -> Dict[str, Any]:
     """Mark a chore as done in the database."""
     now = datetime.now().isoformat()
@@ -206,6 +210,7 @@ def mark_chore_done(database_path: str, chore_id: str, person: str) -> Dict[str,
     finally:
         conn.close()
 
+
 def update_chore_description(database_path: str, chore_id: str, description: str) -> Dict[str, Any]:
     """Update a chore's description in the database."""
     conn = sqlite3.connect(database_path)
@@ -223,6 +228,7 @@ def update_chore_description(database_path: str, chore_id: str, description: str
         raise
     finally:
         conn.close()
+
 
 def reset_chore(database_path: str, chore_id: str) -> Dict[str, Any]:
     """Reset a chore's completion status completely."""
@@ -250,6 +256,7 @@ def reset_chore(database_path: str, chore_id: str) -> Dict[str, Any]:
         raise
     finally:
         conn.close()
+
 
 def add_user(database_path: str, user_data: Dict[str, Any]) -> Dict[str, Any]:
     """Add or update a user in the database."""
@@ -288,6 +295,7 @@ def add_user(database_path: str, user_data: Dict[str, Any]) -> Dict[str, Any]:
         raise
     finally:
         conn.close()
+
 
 def delete_user(database_path: str, user_id: str) -> Dict[str, Any]:
     """Delete a user from the database."""
@@ -329,6 +337,7 @@ def delete_user(database_path: str, user_id: str) -> Dict[str, Any]:
     finally:
         conn.close()
 
+
 def get_ha_user_id_for_assignee(database_path: str, assignee_name: str) -> Optional[str]:
     """Get the Home Assistant user ID for an assignee."""
     conn = sqlite3.connect(database_path)
@@ -346,6 +355,7 @@ def get_ha_user_id_for_assignee(database_path: str, assignee_name: str) -> Optio
         return None
     finally:
         conn.close()
+
 
 def force_chore_due(database_path: str, chore_id: str) -> Dict[str, Any]:
     """Force a task to be due today."""

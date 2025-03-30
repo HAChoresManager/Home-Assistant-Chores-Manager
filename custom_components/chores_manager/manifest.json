@@ -2,7 +2,7 @@
   "domain": "chores_manager",
   "name": "Chores Manager",
   "version": "1.0.0",
-  "documentation": "https://github.com/HomeTaskManager/ha-chores-manager",
+  "documentation": "https://github.com/HAChoresManager/ha-chores-manager",
   "dependencies": ["sensor", "panel_custom"],
   "codeowners": [],
   "requirements": [],
