@@ -1,17 +1,23 @@
 """Database operations for Chores Manager."""
 import sqlite3
 import logging
-from typing import Dict, Any, List, Tuple, Optional
+import os
 from datetime import datetime
 
 _LOGGER = logging.getLogger(__name__)
 
+
 def init_database(database_path: str) -> None:
-    """Initialize SQLite database with required tables and schema."""
-    _LOGGER.debug("Initializing database at %s", database_path)
+    """Initialize the database with required tables."""
+    _LOGGER.info("Initializing database at %s", database_path)
+
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(os.path.abspath(database_path)), exist_ok=True)
+
     conn = sqlite3.connect(database_path)
     cursor = conn.cursor()
 
+    # Create tables if they don't exist
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chores (
             id TEXT PRIMARY KEY,
@@ -56,42 +62,39 @@ def init_database(database_path: str) -> None:
         )
     ''')
 
-    # Create notification log table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS notification_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chore_id TEXT NOT NULL,
-            sent_at TIMESTAMP NOT NULL,
-            FOREIGN KEY (chore_id) REFERENCES chores(id)
-        )
-    ''')
-
-    # Check and add required columns
-    _ensure_columns_exist(cursor)
-
-    # Initialize default assignees if needed
+    # Set up default assignees if none exist
     cursor.execute("SELECT COUNT(*) FROM assignees")
     if cursor.fetchone()[0] == 0:
-        _initialize_default_assignees(cursor)
-
-    # Remove "Samen" for existing installations
-    cursor.execute("DELETE FROM assignees WHERE id = 'samen'")
+        default_assignees = [
+            ('laura', 'Laura', '#F5B7B1', 1, None),
+            ('martijn', 'Martijn', '#F9E79F', 1, None),
+            ('wie_kan', 'Wie kan', '#A9DFBF', 1, None)
+        ]
+        cursor.executemany(
+            "INSERT INTO assignees (id, name, color, active, ha_user_id) VALUES (?, ?, ?, ?, ?)",
+            default_assignees
+        )
 
     conn.commit()
     conn.close()
+    _LOGGER.info("Database initialized successfully")
 
-    # Verify we can read data
-    verify_database(database_path)
 
-def verify_database(database_path: str) -> int:
-    """Verify database is accessible and return chore count."""
-    conn = sqlite3.connect(database_path)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM chores")
-    count = cursor.fetchone()[0]
-    conn.close()
-    _LOGGER.debug("Found %d existing chores in database", count)
-    return count
+def verify_database(database_path: str) -> bool:
+    """Verify database is accessible."""
+    try:
+        init_database(database_path)
+        conn = sqlite3.connect(database_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM chores")
+        count = cursor.fetchone()[0]
+        conn.close()
+        _LOGGER.info("Database verified: %d tasks found", count)
+        return True
+    except Exception as e:
+        _LOGGER.error("Database verification failed: %s", e)
+        return False
+
 
 def _ensure_columns_exist(cursor: sqlite3.Cursor) -> None:
     """Ensure all required columns exist in tables."""
@@ -114,6 +117,7 @@ def _ensure_columns_exist(cursor: sqlite3.Cursor) -> None:
         except sqlite3.OperationalError:
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {data_type}")
 
+
 def _initialize_default_assignees(cursor: sqlite3.Cursor) -> None:
     """Initialize default assignees in database."""
     default_assignees = [
@@ -125,6 +129,7 @@ def _initialize_default_assignees(cursor: sqlite3.Cursor) -> None:
         "INSERT INTO assignees (id, name, color, active, ha_user_id) VALUES (?, ?, ?, ?, ?)",
         default_assignees
     )
+
 
 def add_chore_to_db(database_path: str, chore_data: Dict[str, Any]) -> Dict[str, Any]:
     """Add or update a chore in the database."""
@@ -233,6 +238,7 @@ def add_chore_to_db(database_path: str, chore_data: Dict[str, Any]) -> Dict[str,
     conn.close()
     return {"success": True, "chore_id": chore_id}
 
+
 def mark_chore_done(database_path: str, chore_id: str, person: str) -> Dict[str, Any]:
     """Mark a chore as done in the database."""
     now = datetime.now().isoformat()
@@ -274,6 +280,7 @@ def mark_chore_done(database_path: str, chore_id: str, person: str) -> Dict[str,
 
     return {"success": True, "chore_id": chore_id, "done_at": now, "done_by": person}
 
+
 def update_chore_description(database_path: str, chore_id: str, description: str) -> Dict[str, Any]:
     """Update a chore's description in the database."""
     conn = sqlite3.connect(database_path)
@@ -285,6 +292,7 @@ def update_chore_description(database_path: str, chore_id: str, description: str
     conn.commit()
     conn.close()
     return {"success": True, "chore_id": chore_id}
+
 
 def reset_chore(database_path: str, chore_id: str) -> Dict[str, Any]:
     """Reset a chore's completion status completely."""
@@ -315,6 +323,7 @@ def reset_chore(database_path: str, chore_id: str) -> Dict[str, Any]:
     conn.close()
 
     return {"success": True, "chore_id": chore_id, "last_done_by": result[0] if result else None}
+
 
 def add_user(database_path: str, user_data: Dict[str, Any]) -> Dict[str, Any]:
     """Add or update a user in the database."""
@@ -348,6 +357,7 @@ def add_user(database_path: str, user_data: Dict[str, Any]) -> Dict[str, Any]:
     conn.commit()
     conn.close()
     return {"success": True, "user_id": user_id}
+
 
 def delete_user(database_path: str, user_id: str) -> Dict[str, Any]:
     """Delete a user from the database."""
@@ -389,6 +399,7 @@ def delete_user(database_path: str, user_id: str) -> Dict[str, Any]:
     conn.commit()
     conn.close()
     return {"success": True, "user_id": user_id}
+
 
 def force_chore_due(database_path: str, chore_id: str) -> Dict[str, Any]:
     """Force a task to be due today."""
@@ -448,6 +459,7 @@ def force_chore_due(database_path: str, chore_id: str) -> Dict[str, Any]:
         "assigned_to": assigned_to,
         "has_auto_notify": bool(notify_when_due)
     }
+
 
 def get_ha_user_id_for_assignee(database_path: str, assignee_name: str) -> Optional[str]:
     """Get the Home Assistant user ID for an assignee."""
