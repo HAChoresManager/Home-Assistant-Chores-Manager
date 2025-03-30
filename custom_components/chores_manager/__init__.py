@@ -15,13 +15,12 @@ from .const import DOMAIN, DEFAULT_DB, DEFAULT_NOTIFICATION_TIME
 from .database import init_database, verify_database
 from .utils import async_check_due_notifications
 from .services import async_register_services
+from .panel import async_setup_panel
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the chores manager component from YAML (legacy)."""
-    _LOGGER.info("Setting up chores_manager from YAML (legacy)")
-
     if DOMAIN not in config:
         return True
 
@@ -73,20 +72,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Schedule daily notification check
     notification_time_config = entry.data.get("notification_time", DEFAULT_NOTIFICATION_TIME)
 
-    # Handle the notification time correctly based on its type
+    # Handle the notification time correctly
     if isinstance(notification_time_config, time):
-        # Already a time object, use it directly
         notification_time = notification_time_config
     elif isinstance(notification_time_config, str):
-        # Parse string into time object
         try:
             notification_time = datetime.strptime(notification_time_config, "%H:%M").time()
         except ValueError:
-            _LOGGER.error(f"Invalid notification_time format: {notification_time_config}. Using default {DEFAULT_NOTIFICATION_TIME}.")
+            _LOGGER.error(f"Invalid notification_time format: {notification_time_config}. Using default.")
             notification_time = datetime.strptime(DEFAULT_NOTIFICATION_TIME, "%H:%M").time()
     else:
-        # Fallback to default
-        _LOGGER.error(f"Unexpected notification_time type: {type(notification_time_config)}. Using default.")
+        _LOGGER.error(f"Unexpected notification_time type. Using default.")
         notification_time = datetime.strptime(DEFAULT_NOTIFICATION_TIME, "%H:%M").time()
 
     async def _async_daily_notification_check(now=None):
@@ -105,6 +101,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Set up platform
     await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
+    
+    # Register panel
+    await async_setup_panel(hass)
 
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
@@ -121,6 +120,20 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
             """Copy files with correct permissions."""
             _LOGGER.info("Setting up web assets from %s to %s", www_source, www_target)
 
+            # Check if source directory exists
+            if not os.path.exists(www_source):
+                _LOGGER.error("Source directory %s does not exist", www_source)
+                # Try to use fallback source from backup
+                backup_source = os.path.join(hass.config.path("www"), "chores-dashboard-backup")
+                if os.path.exists(backup_source):
+                    _LOGGER.info("Using backup source: %s", backup_source)
+                    www_source_actual = backup_source
+                else:
+                    _LOGGER.error("No source directory found for web assets")
+                    return
+            else:
+                www_source_actual = www_source
+
             # Make parent directory if needed
             os.makedirs(os.path.dirname(www_target), exist_ok=True)
 
@@ -130,7 +143,7 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
                 shutil.rmtree(www_target)
 
             # Copy files
-            shutil.copytree(www_source, www_target)
+            shutil.copytree(www_source_actual, www_target)
             _LOGGER.info("Files copied successfully")
 
             # Set correct permissions
@@ -150,6 +163,18 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
                         "debug": False
                     }, f, indent=2)
                 os.chmod(config_path, 0o644)
+
+            # Add cache-busting .htaccess file
+            htaccess_path = os.path.join(www_target, ".htaccess")
+            with open(htaccess_path, "w") as f:
+                f.write("""
+<FilesMatch "\.(js|css|html)$">
+Header set Cache-Control "no-cache, no-store, must-revalidate"
+Header set Pragma "no-cache"
+Header set Expires "0"
+</FilesMatch>
+""")
+            os.chmod(htaccess_path, 0o644)
 
         # Use executor to avoid blocking
         await hass.async_add_executor_job(copy_files)
