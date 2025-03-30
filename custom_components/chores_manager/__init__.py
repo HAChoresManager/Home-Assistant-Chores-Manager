@@ -15,6 +15,7 @@ from .const import DOMAIN, DEFAULT_DB, DEFAULT_NOTIFICATION_TIME
 from .database import init_database, verify_database
 from .utils import async_check_due_notifications
 from .services import async_register_services
+from .panel import async_setup_panel
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,6 +40,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             data=config[DOMAIN],
         )
     )
+
+    await async_setup_panel(hass)
 
     return True
 
@@ -110,6 +113,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     return True
 
+
 async def setup_web_assets(hass: HomeAssistant) -> None:
     """Set up web assets by copying files to www directory."""
     try:
@@ -157,9 +161,11 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
     except Exception as e:
         _LOGGER.error("Failed to copy web assets: %s", e, exc_info=True)
 
+
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update options for the entry."""
     await hass.config_entries.async_reload(entry.entry_id)
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
