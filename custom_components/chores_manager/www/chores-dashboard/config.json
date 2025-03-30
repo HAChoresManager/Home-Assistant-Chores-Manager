@@ -1,6 +1,4 @@
 {
-    "base_url": "",
-    "api_url": "/api",
-    "refresh_interval": 30000,
-    "debug": false
-  }
+  "refresh_interval": 30000,
+  "debug": false
+}

@@ -229,87 +229,41 @@ window.choreUtils.formatTime = function(minutes) {
     return `${hours}u ${mins > 0 ? mins + 'm' : ''}`;
 };
 
-// Authentication helper function with enhanced debugging and HA frontend integration
+// Authentication helper function
 window.choreUtils.fetchWithAuth = async function(url, options = {}) {
-    const DEBUG = true;
-    if (DEBUG) console.log(`[Auth] Fetching: ${url}`);
-    
-    // Clone options to avoid modifying the original
-    const fetchOptions = { 
-        ...options,
-        credentials: 'include' // Include cookies/session
-    };
-    
     try {
-        // METHOD 1: Try direct fetch with credentials
-        if (DEBUG) console.log('[Auth] Trying with session credentials');
-        const directResp = await fetch(url, fetchOptions);
-        if (directResp.ok) {
-            if (DEBUG) console.log('[Auth] Direct fetch successful');
-            return directResp;
+        // Clone options to avoid modifying the original
+        const fetchOptions = { 
+            ...options,
+            credentials: 'same-origin' // Include cookies/session
+        };
+        
+        // Try direct fetch with credentials first (works when in HA iframe)
+        const response = await fetch(url, fetchOptions);
+        
+        // If successful, return the response
+        if (response.ok) {
+            return response;
         }
         
-        // METHOD 2: Try parent window hassConnection token (normal case in iframe)
-        if (window.parent) {
-            try {
-                if (window.parent.hassConnection) {
-                    const auth = window.parent.hassConnection.auth;
-                    if (auth && auth.data && auth.data.access_token) {
-                        if (DEBUG) console.log('[Auth] Found token in hassConnection');
-                        
-                        const headers = new Headers(fetchOptions.headers || {});
-                        headers.set('Authorization', `Bearer ${auth.data.access_token}`);
-                        
-                        const tokenResp = await fetch(url, {
-                            ...fetchOptions,
-                            headers
-                        });
-                        
-                        if (tokenResp.ok) {
-                            if (DEBUG) console.log('[Auth] Token auth successful');
-                            return tokenResp;
-                        }
-                        
-                        if (DEBUG) console.log(`[Auth] Token auth failed: ${tokenResp.status}`);
-                    }
-                }
+        // If first method fails, try to get auth from Home Assistant frontend
+        if (window.parent && window.parent.hassConnection) {
+            const auth = window.parent.hassConnection.auth;
+            if (auth && auth.data && auth.data.access_token) {
+                const headers = new Headers(fetchOptions.headers || {});
+                headers.set('Authorization', `Bearer ${auth.data.access_token}`);
                 
-                // METHOD 3: Try direct hass object
-                if (window.parent.hass) {
-                    if (DEBUG) console.log('[Auth] Trying with parent.hass object');
-                    
-                    // Access the auth token (may be in different places depending on HA version)
-                    const token = window.parent.hass.auth?.access_token || 
-                                window.parent.hass._auth?.data?.access_token;
-                    
-                    if (token) {
-                        const headers = new Headers(fetchOptions.headers || {});
-                        headers.set('Authorization', `Bearer ${token}`);
-                        
-                        const hassResp = await fetch(url, {
-                            ...fetchOptions,
-                            headers
-                        });
-                        
-                        if (hassResp.ok) {
-                            if (DEBUG) console.log('[Auth] Hass object auth successful');
-                            return hassResp;
-                        }
-                        
-                        if (DEBUG) console.log(`[Auth] Hass object auth failed: ${hassResp.status}`);
-                    }
-                }
-            } catch (e) {
-                console.error('[Auth] Error in parent window auth:', e);
+                return fetch(url, {
+                    ...fetchOptions,
+                    headers
+                });
             }
         }
         
-        if (DEBUG) console.log('[Auth] All auth methods failed, returning original response');
-        return directResp;
+        // Return original response if all methods fail
+        return response;
     } catch (e) {
-        console.error("[Auth] Fatal fetch error:", e);
+        console.error('Fetch error:', e);
         throw e;
     }
 };
-
-console.log('ChoreUtils initialized');
