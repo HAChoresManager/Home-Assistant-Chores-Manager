@@ -1,48 +1,21 @@
 """Initialize the Chores Manager integration."""
 import logging
 import os
-import shutil
 from pathlib import Path
-from datetime import datetime, timedelta, time
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.typing import ConfigType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.helpers.event import async_track_time_change
-from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.entity_platform import async_get_platforms
+from homeassistant.helpers.entity_registry import async_get
 
-from .const import DOMAIN, DEFAULT_DB, DEFAULT_NOTIFICATION_TIME
+from .const import DOMAIN, DEFAULT_DB
 from .database import init_database, verify_database
-from .utils import async_check_due_notifications
 from .services import async_register_services
 from .panel import async_setup_panel
 from .sensor import ChoresOverviewSensor
 
 _LOGGER = logging.getLogger(__name__)
-
-
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the chores manager component from YAML (legacy)."""
-    if DOMAIN not in config:
-        return True
-
-    # If we have YAML config but there's already a config entry,
-    # don't set up from YAML (prefer the config entry)
-    if hass.config_entries.async_entries(DOMAIN):
-        _LOGGER.info("Configuration entry exists, ignoring YAML config")
-        return True
-
-    # Create a config entry from the YAML config
-    hass.async_create_task(
-        hass.config_entries.flow.async_init(
-            DOMAIN,
-            context={"source": "import"},
-            data=config[DOMAIN],
-        )
-    )
-
-    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -56,63 +29,47 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         database_path = Path(database_name)
 
-    _LOGGER.info("Setting up chores_manager with database at: %s", database_path)
-
-    # IMPORTANT - directly create and register the sensor
-    from homeassistant.helpers.entity_platform import async_get_platforms
-    from homeassistant.helpers.entity_registry import async_get
-    from homeassistant.helpers.entity_component import EntityComponent
-    from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
-
-    # Initialize database and register services
-    await hass.async_add_executor_job(init_database, str(database_path))
-
-    # Set up services
-    await async_register_services(hass, str(database_path))
-
-    # Register sensor platform
-    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
+    _LOGGER.info("Using database at: %s", database_path)
 
     # Initialize database
-    await hass.async_add_executor_job(
-        verify_database, str(database_path)
-    )
+    await hass.async_add_executor_job(init_database, str(database_path))
 
-    # Create sensor directly
+    # Store the database path in hass.data
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = {
+        "database_path": str(database_path),
+    }
+
+    # Register services
+    await async_register_services(hass, str(database_path))
+
+    # CRITICAL: Create and register the sensor manually
     sensor = ChoresOverviewSensor(str(database_path))
     sensor.entity_id = "sensor.chores_overview"
     sensor.hass = hass
 
-    # Get sensor component and add entity
+    # Add to Home Assistant
+    from homeassistant.helpers.entity_component import EntityComponent
+    from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
+
+    # Get the sensor component
     component = hass.data.get("entity_components", {}).get(SENSOR_DOMAIN)
     if not component:
-        component = await hass.helpers.entity_component.async_get_entity_component(
-            SENSOR_DOMAIN
-        )
+        component = await hass.helpers.entity_component.async_get_entity_component(SENSOR_DOMAIN)
 
+    # Add entity and force update
     await component.async_add_entities([sensor])
-
-    # Force immediate update
     await sensor.async_update()
 
-    # Add to entity registry
+    # Register in entity registry
     entity_registry = async_get(hass)
-    if entity_registry and "sensor.chores_overview" not in entity_registry.entities:
-        entity_registry.async_get_or_create(
-            SENSOR_DOMAIN, DOMAIN, "chores_overview",
-            suggested_object_id="chores_overview",
-            disabled_by=None
-        )
+    entity_registry.async_get_or_create(
+        SENSOR_DOMAIN, DOMAIN, "chores_overview",
+        suggested_object_id="chores_overview"
+    )
 
-    # Verify sensor exists in states
-    if "sensor.chores_overview" not in hass.states.async_entity_ids("sensor"):
-        _LOGGER.warning("Sensor not registered properly, manually creating state")
-        hass.states.async_set("sensor.chores_overview", "0", {
-            "friendly_name": "Chores Overview",
-            "overdue_tasks": [],
-            "stats": {},
-            "assignees": []
-        })
+    # Register panel
+    await async_setup_panel(hass)
 
     return True
 
