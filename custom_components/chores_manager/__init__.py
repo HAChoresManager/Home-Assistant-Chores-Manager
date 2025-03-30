@@ -58,78 +58,52 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info("Setting up chores_manager with database at: %s", database_path)
 
+    # IMPORTANT - directly create and register the sensor
+    from homeassistant.helpers.entity_platform import async_get_platforms
+    from homeassistant.helpers.entity_registry import async_get
+    from homeassistant.helpers.entity_component import EntityComponent
+    from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
+
     # Initialize database
-    await hass.async_add_executor_job(init_database, str(database_path))
-
-    # Set up web assets
-    await setup_web_assets(hass)
-
-    # Store the database path and other config
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "database_path": str(database_path),
-    }
-
-    # Register services
-    await async_register_services(hass, str(database_path))
-
-    # Schedule daily notification check
-    notification_time_config = entry.data.get("notification_time", DEFAULT_NOTIFICATION_TIME)
-
-    # Handle the notification time correctly
-    if isinstance(notification_time_config, time):
-        notification_time = notification_time_config
-    elif isinstance(notification_time_config, str):
-        try:
-            notification_time = datetime.strptime(notification_time_config, "%H:%M").time()
-        except ValueError:
-            _LOGGER.error(f"Invalid notification_time format: {notification_time_config}. Using default.")
-            notification_time = datetime.strptime(DEFAULT_NOTIFICATION_TIME, "%H:%M").time()
-    else:
-        _LOGGER.error(f"Unexpected notification_time type. Using default.")
-        notification_time = datetime.strptime(DEFAULT_NOTIFICATION_TIME, "%H:%M").time()
-
-    async def _async_daily_notification_check(now=None):
-        """Run the daily notification check."""
-        await async_check_due_notifications(hass, str(database_path))
-
-    # Run once at startup and then at configured time every day
-    await _async_daily_notification_check()
-    async_track_time_change(
-        hass,
-        _async_daily_notification_check,
-        hour=notification_time.hour,
-        minute=notification_time.minute,
-        second=0
+    await hass.async_add_executor_job(
+        verify_database, str(database_path)
     )
 
-    # Register panel
-    await async_setup_panel(hass)
+    # Create sensor directly
+    sensor = ChoresOverviewSensor(str(database_path))
+    sensor.entity_id = "sensor.chores_overview"
+    sensor.hass = hass
 
-    # Set up platform - IMPORTANT: This ensures the sensor is registered
-    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
-
-    # Wait for entity to be registered and create a default empty state if not exists
-    async def ensure_sensor_exists():
-        """Ensure the chores overview sensor exists in the state machine."""
-        await hass.async_add_executor_job(
-            verify_database, str(database_path)
+    # Get sensor component and add entity
+    component = hass.data.get("entity_components", {}).get(SENSOR_DOMAIN)
+    if not component:
+        component = await hass.helpers.entity_component.async_get_entity_component(
+            SENSOR_DOMAIN
         )
-        # Force an update of the sensor entity
-        for entity_id in hass.states.async_entity_ids("sensor"):
-            if entity_id == "sensor.chores_overview":
-                return
 
-        # If not found, we need to manually add the sensor
-        sensor = ChoresOverviewSensor(str(database_path))
-        sensor.hass = hass
-        sensor.entity_id = "sensor.chores_overview"
-        await sensor.async_update()
+    await component.async_add_entities([sensor])
 
-    # Make sure sensor exists
-    await ensure_sensor_exists()
+    # Force immediate update
+    await sensor.async_update()
 
-    entry.async_on_unload(entry.add_update_listener(async_update_options))
+    # Add to entity registry
+    entity_registry = async_get(hass)
+    if entity_registry and "sensor.chores_overview" not in entity_registry.entities:
+        entity_registry.async_get_or_create(
+            SENSOR_DOMAIN, DOMAIN, "chores_overview",
+            suggested_object_id="chores_overview",
+            disabled_by=None
+        )
+
+    # Verify sensor exists in states
+    if "sensor.chores_overview" not in hass.states.async_entity_ids("sensor"):
+        _LOGGER.warning("Sensor not registered properly, manually creating state")
+        hass.states.async_set("sensor.chores_overview", "0", {
+            "friendly_name": "Chores Overview",
+            "overdue_tasks": [],
+            "stats": {},
+            "assignees": []
+        })
 
     return True
 
