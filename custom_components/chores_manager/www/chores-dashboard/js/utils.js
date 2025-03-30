@@ -267,3 +267,5 @@ window.choreUtils.fetchWithAuth = async function(url, options = {}) {
         throw e;
     }
 };
+
+console.log('ChoreUtils initialized');
