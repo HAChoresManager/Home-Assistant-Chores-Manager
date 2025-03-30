@@ -19,6 +19,7 @@ from .panel import async_setup_panel
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the chores manager component from YAML (legacy)."""
     if DOMAIN not in config:
@@ -40,6 +41,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     )
 
     return True
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up chores_manager from a config entry."""
@@ -101,13 +103,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Set up platform
     await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
-    
+
     # Register panel
     await async_setup_panel(hass)
 
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     return True
+
 
 async def setup_web_assets(hass: HomeAssistant) -> None:
     """Set up web assets by copying files to www directory."""
@@ -182,9 +185,11 @@ Header set Expires "0"
     except Exception as e:
         _LOGGER.error("Failed to copy web assets: %s", e, exc_info=True)
 
+
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update options for the entry."""
     await hass.config_entries.async_reload(entry.entry_id)
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""

@@ -10,7 +10,7 @@ class ChoresDashboard extends HTMLElement {
       
       // Store auth token in localStorage for the iframe to access
       if (hass && hass.auth && hass.auth.data && hass.auth.data.access_token) {
-        localStorage.setItem('chores_auth_token', hass.auth.data.access_token);
+        sessionStorage.setItem('chores_auth_token', hass.auth.data.access_token);
       }
       
       this.shadowRoot.innerHTML = `
@@ -27,7 +27,7 @@ class ChoresDashboard extends HTMLElement {
             display: block;
           }
         </style>
-        <iframe src="/local/chores-dashboard/index.html?v=20250330"></iframe>
+        <iframe src="/local/chores-dashboard/index.html?v=20250331"></iframe>
       `;
     }
   }
