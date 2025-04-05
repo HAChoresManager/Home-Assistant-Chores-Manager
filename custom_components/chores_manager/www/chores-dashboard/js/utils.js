@@ -23,7 +23,7 @@ window.choreUtils.availableIcons = {
     'general': '📋'
 };
 
-// Authentication helper functions
+// Improved token retrieval with priority on config.json
 window.choreUtils.getAuthToken = function() {
     // First check session storage (where auth-helper.js stored it)
     const sessionToken = sessionStorage.getItem('chores_auth_token');
@@ -31,96 +31,33 @@ window.choreUtils.getAuthToken = function() {
         return sessionToken;
     }
     
-    // Try extracting it directly if not found
+    // If no token in session storage, try to load from config.json synchronously
     try {
-        if (window.parent && window.parent.hassConnection) {
-            const auth = window.parent.hassConnection.auth;
-            if (auth && auth.data && auth.data.access_token) {
-                // Store for future use
-                sessionStorage.setItem('chores_auth_token', auth.data.access_token);
-                return auth.data.access_token;
-            }
-        }
-    } catch (e) {
-        console.warn('Could not access parent window:', e);
-    }
-    
-    // Last resort - try getting from config.json
-    try {
-        const configResponse = fetch('/local/chores-dashboard/config.json?nocache=' + Date.now(), {
-            method: 'GET',
-            cache: 'no-store'
-        }).then(response => {
-            if (response.ok) {
-                return response.json();
-            }
-            throw new Error('Failed to load config');
-        }).then(config => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', '/local/chores-dashboard/config.json?nocache=' + Date.now(), false);  // false = synchronous
+        xhr.send(null);
+        
+        if (xhr.status === 200) {
+            const config = JSON.parse(xhr.responseText);
             if (config && config.api_token) {
                 sessionStorage.setItem('chores_auth_token', config.api_token);
                 return config.api_token;
             }
-            return null;
-        }).catch(error => {
-            console.warn('Error loading config.json:', error);
-            return null;
-        });
-        
-        if (configResponse) return configResponse;
+        }
     } catch (e) {
-        console.warn('Error loading from config.json:', e);
+        console.warn('Error loading config synchronously:', e);
     }
     
-    return null;
-};
-
-// Improved token retrieval and fetch with auth
-window.choreUtils.getAuthToken = function() {
-    // First check session storage (where auth-helper.js stored it)
-    const sessionToken = sessionStorage.getItem('chores_auth_token');
-    if (sessionToken) {
-        return sessionToken;
-    }
-    
-    // Try getting from URL search params
+    // If that fails, try other methods as fallback
     try {
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('auth');
         if (token) {
-            // Store for future use
             sessionStorage.setItem('chores_auth_token', token);
             return token;
         }
     } catch (e) {
         console.warn('Error extracting token from URL:', e);
-    }
-    
-    // Check localStorage for tokens
-    try {
-        const authData = localStorage.getItem('hassTokens');
-        if (authData) {
-            const tokens = JSON.parse(authData);
-            if (tokens && tokens.access_token) {
-                sessionStorage.setItem('chores_auth_token', tokens.access_token);
-                return tokens.access_token;
-            }
-        }
-    } catch (e) {
-        console.warn('Error retrieving from localStorage:', e);
-    }
-    
-    // Try extracting it directly from parent window
-    try {
-        if (window.parent && window.parent.hassConnection) {
-            const auth = window.parent.hassConnection.auth;
-            if (auth && auth.data && auth.data.access_token) {
-                // Store for future use
-                sessionStorage.setItem('chores_auth_token', auth.data.access_token);
-                return auth.data.access_token;
-            }
-        }
-    } catch (e) {
-        console.warn('Could not access parent window:', e);
     }
     
     return null;
