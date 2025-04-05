@@ -17,8 +17,45 @@ _LOGGER = logging.getLogger(__name__)
 
 async def setup_web_assets(hass: HomeAssistant) -> None:
     """Set up web assets by copying files to www directory."""
-    # Implementation is in __init__.py
-    pass
+    try:
+        www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
+        www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
+
+        def copy_files():
+            _LOGGER.info("Setting up web assets from %s to %s", www_source, www_target)
+            if not os.path.exists(www_source):
+                _LOGGER.error("Source directory %s does not exist", www_source)
+                backup_source = os.path.join(hass.config.path("www"), "chores-dashboard-backup")
+                if os.path.exists(backup_source):
+                    _LOGGER.info("Using backup source: %s", backup_source)
+                    www_source_actual = backup_source
+                else:
+                    _LOGGER.error("No source directory found for web assets")
+                    return False
+            else:
+                www_source_actual = www_source
+
+            os.makedirs(os.path.dirname(www_target), exist_ok=True)
+            if os.path.exists(www_target):
+                _LOGGER.info("Removing existing directory at %s", www_target)
+                shutil.rmtree(www_target)
+            shutil.copytree(www_source_actual, www_target)
+            _LOGGER.info("Files copied successfully")
+            for root, dirs, files in os.walk(www_target):
+                for d in dirs:
+                    os.chmod(os.path.join(root, d), 0o755)
+                for f in files:
+                    os.chmod(os.path.join(root, f), 0o644)
+            _LOGGER.info("Files in target directory: %s", os.listdir(www_target))
+            return True
+
+        success = await hass.async_add_executor_job(copy_files)
+        if success:
+            _LOGGER.info("Web assets setup completed")
+        else:
+            _LOGGER.error("Failed to copy web assets")
+    except Exception as e:
+        _LOGGER.error("Failed to copy web assets: %s", e, exc_info=True)
 
 
 async def generate_auth_config(hass: HomeAssistant, target_dir: str) -> None:
