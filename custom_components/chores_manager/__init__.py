@@ -1,5 +1,3 @@
-# File: custom_components/chores_manager/__init__.py
-
 """Initialize the Chores Manager integration."""
 import logging
 import os
@@ -106,7 +104,7 @@ async def _update_dashboard_config(hass: HomeAssistant, token: str) -> None:
 
     try:
         config = {}
-        
+v=20250405
         # Read existing config file if it exists
         def read_config():
             if config_file.exists():
@@ -116,24 +114,24 @@ async def _update_dashboard_config(hass: HomeAssistant, token: str) -> None:
                 except json.JSONDecodeError:
                     _LOGGER.warning("Existing config.json was invalid, creating new one")
             return {}
-        
+v=20250405
         # Write updated config file
         def write_config(config_data):
             with open(config_file, "w") as f:
                 json.dump(config_data, f, indent=2)
             os.chmod(config_file, 0o644)
-            
+v=20250405
         # Read existing config in executor
         config = await hass.async_add_executor_job(read_config)
-        
+v=20250405
         # Update config values
         config["api_token"] = token
         config.setdefault("refresh_interval", 30000)
         config.setdefault("debug", False)
-        
+v=20250405
         # Write updated config in executor
         await hass.async_add_executor_job(lambda: write_config(config))
-        
+v=20250405
         _LOGGER.info("Updated dashboard config with authentication token")
     except Exception as err:
         _LOGGER.error("Failed to update dashboard config: %s", err)
