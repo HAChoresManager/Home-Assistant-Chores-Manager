@@ -14,30 +14,15 @@ from . import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
-    hass: HomeAssistant,
-    config: ConfigType,
-    async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType = None
-) -> None:
-    """Set up the sensor platform for YAML config (legacy)."""
-    if discovery_info is None:
-        return
-
-    database_path = discovery_info["database_path"]
-    _LOGGER.info("Using database at: %s", database_path)
-    async_add_entities([ChoresOverviewSensor(database_path)], True)
-
-
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback
-) -> None:
-    """Set up sensor from a config entry."""
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up the sensor platform."""
     database_path = hass.data[DOMAIN][entry.entry_id]["database_path"]
-    _LOGGER.info("Using database at: %s (from config entry)", database_path)
-    async_add_entities([ChoresOverviewSensor(database_path)], True)
+    _LOGGER.info("Setting up ChoresOverviewSensor with database: %s", database_path)
+    
+    # Create and add the sensor entity
+    sensor = ChoresOverviewSensor(database_path)
+    async_add_entities([sensor], True)
+    _LOGGER.info("Added ChoresOverviewSensor with unique_id: %s", sensor.unique_id)
 
 
 class ChoresOverviewSensor(SensorEntity):
@@ -46,9 +31,9 @@ class ChoresOverviewSensor(SensorEntity):
     def __init__(self, database_path: str):
         """Initialize the sensor."""
         self._database_path = database_path
-        self._attr_name = "Chores Overview"
+        self._attr_name = "Chores Overview" 
         self._attr_unique_id = "chores_overview"
-        self._state = None
+        self._state = 0
         self._attrs = {}
         _LOGGER.info("Initialized ChoresOverviewSensor with path: %s", database_path)
 
