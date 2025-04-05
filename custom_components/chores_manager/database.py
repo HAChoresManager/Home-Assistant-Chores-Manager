@@ -3,9 +3,9 @@ import sqlite3
 import logging
 import os
 from datetime import datetime
-from typing import Dict, Any, Optional
 
 _LOGGER = logging.getLogger(__name__)
+
 
 
 def init_database(database_path: str) -> None:
@@ -89,6 +89,7 @@ def init_database(database_path: str) -> None:
     _LOGGER.info("Database initialized successfully")
 
 
+
 def verify_database(database_path: str) -> bool:
     """Verify database is accessible."""
     try:
@@ -105,7 +106,7 @@ def verify_database(database_path: str) -> bool:
         return False
 
 
-def add_chore_to_db(database_path: str, chore_data: Dict[str, Any]) -> Dict[str, Any]:
+def add_chore_to_db(database_path: str, chore_data: dict) -> dict:
     """Add or update a chore in the database."""
     chore_id = chore_data.get("chore_id")
     if not chore_id:
@@ -165,7 +166,7 @@ def add_chore_to_db(database_path: str, chore_data: Dict[str, Any]) -> Dict[str,
         conn.close()
 
 
-def mark_chore_done(database_path: str, chore_id: str, person: str) -> Dict[str, Any]:
+def mark_chore_done(database_path: str, chore_id: str, person: str) -> dict:
     """Mark a chore as done in the database."""
     now = datetime.now().isoformat()
     conn = sqlite3.connect(database_path)
@@ -211,7 +212,7 @@ def mark_chore_done(database_path: str, chore_id: str, person: str) -> Dict[str,
         conn.close()
 
 
-def update_chore_description(database_path: str, chore_id: str, description: str) -> Dict[str, Any]:
+def update_chore_description(database_path: str, chore_id: str, description: str) -> dict:
     """Update a chore's description in the database."""
     conn = sqlite3.connect(database_path)
     cursor = conn.cursor()
@@ -230,7 +231,7 @@ def update_chore_description(database_path: str, chore_id: str, description: str
         conn.close()
 
 
-def reset_chore(database_path: str, chore_id: str) -> Dict[str, Any]:
+def reset_chore(database_path: str, chore_id: str) -> dict:
     """Reset a chore's completion status completely."""
     conn = sqlite3.connect(database_path)
     cursor = conn.cursor()
@@ -258,7 +259,7 @@ def reset_chore(database_path: str, chore_id: str) -> Dict[str, Any]:
         conn.close()
 
 
-def add_user(database_path: str, user_data: Dict[str, Any]) -> Dict[str, Any]:
+def add_user(database_path: str, user_data: dict) -> dict:
     """Add or update a user in the database."""
     user_id = user_data.get("id")
     name = user_data.get("name")
@@ -297,7 +298,7 @@ def add_user(database_path: str, user_data: Dict[str, Any]) -> Dict[str, Any]:
         conn.close()
 
 
-def delete_user(database_path: str, user_id: str) -> Dict[str, Any]:
+def delete_user(database_path: str, user_id: str) -> dict:
     """Delete a user from the database."""
     if not user_id:
         raise ValueError("User ID is required")
@@ -338,7 +339,7 @@ def delete_user(database_path: str, user_id: str) -> Dict[str, Any]:
         conn.close()
 
 
-def get_ha_user_id_for_assignee(database_path: str, assignee_name: str) -> Optional[str]:
+def get_ha_user_id_for_assignee(database_path: str, assignee_name: str) -> str | None:
     """Get the Home Assistant user ID for an assignee."""
     conn = sqlite3.connect(database_path)
     cursor = conn.cursor()
@@ -357,7 +358,7 @@ def get_ha_user_id_for_assignee(database_path: str, assignee_name: str) -> Optio
         conn.close()
 
 
-def force_chore_due(database_path: str, chore_id: str) -> Dict[str, Any]:
+def force_chore_due(database_path: str, chore_id: str) -> dict:
     """Force a task to be due today."""
     conn = sqlite3.connect(database_path)
     cursor = conn.cursor()
