@@ -1,3 +1,5 @@
+# File: custom_components/chores_manager/__init__.py
+
 """Initialize the Chores Manager integration."""
 import logging
 import os
@@ -8,12 +10,13 @@ from pathlib import Path
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.auth.const import GROUP_ID_ADMIN
+from homeassistant.const import Platform
 
-from .const import DOMAIN, DEFAULT_DB, PLATFORMS
-from .database import init_database
-from .services import async_register_services
-from .panel import async_setup_panel
-from .utils import setup_web_assets
+# Define constants here to avoid circular imports
+DOMAIN = "chores_manager"
+DEFAULT_DB = "chores_manager.db"
+DEFAULT_NOTIFICATION_TIME = "08:00"
+PLATFORMS = [Platform.SENSOR]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Using database at: %s", database_path)
 
     # Initialize database
+    from .database import init_database
     await hass.async_add_executor_job(init_database, str(database_path))
 
     # Store the database path in hass.data
@@ -40,32 +44,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "database_path": str(database_path),
     }
 
-    # Always regenerate token to resolve auth issues
+    # Generate authentication token for dashboard
     try:
-        _LOGGER.info("Generating new authentication token for chores dashboard")
+        _LOGGER.info("Generating authentication token for chores dashboard")
         token = await _generate_dashboard_token(hass)
         # Store in config entry
         new_data = dict(entry.data)
         new_data["auth_token"] = token
         hass.config_entries.async_update_entry(entry, data=new_data)
-    except Exception as err:
-        _LOGGER.error("Failed to generate authentication token: %s", err)
-        token = entry.data.get("auth_token")
 
-    # Update dashboard config with token
-    if token:
-        await _update_dashboard_config(hass, token)
+        # Update dashboard config with token
+        if token:
+            await _update_dashboard_config(hass, token)
+    except Exception as err:
+        _LOGGER.error("Failed to generate/update authentication token: %s", err)
 
     # Register services
+    from .services import async_register_services
     await async_register_services(hass, str(database_path))
 
     # Forward config entry to the sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Register panel and set up web assets
-    await async_setup_panel(hass)
-    from .utils import setup_web_assets
-    await setup_web_assets(hass)
+    try:
+        from .panel import async_setup_panel
+        await async_setup_panel(hass)
+        await _setup_web_assets(hass)
+    except Exception as err:
+        _LOGGER.error("Failed to set up panel or web assets: %s", err)
 
     return True
 
@@ -85,7 +92,6 @@ async def _generate_dashboard_token(hass: HomeAssistant) -> str:
             continue
         for group in user.groups:
             if group.id == GROUP_ID_ADMIN:
-                _LOGGER.debug("Creating token for user %s", user.name)
                 refresh_token = await hass.auth.async_create_refresh_token(
                     user, client_name="Chores Manager Dashboard"
                 )
@@ -103,38 +109,73 @@ async def _update_dashboard_config(hass: HomeAssistant, token: str) -> None:
     await hass.async_add_executor_job(lambda: os.makedirs(config_dir, exist_ok=True))
 
     try:
-        config = {}
-v=20250405
-        # Read existing config file if it exists
         def read_config():
             if config_file.exists():
                 try:
                     with open(config_file, "r") as f:
                         return json.load(f)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, IOError):
                     _LOGGER.warning("Existing config.json was invalid, creating new one")
             return {}
-v=20250405
-        # Write updated config file
+
         def write_config(config_data):
             with open(config_file, "w") as f:
                 json.dump(config_data, f, indent=2)
             os.chmod(config_file, 0o644)
-v=20250405
+
         # Read existing config in executor
         config = await hass.async_add_executor_job(read_config)
-v=20250405
+
         # Update config values
         config["api_token"] = token
         config.setdefault("refresh_interval", 30000)
         config.setdefault("debug", False)
-v=20250405
+
         # Write updated config in executor
         await hass.async_add_executor_job(lambda: write_config(config))
-v=20250405
+
         _LOGGER.info("Updated dashboard config with authentication token")
     except Exception as err:
         _LOGGER.error("Failed to update dashboard config: %s", err)
+
+
+async def _setup_web_assets(hass: HomeAssistant) -> None:
+    """Set up web assets by copying files to www directory."""
+    try:
+        www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
+        www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
+
+        def copy_files():
+            _LOGGER.info("Setting up web assets from %s to %s", www_source, www_target)
+            if not os.path.exists(www_source):
+                _LOGGER.error("Source directory %s does not exist", www_source)
+                backup_source = os.path.join(hass.config.path("www"), "chores-dashboard-backup")
+                if os.path.exists(backup_source):
+                    _LOGGER.info("Using backup source: %s", backup_source)
+                    www_source_actual = backup_source
+                else:
+                    _LOGGER.error("No source directory found for web assets")
+                    return
+            else:
+                www_source_actual = www_source
+
+            os.makedirs(os.path.dirname(www_target), exist_ok=True)
+            if os.path.exists(www_target):
+                _LOGGER.info("Removing existing directory at %s", www_target)
+                shutil.rmtree(www_target)
+            shutil.copytree(www_source_actual, www_target)
+            _LOGGER.info("Files copied successfully")
+            for root, dirs, files in os.walk(www_target):
+                for d in dirs:
+                    os.chmod(os.path.join(root, d), 0o755)
+                for f in files:
+                    os.chmod(os.path.join(root, f), 0o644)
+            _LOGGER.info("Files in target directory: %s", os.listdir(www_target))
+
+        await hass.async_add_executor_job(copy_files)
+        _LOGGER.info("Web assets setup completed")
+    except Exception as e:
+        _LOGGER.error("Failed to copy web assets: %s", e, exc_info=True)
 
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
