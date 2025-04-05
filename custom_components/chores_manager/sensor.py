@@ -6,36 +6,46 @@ import re
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.entity import generate_entity_id
 
 from . import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+ENTITY_ID_FORMAT = 'sensor.{}'
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up the sensor platform."""
     database_path = hass.data[DOMAIN][entry.entry_id]["database_path"]
     _LOGGER.info("Setting up ChoresOverviewSensor with database: %s", database_path)
-    
-    # Create and add the sensor entity
-    sensor = ChoresOverviewSensor(database_path)
+v=20250405
+    # Create and add the sensor entity with explicit entity_id
+    sensor = ChoresOverviewSensor(hass, database_path, entry.entry_id)
     async_add_entities([sensor], True)
-    _LOGGER.info("Added ChoresOverviewSensor with unique_id: %s", sensor.unique_id)
 
 
 class ChoresOverviewSensor(SensorEntity):
     """Representation of a Chores Overview sensor."""
 
-    def __init__(self, database_path: str):
+    def __init__(self, hass: HomeAssistant, database_path: str, entry_id: str):
         """Initialize the sensor."""
         self._database_path = database_path
-        self._attr_name = "Chores Overview" 
-        self._attr_unique_id = "chores_overview"
+        self._entry_id = entry_id
+        self._attr_name = "Chores Overview"
+        self._attr_unique_id = f"chores_manager_{entry_id}"
+v=20250405
+        # Explicitly set entity_id
+        self.entity_id = generate_entity_id(
+            ENTITY_ID_FORMAT,
+            f"chores_overview",
+            hass=hass
+        )
+v=20250405
         self._state = 0
         self._attrs = {}
-        _LOGGER.info("Initialized ChoresOverviewSensor with path: %s", database_path)
+        _LOGGER.info("Initialized ChoresOverviewSensor with path: %s and entity_id: %s",v=20250405
+                   database_path, self.entity_id)
 
     @property
     def native_value(self):
@@ -49,6 +59,8 @@ class ChoresOverviewSensor(SensorEntity):
 
     async def async_update(self) -> None:
         """Update the sensor."""
+        _LOGGER.debug("Starting update for ChoresOverviewSensor with entity_id: %s", self.entity_id)
+v=20250405
         def get_data():
             import sqlite3
 
@@ -288,7 +300,9 @@ class ChoresOverviewSensor(SensorEntity):
             _LOGGER.info("Updated sensor with %d tasks, %d completed today", len(tasks), completed_tasks_count)
         except Exception as e:
             _LOGGER.error("Error updating sensor: %s", str(e))
-            raise
+            # Don't raise here to prevent sensor from going unavailable
+            # Just keep the old state
+            pass
 
     def parse_date(self, date_string):
         """Parse date string in various formats."""
@@ -422,6 +436,6 @@ class ChoresOverviewSensor(SensorEntity):
 
         else:
             # Default to using frequency_days
-            next_due = last_done + timedelta(days=chore['frequency_days'])
+            next_due = last_done + timedelta(days=chore['frequency_days'] or 7)
 
         return next_due
