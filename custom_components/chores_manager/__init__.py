@@ -1,3 +1,4 @@
+"""Initialize the Chores Manager integration."""
 import logging
 import os
 import json
@@ -9,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.auth.const import GROUP_ID_ADMIN
 
-from .const import DOMAIN, DEFAULT_DB
+from .const import DOMAIN, DEFAULT_DB, PLATFORMS
 from .database import init_database
 from .services import async_register_services
 from .panel import async_setup_panel
@@ -60,11 +61,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register services
     await async_register_services(hass, str(database_path))
 
-    # Register panel and web assets
+    # Forward config entry to the sensor platform
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Register panel and set up web assets
     await async_setup_panel(hass)
     await setup_web_assets(hass)
 
     return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id)
+    return unload_ok
 
 
 async def _generate_dashboard_token(hass: HomeAssistant) -> str:
@@ -87,7 +99,9 @@ async def _update_dashboard_config(hass: HomeAssistant, token: str) -> None:
     """Update dashboard config with the authentication token."""
     config_dir = Path(hass.config.path("www/chores-dashboard"))
     config_file = config_dir / "config.json"
+
     os.makedirs(config_dir, exist_ok=True)
+
     try:
         config = {}
         if config_file.exists():
