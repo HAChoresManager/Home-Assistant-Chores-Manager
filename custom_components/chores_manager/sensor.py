@@ -19,7 +19,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     """Set up the sensor platform."""
     database_path = hass.data[DOMAIN][entry.entry_id]["database_path"]
     _LOGGER.info("Setting up ChoresOverviewSensor with database: %s", database_path)
-v=20250405
+
     # Create and add the sensor entity with explicit entity_id
     sensor = ChoresOverviewSensor(hass, database_path, entry.entry_id)
     async_add_entities([sensor], True)
@@ -34,17 +34,17 @@ class ChoresOverviewSensor(SensorEntity):
         self._entry_id = entry_id
         self._attr_name = "Chores Overview"
         self._attr_unique_id = f"chores_manager_{entry_id}"
-v=20250405
+
         # Explicitly set entity_id
         self.entity_id = generate_entity_id(
             ENTITY_ID_FORMAT,
             f"chores_overview",
             hass=hass
         )
-v=20250405
+
         self._state = 0
         self._attrs = {}
-        _LOGGER.info("Initialized ChoresOverviewSensor with path: %s and entity_id: %s",v=20250405
+        _LOGGER.info("Initialized ChoresOverviewSensor with path: %s and entity_id: %s",
                    database_path, self.entity_id)
 
     @property
@@ -60,7 +60,7 @@ v=20250405
     async def async_update(self) -> None:
         """Update the sensor."""
         _LOGGER.debug("Starting update for ChoresOverviewSensor with entity_id: %s", self.entity_id)
-v=20250405
+
         def get_data():
             import sqlite3
 
