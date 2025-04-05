@@ -182,6 +182,9 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
             # Make parent directory if needed
             os.makedirs(os.path.dirname(www_target), exist_ok=True)
 
+            # List files in source directory for debugging
+            _LOGGER.info("Files in source directory: %s", os.listdir(www_source_actual))
+
             # Remove existing directory if it exists
             if os.path.exists(www_target):
                 _LOGGER.info("Removing existing directory at %s", www_target)
@@ -197,6 +200,9 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
                     os.chmod(os.path.join(root, d), 0o755)
                 for f in files:
                     os.chmod(os.path.join(root, f), 0o644)
+
+            # List files in target directory for debugging
+            _LOGGER.info("Files in target directory: %s", os.listdir(www_target))
 
         await hass.async_add_executor_job(copy_files)
         _LOGGER.info("Web assets setup completed")
