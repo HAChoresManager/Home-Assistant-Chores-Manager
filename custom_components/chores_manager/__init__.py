@@ -64,6 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Register panel and set up web assets
     await async_setup_panel(hass)
+    from .utils import setup_web_assets
     await setup_web_assets(hass)
 
     return True
