@@ -1,166 +1,433 @@
-"""Initialize the Chores Manager integration."""
+"""Sensor for chores manager."""
 import logging
-import os
-import json
-import shutil
-from pathlib import Path
+from datetime import datetime, timedelta
+import re
 
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.auth.const import GROUP_ID_ADMIN
 
-from .const import DOMAIN, DEFAULT_DB, PLATFORMS
-from .database import init_database
-from .services import async_register_services
-from .panel import async_setup_panel
-from .utils import setup_web_assets
+from . import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up chores_manager from a config entry."""
-    _LOGGER.info("Setting up chores_manager from config entry")
-
-    # Handle database path – allow relative or absolute
-    database_name = entry.data.get("database", DEFAULT_DB)
-    if not os.path.isabs(database_name):
-        database_path = Path(hass.config.path(database_name))
-    else:
-        database_path = Path(database_name)
-
-    _LOGGER.info("Using database at: %s", database_path)
-
-    # Initialize database
-    await hass.async_add_executor_job(init_database, str(database_path))
-
-    # Store the database path in hass.data
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "database_path": str(database_path),
-    }
-
-    # Generate or retrieve a token for the dashboard
-    token = entry.data.get("auth_token")
-    if not token:
-        try:
-            _LOGGER.info("Generating new authentication token for chores dashboard")
-            token = await _generate_dashboard_token(hass)
-            # Store in config entry
-            new_data = dict(entry.data)
-            new_data["auth_token"] = token
-            hass.config_entries.async_update_entry(entry, data=new_data)
-        except Exception as err:
-            _LOGGER.error("Failed to generate authentication token: %s", err)
-
-    # Update dashboard config with token
-    if token:
-        await _update_dashboard_config(hass, token)
-
-    # Register services
-    await async_register_services(hass, str(database_path))
-
-    # Forward config entry to the sensor platform
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    # Register panel and set up web assets
-    await async_setup_panel(hass)
-    await setup_web_assets(hass)
-
-    return True
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up the sensor platform."""
+    database_path = hass.data[DOMAIN][entry.entry_id]["database_path"]
+    _LOGGER.info("Setting up ChoresOverviewSensor with database: %s", database_path)
+    
+    # Create and add the sensor entity with a clear unique_id
+    sensor = ChoresOverviewSensor(database_path, entry.entry_id)
+    async_add_entities([sensor], True)
+    _LOGGER.info("Added ChoresOverviewSensor with unique_id: %s", sensor.unique_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-    return unload_ok
+class ChoresOverviewSensor(SensorEntity):
+    """Representation of a Chores Overview sensor."""
 
+    def __init__(self, database_path: str, entry_id: str):
+        """Initialize the sensor."""
+        self._database_path = database_path
+        self._entry_id = entry_id
+        self._attr_name = "Chores Overview" 
+        # Make sure unique_id is actually unique per config entry
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}"
+        self._state = 0
+        self._attrs = {}
+        _LOGGER.info("Initialized ChoresOverviewSensor with path: %s and unique_id: %s", 
+                     database_path, self._attr_unique_id)
 
-async def _generate_dashboard_token(hass: HomeAssistant) -> str:
-    """Generate a long-lived access token for the dashboard."""
-    for user in await hass.auth.async_get_users():
-        if not user.is_active:
-            continue
-        for group in user.groups:
-            if group.id == GROUP_ID_ADMIN:
-                _LOGGER.debug("Creating token for user %s", user.name)
-                refresh_token = await hass.auth.async_create_refresh_token(
-                    user, client_name="Chores Manager Dashboard"
-                )
-                access_token = hass.auth.async_create_access_token(refresh_token)
-                return access_token
-    raise ValueError("No admin user found to create token")
+    @property
+    def native_value(self):
+        """Return the state of the sensor."""
+        return self._state
 
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        return self._attrs
 
-async def _update_dashboard_config(hass: HomeAssistant, token: str) -> None:
-    """Update dashboard config with the authentication token."""
-    config_dir = Path(hass.config.path("www/chores-dashboard"))
-    config_file = config_dir / "config.json"
+    async def async_update(self) -> None:
+        """Update the sensor."""
+        _LOGGER.debug("Starting update for ChoresOverviewSensor with unique_id: %s", self._attr_unique_id)
+        
+        def get_data():
+            import sqlite3
 
-    os.makedirs(config_dir, exist_ok=True)
+            _LOGGER.info("Updating sensor data from %s", self._database_path)
 
-    try:
-        config = {}
-        if config_file.exists():
+            conn = sqlite3.connect(self._database_path)
+            cursor = conn.cursor()
+
             try:
-                with open(config_file, "r") as f:
-                    config = json.load(f)
-            except json.JSONDecodeError:
-                _LOGGER.warning("Existing config.json was invalid, creating new one")
-        config["api_token"] = token
-        config.setdefault("refresh_interval", 30000)
-        config.setdefault("debug", False)
-        with open(config_file, "w") as f:
-            json.dump(config, f, indent=2)
-        os.chmod(config_file, 0o644)
-        _LOGGER.info("Updated dashboard config with authentication token")
-    except Exception as err:
-        _LOGGER.error("Failed to update dashboard config: %s", err)
+                # Get all assignees
+                cursor.execute('SELECT id, name, color, active FROM assignees WHERE active = 1')
+                assignees_data = cursor.fetchall()
+                assignees = []
+                assignee_names = []
+                for row in assignees_data:
+                    assignees.append({
+                        'id': row[0],
+                        'name': row[1],
+                        'color': row[2],
+                        'active': bool(row[3])
+                    })
+                    assignee_names.append(row[1])
 
+                # Initialize stats for all assignees
+                stats = {}
+                for name in assignee_names:
+                    stats[name] = {
+                        'total_tasks': 0,          # Will now store tasks due today
+                        'total_time': 0,           # Will now store time for tasks due today
+                        'tasks_completed': 0,      # Tasks completed today
+                        'time_completed': 0,       # Time for tasks completed today
+                        'streak': 0,
+                        'monthly_completed': 0,
+                        'monthly_percentage': 0,
+                        'due_tasks': []            # List of tasks due today for this assignee
+                    }
 
-async def setup_web_assets(hass: HomeAssistant) -> None:
-    """Set up web assets by copying files to www directory."""
-    try:
-        www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
-        www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
+                # Get all tasks with their current status
+                cursor.execute('''
+                    SELECT
+                        id, name, frequency_type, frequency_days, frequency_times,
+                        assigned_to, priority, duration, last_done, last_done_by,
+                        CASE
+                            WHEN last_done IS NULL THEN 999
+                            ELSE round((julianday('now') - julianday(last_done)), 2)
+                        END as days_since_last_done,
+                        icon, description, alternate_with, use_alternating,
+                        COALESCE(startMonth, 0) as startMonth,
+                        COALESCE(startDay, 1) as startDay,
+                        COALESCE(weekday, -1) as weekday,
+                        COALESCE(monthday, -1) as monthday
+                    FROM chores
+                ''')
 
-        def copy_files():
-            _LOGGER.info("Setting up web assets from %s to %s", www_source, www_target)
-            if not os.path.exists(www_source):
-                _LOGGER.error("Source directory %s does not exist", www_source)
-                backup_source = os.path.join(hass.config.path("www"), "chores-dashboard-backup")
-                if os.path.exists(backup_source):
-                    _LOGGER.info("Using backup source: %s", backup_source)
-                    www_source_actual = backup_source
-                else:
-                    _LOGGER.error("No source directory found for web assets")
-                    return
+                all_tasks = []
+                today = datetime.now().date()
+
+                for row in cursor.fetchall():
+                    # Calculate stats for each task
+                    task_data = {
+                        'chore_id': row[0],
+                        'name': row[1],
+                        'frequency_type': row[2],
+                        'frequency_days': row[3],
+                        'frequency_times': row[4],
+                        'assigned_to': row[5],
+                        'priority': row[6],
+                        'duration': row[7],
+                        'last_done': row[8],
+                        'last_done_by': row[9],
+                        'days_since': row[10],
+                        'icon': row[11] or '📋',
+                        'description': row[12] or '',
+                        'alternate_with': row[13] or '',
+                        'use_alternating': bool(row[14]),
+                        'startMonth': row[15],
+                        'startDay': row[16],
+                        'weekday': row[17],
+                        'monthday': row[18]
+                    }
+
+                    all_tasks.append(task_data)
+
+                    # Determine if task is due today
+                    is_due_today = False
+                    completed_today = False
+
+                    # Check if it was completed today
+                    if task_data['last_done']:
+                        last_done_date = self.parse_date(task_data['last_done']).date()
+                        if last_done_date == today:
+                            completed_today = True
+
+                    # Check if it's due today
+                    if not task_data['last_done']:
+                        # Never completed tasks are due today
+                        is_due_today = True
+                    else:
+                        next_due_date = self.calculate_next_due_date(task_data)
+                        if next_due_date <= today:
+                            is_due_today = True
+
+                    # Add to assignee's counts
+                    assignee = task_data['assigned_to']
+                    if assignee in stats:
+                        if is_due_today and not completed_today:
+                            # Add to due tasks count
+                            stats[assignee]['total_tasks'] += 1
+                            stats[assignee]['total_time'] += task_data['duration']
+                            stats[assignee]['due_tasks'].append(task_data['chore_id'])
+
+                # Get today's date
+                today_str = today.strftime('%Y-%m-%d')
+
+                # Get completions for today with historical assigned_to info from history
+                cursor.execute('''
+                    SELECT h.id, h.chore_id, h.done_by, c.duration, c.name, h.done_at, c.assigned_to, c.use_alternating, c.alternate_with
+                    FROM chore_history h
+                    JOIN chores c ON h.chore_id = c.id
+                    WHERE date(h.done_at) = date('now')
+                    ORDER BY h.done_at ASC
+                ''')
+
+                today_completions = cursor.fetchall()
+                completed_tasks_count = len(today_completions)
+                completed_task_ids = set()
+
+                # Process completions and track them against the correct person who did the task
+                for row in today_completions:
+                    history_id, chore_id, done_by, duration, name, done_at, current_assignee, use_alternating, alternate_with = row
+
+                    # Credit the stats to the person who actually did the task (done_by)
+                    # NOT the person it was assigned to
+                    if done_by in stats:
+                        stats[done_by]['tasks_completed'] += 1
+                        stats[done_by]['time_completed'] += duration
+
+                        # Also add to total tasks for this person
+                        stats[done_by]['total_tasks'] += 1
+                        stats[done_by]['total_time'] += duration
+
+                    # Track completed task IDs
+                    completed_task_ids.add(chore_id)
+
+                # Calculate streaks
+                for assignee in list(stats.keys()):
+                    # Calculate streak
+                    cursor.execute('''
+                        SELECT date(done_at) as completion_date
+                        FROM chore_history h
+                        WHERE h.done_by = ?
+                        GROUP BY date(completion_date)
+                        ORDER BY date(completion_date) DESC
+                        LIMIT 30
+                    ''', (assignee,))
+
+                    dates = [row[0] for row in cursor.fetchall()]
+
+                    if dates:
+                        streak = 0
+                        current_date = datetime.now().date()
+
+                        # Check if there are tasks due today for this assignee
+                        cursor.execute('''
+                            SELECT COUNT(*)
+                            FROM chores
+                            WHERE assigned_to = ?
+                        ''', (assignee,))
+
+                        has_assigned_tasks = cursor.fetchone()[0] > 0
+
+                        # Check if there are tasks done today
+                        if today_str in dates or current_date.strftime('%Y-%m-%d') in dates:
+                            streak = 1
+                            # Check consecutive days backwards
+                            for i in range(1, 30):
+                                prev_date = (current_date - timedelta(days=i)).strftime('%Y-%m-%d')
+
+                                # Check if had assigned tasks for that day
+                                cursor.execute('''
+                                    SELECT COUNT(*) FROM chores
+                                    WHERE assigned_to = ? AND date(last_done) = ?
+                                ''', (assignee, prev_date))
+
+                                had_tasks_on_date = cursor.fetchone()[0] > 0
+
+                                # Either completed a task on that day, or had no tasks assigned
+                                if prev_date in dates:
+                                    streak += 1
+                                elif not had_tasks_on_date:
+                                    # No tasks assigned for that day, don't break streak
+                                    streak += 1
+                                else:
+                                    # Had tasks but didn't complete any - break streak
+                                    break
+
+                        stats[assignee]['streak'] = streak
+
+                # Get monthly completed tasks by assignee (based on who completed them)
+                first_day_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+                cursor.execute('''
+                    SELECT done_by, COUNT(*) as task_count
+                    FROM chore_history
+                    WHERE done_at >= ?
+                    GROUP BY done_by
+                ''', (first_day_of_month,))
+
+                monthly_totals = {}
+                for row in cursor.fetchall():
+                    monthly_totals[row[0]] = row[1]
+
+                total_monthly = sum(monthly_totals.values()) or 1  # Avoid division by zero
+
+                for assignee in stats:
+                    stats[assignee]['monthly_completed'] = monthly_totals.get(assignee, 0)
+                    stats[assignee]['monthly_percentage'] = round(
+                        monthly_totals.get(assignee, 0) / total_monthly * 100, 1
+                    )
+
+                return all_tasks, stats, assignees, completed_tasks_count
+
+            except Exception as e:
+                _LOGGER.error("Error querying database: %s", str(e), exc_info=True)
+                raise
+            finally:
+                conn.close()
+
+        try:
+            tasks, stats, assignees, completed_tasks_count = await self.hass.async_add_executor_job(get_data)
+            self._state = completed_tasks_count
+            self._attrs = {
+                'overdue_tasks': tasks,
+                'stats': stats,
+                'assignees': assignees,
+                'completed_today': completed_tasks_count
+            }
+            _LOGGER.info("Updated sensor with %d tasks, %d completed today", len(tasks), completed_tasks_count)
+        except Exception as e:
+            _LOGGER.error("Error updating sensor: %s", str(e))
+            # Don't raise here to prevent sensor from going unavailable
+            # Just keep the old state
+            pass
+
+    def parse_date(self, date_string):
+        """Parse date string in various formats."""
+        if not date_string:
+            return datetime.now()
+
+        # Handle ISO format with T separator
+        if 'T' in date_string:
+            try:
+                return datetime.fromisoformat(date_string.replace('Z', '+00:00'))
+            except ValueError:
+                # If fromisoformat fails, try with regex to extract the date part
+                date_part = re.match(r'(\d{4}-\d{2}-\d{2})', date_string)
+                if date_part:
+                    return datetime.strptime(date_part.group(1), '%Y-%m-%d')
+
+        # Try standard format
+        try:
+            if ' ' in date_string:
+                # Format like "2023-01-01 12:30:45"
+                return datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S')
             else:
-                www_source_actual = www_source
+                # Just the date "2023-01-01"
+                return datetime.strptime(date_string, '%Y-%m-%d')
+        except ValueError:
+            # If all else fails, return a safe default
+            _LOGGER.warning("Could not parse date: %s - using current date", date_string)
+            return datetime.now()
 
-            os.makedirs(os.path.dirname(www_target), exist_ok=True)
-            _LOGGER.info("Files in source directory: %s", os.listdir(www_source_actual))
-            if os.path.exists(www_target):
-                _LOGGER.info("Removing existing directory at %s", www_target)
-                shutil.rmtree(www_target)
-            shutil.copytree(www_source_actual, www_target)
-            _LOGGER.info("Files copied successfully")
-            for root, dirs, files in os.walk(www_target):
-                for d in dirs:
-                    os.chmod(os.path.join(root, d), 0o755)
-                for f in files:
-                    os.chmod(os.path.join(root, f), 0o644)
-            _LOGGER.info("Files in target directory: %s", os.listdir(www_target))
+    def calculate_next_due_date(self, chore):
+        """Calculate the next due date for a chore."""
+        if not chore['last_done']:
+            return datetime.now().date()
 
-        await hass.async_add_executor_job(copy_files)
-        _LOGGER.info("Web assets setup completed")
-    except Exception as e:
-        _LOGGER.error("Failed to copy web assets: %s", e, exc_info=True)
+        last_done = self.parse_date(chore['last_done']).date()
+        next_due = last_done
 
+        frequency_type = chore['frequency_type']
 
-async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Update options for the entry."""
-    await hass.config_entries.async_reload(entry.entry_id)
+        # Handle the different frequency types
+        if frequency_type == 'Dagelijks':
+            next_due = last_done + timedelta(days=1)
+
+        elif frequency_type == 'Wekelijks':
+            if chore['weekday'] is not None and chore['weekday'] >= 0:
+                # Use specified weekday (0=Monday, 6=Sunday)
+                target_weekday = int(chore['weekday'])
+                days_to_add = (target_weekday - last_done.weekday()) % 7
+                if days_to_add == 0:
+                    days_to_add = 7  # If today is the target day, go to next week
+                next_due = last_done + timedelta(days=days_to_add)
+            else:
+                # Simple weekly: add 7 days
+                next_due = last_done + timedelta(days=7)
+
+        elif frequency_type == 'Meerdere keren per week':
+            # Divide week by frequency_times to get interval
+            interval = max(1, round(7 / chore['frequency_times']))
+            next_due = last_done + timedelta(days=interval)
+
+        elif frequency_type == 'Maandelijks':
+            if chore['monthday'] is not None and chore['monthday'] > 0:
+                # Use specified day of month
+                target_day = int(chore['monthday'])
+                # Move to next month
+                if last_done.month == 12:
+                    next_month = 1
+                    next_year = last_done.year + 1
+                else:
+                    next_month = last_done.month + 1
+                    next_year = last_done.year
+
+                # Handle month length issues
+                import calendar
+                days_in_month = calendar.monthrange(next_year, next_month)[1]
+                actual_day = min(target_day, days_in_month)
+
+                next_due = datetime(next_year, next_month, actual_day).date()
+            else:
+                # Add one month to last completion date
+                if last_done.month == 12:
+                    next_due = datetime(last_done.year + 1, 1, last_done.day).date()
+                else:
+                    # Handle month length issues
+                    import calendar
+                    next_month = last_done.month + 1
+                    days_in_month = calendar.monthrange(last_done.year, next_month)[1]
+                    day = min(last_done.day, days_in_month)
+                    next_due = datetime(last_done.year, next_month, day).date()
+
+        elif frequency_type == 'Meerdere keren per maand':
+            # Divide month by frequency_times to get interval
+            interval = max(1, round(30 / chore['frequency_times']))
+            next_due = last_done + timedelta(days=interval)
+
+        elif frequency_type == 'Per kwartaal':
+            # Add 3 months
+            next_month = last_done.month + 3
+            next_year = last_done.year
+
+            if next_month > 12:
+                next_month = next_month - 12
+                next_year += 1
+
+            # Handle month length issues
+            import calendar
+            days_in_month = calendar.monthrange(next_year, next_month)[1]
+            day = min(last_done.day, days_in_month)
+
+            next_due = datetime(next_year, next_month, day).date()
+
+        elif frequency_type == 'Halfjaarlijks':
+            # Add 6 months
+            next_month = last_done.month + 6
+            next_year = last_done.year
+
+            if next_month > 12:
+                next_month = next_month - 12
+                next_year += 1
+
+            # Handle month length issues
+            import calendar
+            days_in_month = calendar.monthrange(next_year, next_month)[1]
+            day = min(last_done.day, days_in_month)
+
+            next_due = datetime(next_year, next_month, day).date()
+
+        elif frequency_type == 'Jaarlijks':
+            # Add 1 year
+            next_due = datetime(last_done.year + 1, last_done.month, last_done.day).date()
+
+        else:
+            # Default to using frequency_days
+            next_due = last_done + timedelta(days=chore['frequency_days'])
+
+        return next_due
