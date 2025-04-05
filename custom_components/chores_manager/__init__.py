@@ -15,6 +15,7 @@ from .const import DOMAIN, DEFAULT_DB, PLATFORMS
 from .database import init_database
 from .services import async_register_services
 from .panel import async_setup_panel
+from .utils import setup_web_assets
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,18 +42,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "database_path": str(database_path),
     }
 
-    # Generate or retrieve a token for the dashboard
-    token = entry.data.get("auth_token")
-    if not token:
-        try:
-            _LOGGER.info("Generating new authentication token for chores dashboard")
-            token = await _generate_dashboard_token(hass)
-            # Store in config entry
-            new_data = dict(entry.data)
-            new_data["auth_token"] = token
-            hass.config_entries.async_update_entry(entry, data=new_data)
-        except Exception as err:
-            _LOGGER.error("Failed to generate authentication token: %s", err)
+    # Always regenerate token to resolve auth issues
+    try:
+        _LOGGER.info("Generating new authentication token for chores dashboard")
+        token = await _generate_dashboard_token(hass)
+        # Store in config entry
+        new_data = dict(entry.data)
+        new_data["auth_token"] = token
+        hass.config_entries.async_update_entry(entry, data=new_data)
+    except Exception as err:
+        _LOGGER.error("Failed to generate authentication token: %s", err)
+        token = entry.data.get("auth_token")
 
     # Update dashboard config with token
     if token:
@@ -66,6 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Register panel and set up web assets
     await async_setup_panel(hass)
+    from .utils import setup_web_assets
     await setup_web_assets(hass)
 
     return True
@@ -136,46 +137,6 @@ async def _update_dashboard_config(hass: HomeAssistant, token: str) -> None:
         _LOGGER.info("Updated dashboard config with authentication token")
     except Exception as err:
         _LOGGER.error("Failed to update dashboard config: %s", err)
-
-
-async def setup_web_assets(hass: HomeAssistant) -> None:
-    """Set up web assets by copying files to www directory."""
-    try:
-        www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
-        www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
-
-        def copy_files():
-            _LOGGER.info("Setting up web assets from %s to %s", www_source, www_target)
-            if not os.path.exists(www_source):
-                _LOGGER.error("Source directory %s does not exist", www_source)
-                backup_source = os.path.join(hass.config.path("www"), "chores-dashboard-backup")
-                if os.path.exists(backup_source):
-                    _LOGGER.info("Using backup source: %s", backup_source)
-                    www_source_actual = backup_source
-                else:
-                    _LOGGER.error("No source directory found for web assets")
-                    return
-            else:
-                www_source_actual = www_source
-
-            os.makedirs(os.path.dirname(www_target), exist_ok=True)
-            _LOGGER.info("Files in source directory: %s", os.listdir(www_source_actual))
-            if os.path.exists(www_target):
-                _LOGGER.info("Removing existing directory at %s", www_target)
-                shutil.rmtree(www_target)
-            shutil.copytree(www_source_actual, www_target)
-            _LOGGER.info("Files copied successfully")
-            for root, dirs, files in os.walk(www_target):
-                for d in dirs:
-                    os.chmod(os.path.join(root, d), 0o755)
-                for f in files:
-                    os.chmod(os.path.join(root, f), 0o644)
-            _LOGGER.info("Files in target directory: %s", os.listdir(www_target))
-
-        await hass.async_add_executor_job(copy_files)
-        _LOGGER.info("Web assets setup completed")
-    except Exception as e:
-        _LOGGER.error("Failed to copy web assets: %s", e, exc_info=True)
 
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
