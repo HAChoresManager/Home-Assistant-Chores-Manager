@@ -7,6 +7,7 @@ from datetime import datetime
 _LOGGER = logging.getLogger(__name__)
 
 
+
 def init_database(database_path: str) -> None:
     """Initialize the database with required tables."""
     _LOGGER.info("Initializing database at %s", database_path)
@@ -86,6 +87,7 @@ def init_database(database_path: str) -> None:
     conn.commit()
     conn.close()
     _LOGGER.info("Database initialized successfully")
+
 
 
 def verify_database(database_path: str) -> bool:
