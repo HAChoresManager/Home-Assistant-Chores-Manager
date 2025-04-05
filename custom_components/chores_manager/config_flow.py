@@ -78,6 +78,25 @@ class ChoresManagerOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
+            # Check if token regeneration is requested
+            if user_input.pop("regenerate_token", False):
+                from . import _generate_dashboard_token, _update_dashboard_config
+                try:
+                    token = await _generate_dashboard_token(self.hass)
+                    
+                    # Update config entry with new token
+                    new_data = dict(self.config_entry.data)
+                    new_data["auth_token"] = token
+                    self.hass.config_entries.async_update_entry(
+                        self.config_entry, 
+                        data=new_data
+                    )
+                    
+                    # Update dashboard config file
+                    await _update_dashboard_config(self.hass, token)
+                except Exception as err:
+                    _LOGGER.error("Failed to regenerate token: %s", err)
+            
             return self.async_create_entry(title="", data=user_input)
 
         return self.async_show_form(
@@ -92,6 +111,10 @@ class ChoresManagerOptionsFlowHandler(config_entries.OptionsFlow):
                         "notification_time",
                         default=self.config_entry.data.get("notification_time", DEFAULT_NOTIFICATION_TIME),
                     ): str,
+                    vol.Optional(
+                        "regenerate_token",
+                        default=False,
+                    ): bool,
                 }
             ),
         )
