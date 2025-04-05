@@ -164,12 +164,3 @@ async def setup_web_assets(hass: HomeAssistant) -> None:
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update options for the entry."""
     await hass.config_entries.async_reload(entry.entry_id)
-
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, [Platform.SENSOR])
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-    return unload_ok
