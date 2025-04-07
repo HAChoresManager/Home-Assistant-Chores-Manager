@@ -39,8 +39,16 @@ jobs:
           echo "VERSION_BRANCH=$VERSION_BRANCH" >> $GITHUB_ENV
       
       - name: Update version numbers
+        id: update_versions
         run: |
-          # Create the Python script for version updating
+          # Show original file content for debugging
+          echo "Original index.html version strings:"
+          grep -E '(href="|src="|CHORES_APP_VERSION).*\?v=' custom_components/chores_manager/www/chores-dashboard/index.html || echo "No version strings found"
+          
+          echo "Original panel.py version string:"
+          grep -E 'js_url=' custom_components/chores_manager/panel.py || echo "No version string found"
+          
+          # Create the Python script
           cat > update_versions.py << 'EOF'
           #!/usr/bin/env python3
           import os
@@ -55,8 +63,10 @@ jobs:
           # Get short commit hash 
           short_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('utf-8').strip()
 
-          # Version string to use (date + commit hash)
-          version_string = f"{today}-{short_hash}"
+          # Version string to use (date + commit hash + random)
+          import random
+          random_suffix = f"{random.randint(1000, 9999)}"
+          version_string = f"{today}-{short_hash}-{random_suffix}"
           print(f"Using version string: {version_string}")
 
           # Files to update and their patterns
@@ -67,7 +77,7 @@ jobs:
                       # Use full version string for all cache busting parameters
                       (r'(href="[^"]+\?v=)[^"]+(")', f'\\1{version_string}\\2'),
                       (r'(src="[^"]+\?v=)[^"]+(")', f'\\1{version_string}\\2'),
-                      (r'CHORES_APP_VERSION = "([^"]+)-[^"]+"', f'CHORES_APP_VERSION = "\\1-{version_string}"')
+                      (r'(CHORES_APP_VERSION = "[^"]+-)[^"]+"', f'\\1{version_string}"')
                   ]
               },
               {
@@ -89,9 +99,21 @@ jobs:
               original_content = content
               
               for pattern, replacement in patterns:
+                  print(f"Applying pattern: {pattern}")
+                  # Print matched substrings for debugging
+                  import re
+                  matches = re.findall(pattern, content)
+                  print(f"  Found {len(matches)} matches: {matches[:3]}")
+                  
                   content = re.sub(pattern, replacement, content)
               
               if content != original_content:
+                  # Show the differences
+                  for i, (orig_line, new_line) in enumerate(zip(original_content.splitlines(), content.splitlines())):
+                      if orig_line != new_line:
+                          print(f"Line {i+1} changed from: {orig_line}")
+                          print(f"Line {i+1} changed to:   {new_line}")
+                  
                   path.write_text(content)
                   print(f"Updated: {file_path}")
                   return True
@@ -108,34 +130,54 @@ jobs:
               
               if updated:
                   print(f"Version numbers updated to {version_string}")
+                  # Create a file to signal success
+                  with open("version_updated.txt", "w") as f:
+                      f.write(f"Version updated to {version_string}")
+                  return 0
               else:
                   print("No version numbers needed updating")
+                  return 1
 
           if __name__ == "__main__":
-              main()
+              exit(main())
           EOF
           
           # Execute the script
           python update_versions.py
+          
+          # Check if updates were made
+          if [ -f "version_updated.txt" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            cat version_updated.txt
+            
+            # Show updated content for debugging
+            echo "Updated index.html version strings:"
+            grep -E '(href="|src="|CHORES_APP_VERSION).*\?v=' custom_components/chores_manager/www/chores-dashboard/index.html
+            
+            echo "Updated panel.py version string:"
+            grep -E 'js_url=' custom_components/chores_manager/panel.py
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "No changes were made to version numbers"
+          fi
 
       - name: Commit changes and push branch
-        id: commit
+        if: steps.update_versions.outputs.changes == 'true'
         run: |
-          # Check if there are changes to commit
-          if git diff --name-only | grep -q .; then
-            echo "Making changes and pushing branch"
+          # Make sure there are actual git differences
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "Git detects changes, committing and pushing..."
             git add .
-            # Include [skip ci] tag to prevent additional workflow runs
             git commit -m "Update version numbers [skip ci]"
-            git push --set-upstream origin $VERSION_BRANCH
-            echo "changes=true" >> $GITHUB_OUTPUT
+            git push --set-upstream origin ${{ env.VERSION_BRANCH }}
+            echo "Changes pushed to branch ${{ env.VERSION_BRANCH }}"
           else
-            echo "No changes detected"
-            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "Git reports no changes despite script reporting changes"
+            exit 1
           fi
 
       - name: Create Pull Request
-        if: steps.commit.outputs.changes == 'true'
+        if: steps.update_versions.outputs.changes == 'true'
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -147,8 +189,6 @@ jobs:
             - Updates app version variable
             
             This PR was automatically created after a successful merge to ensure all version numbers are up to date.
-            
-            **Note**: This PR is excluded from triggering additional workflows to prevent infinite loops.
           branch: ${{ env.VERSION_BRANCH }}
           base: main
-          delete-branch: true
+          delete-branch: false  # Keep the branch even if it appears identical
