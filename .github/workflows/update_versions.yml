@@ -67,7 +67,8 @@ jobs:
                       # Fixed regex patterns that properly capture and replace
                       (r'href="([^"]+)\?v=[^"]+"', f'href="\\1?v={version_string}"'),
                       (r'src="([^"]+)\?v=[^"]+"', f'src="\\1?v={version_string}"'),
-                      (r'(CHORES_APP_VERSION = "[^"]+-)([^"]+)"', f'\\1{version_string}"')
+                      # Fixed CHORES_APP_VERSION pattern to keep the variable name
+                      (r'(CHORES_APP_VERSION = )"([^"]+)"', f'\\1"1.3.0-{version_string}"')
                   ]
               },
               {
