@@ -25,7 +25,8 @@ from .schemas import (
     RESET_CHORE_SCHEMA,
     ADD_USER_SCHEMA,
     DELETE_USER_SCHEMA,
-    FORCE_DUE_SCHEMA
+    FORCE_DUE_SCHEMA,
+    DELETE_CHORE_SCHEMA
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -205,6 +206,20 @@ async def async_register_services(hass: HomeAssistant, database_path: str) -> No
             _LOGGER.error("Error forcing chore due: %s", err)
             raise
 
+    async def handle_delete_chore(call: ServiceCall) -> Dict[str, Any]:
+        """Handle the delete_chore service call."""
+        chore_id = call.data[ATTR_CHORE_ID]
+
+        try:
+            result = await hass.async_add_executor_job(
+                delete_chore, database_path, chore_id
+            )
+            async_dispatcher_send(hass, f"{DOMAIN}_updated")
+            return result
+        except Exception as err:
+            _LOGGER.error("Error deleting chore: %s", err)
+            raise
+
     # Register all services
     hass.services.async_register(
         DOMAIN,
@@ -259,4 +274,11 @@ async def async_register_services(hass: HomeAssistant, database_path: str) -> No
         "force_due",
         handle_force_due,
         schema=FORCE_DUE_SCHEMA
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "delete_chore",
+        handle_delete_chore,
+        schema=DELETE_CHORE_SCHEMA
     )
