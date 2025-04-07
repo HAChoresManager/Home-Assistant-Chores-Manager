@@ -8,7 +8,7 @@ on:
 
 jobs:
   update-versions:
-    # Only run if the PR was merged AND it's not a version update PR.
+    # Only run if the PR was merged AND it's not a version update PR
     if: |
       github.event.pull_request.merged == true && 
       !startsWith(github.event.pull_request.title, 'Update version numbers')
@@ -39,16 +39,8 @@ jobs:
           echo "VERSION_BRANCH=$VERSION_BRANCH" >> $GITHUB_ENV
       
       - name: Update version numbers
-        id: update_versions
         run: |
-          # Show original file content for debugging
-          echo "Original index.html version strings:"
-          grep -E '(href="|src="|CHORES_APP_VERSION).*\?v=' custom_components/chores_manager/www/chores-dashboard/index.html || echo "No version strings found"
-          
-          echo "Original panel.py version string:"
-          grep -E 'js_url=' custom_components/chores_manager/panel.py || echo "No version string found"
-          
-          # Create the Python script
+          # Create the Python script for version updating
           cat > update_versions.py << 'EOF'
           #!/usr/bin/env python3
           import os
@@ -63,10 +55,8 @@ jobs:
           # Get short commit hash 
           short_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('utf-8').strip()
 
-          # Version string to use (date + commit hash + random)
-          import random
-          random_suffix = f"{random.randint(1000, 9999)}"
-          version_string = f"{today}-{short_hash}-{random_suffix}"
+          # Version string to use (date + commit hash)
+          version_string = f"{today}-{short_hash}"
           print(f"Using version string: {version_string}")
 
           # Files to update and their patterns
@@ -74,17 +64,17 @@ jobs:
               {
                   'path': 'custom_components/chores_manager/www/chores-dashboard/index.html',
                   'patterns': [
-                      # Use full version string for all cache busting parameters
-                      (r'(href="[^"]+\?v=)[^"]+(")', f'\\1{version_string}\\2'),
-                      (r'(src="[^"]+\?v=)[^"]+(")', f'\\1{version_string}\\2'),
-                      (r'(CHORES_APP_VERSION = "[^"]+-)[^"]+"', f'\\1{version_string}"')
+                      # Fixed regex patterns that properly capture and replace
+                      (r'href="([^"]+)\?v=[^"]+"', f'href="\\1?v={version_string}"'),
+                      (r'src="([^"]+)\?v=[^"]+"', f'src="\\1?v={version_string}"'),
+                      (r'(CHORES_APP_VERSION = "[^"]+-)([^"]+)"', f'\\1{version_string}"')
                   ]
               },
               {
                   'path': 'custom_components/chores_manager/panel.py',
                   'patterns': [
-                      # Use full version string here too
-                      (r'(js_url="/local/chores-dashboard/chores-dashboard.js\?v=)[^"]+(")', f'\\1{version_string}\\2')
+                      # Fixed regex pattern for panel.py
+                      (r'js_url="([^"]+)\?v=[^"]+"', f'js_url="\\1?v={version_string}"')
                   ]
               }
           ]
@@ -101,7 +91,6 @@ jobs:
               for pattern, replacement in patterns:
                   print(f"Applying pattern: {pattern}")
                   # Print matched substrings for debugging
-                  import re
                   matches = re.findall(pattern, content)
                   print(f"  Found {len(matches)} matches: {matches[:3]}")
                   
@@ -162,22 +151,22 @@ jobs:
           fi
 
       - name: Commit changes and push branch
-        if: steps.update_versions.outputs.changes == 'true'
+        id: commit
         run: |
-          # Make sure there are actual git differences
-          if [[ -n "$(git status --porcelain)" ]]; then
-            echo "Git detects changes, committing and pushing..."
+          # Check if there are changes to commit
+          if git diff --name-only | grep -q .; then
+            echo "Making changes and pushing branch"
             git add .
             git commit -m "Update version numbers [skip ci]"
-            git push --set-upstream origin ${{ env.VERSION_BRANCH }}
-            echo "Changes pushed to branch ${{ env.VERSION_BRANCH }}"
+            git push --set-upstream origin $VERSION_BRANCH
+            echo "changes=true" >> $GITHUB_OUTPUT
           else
-            echo "Git reports no changes despite script reporting changes"
-            exit 1
+            echo "No changes detected"
+            echo "changes=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Create Pull Request
-        if: steps.update_versions.outputs.changes == 'true'
+        if: steps.commit.outputs.changes == 'true'
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -191,4 +180,4 @@ jobs:
             This PR was automatically created after a successful merge to ensure all version numbers are up to date.
           branch: ${{ env.VERSION_BRANCH }}
           base: main
-          delete-branch: false  # Keep the branch even if it appears identical
+          delete-branch: false
