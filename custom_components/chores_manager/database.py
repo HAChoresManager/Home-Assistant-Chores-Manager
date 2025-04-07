@@ -7,7 +7,6 @@ from datetime import datetime
 _LOGGER = logging.getLogger(__name__)
 
 
-
 def init_database(database_path: str) -> None:
     """Initialize the database with required tables."""
     _LOGGER.info("Initializing database at %s", database_path)
@@ -87,7 +86,6 @@ def init_database(database_path: str) -> None:
     conn.commit()
     conn.close()
     _LOGGER.info("Database initialized successfully")
-
 
 
 def verify_database(database_path: str) -> bool:
@@ -354,6 +352,42 @@ def get_ha_user_id_for_assignee(database_path: str, assignee_name: str) -> str |
     except Exception as e:
         _LOGGER.error("Error in get_ha_user_id_for_assignee: %s", e)
         return None
+    finally:
+        conn.close()
+
+
+def delete_chore(database_path: str, chore_id: str) -> dict:
+    """Delete a chore from the database."""
+    if not chore_id:
+        raise ValueError("Chore ID is required")
+
+    conn = sqlite3.connect(database_path)
+    cursor = conn.cursor()
+
+    try:
+        # Get chore name before deleting
+        cursor.execute("SELECT name FROM chores WHERE id = ?", (chore_id,))
+        chore = cursor.fetchone()
+
+        if not chore:
+            return {"success": False, "error": "Chore not found"}
+
+        chore_name = chore[0]
+
+        # Delete from chore_history
+        cursor.execute("DELETE FROM chore_history WHERE chore_id = ?", (chore_id,))
+
+        # Delete from notification_log
+        cursor.execute("DELETE FROM notification_log WHERE chore_id = ?", (chore_id,))
+
+        # Delete the chore
+        cursor.execute("DELETE FROM chores WHERE id = ?", (chore_id,))
+
+        conn.commit()
+        return {"success": True, "chore_id": chore_id, "name": chore_name}
+    except Exception as e:
+        _LOGGER.error("Error in delete_chore: %s", e)
+        raise
     finally:
         conn.close()
 
