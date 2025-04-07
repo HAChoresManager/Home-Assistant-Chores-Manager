@@ -68,3 +68,7 @@ FORCE_DUE_SCHEMA = vol.Schema({
     vol.Optional("notify", default=False): vol.Any(bool, vol.Coerce(bool)),
     vol.Optional("message"): cv.string,
 })
+
+DELETE_CHORE_SCHEMA = vol.Schema({
+    vol.Required(ATTR_CHORE_ID): cv.string,
+})

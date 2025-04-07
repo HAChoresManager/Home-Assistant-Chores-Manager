@@ -1,0 +1,113 @@
+name: Update Version Numbers
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main  # or master, depending on your default branch name
+
+jobs:
+  update-versions:
+    # Only run if the PR was merged
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed to push changes back
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Get full history for better commit messages
+          
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Create scripts directory
+        run: mkdir -p .github/scripts
+          
+      - name: Create version update script
+        run: |
+          cat > .github/scripts/update_versions.py << 'EOF'
+          #!/usr/bin/env python3
+          import os
+          import re
+          import datetime
+          import subprocess
+          from pathlib import Path
+
+          # Get current date in YYYYMMDD format
+          today = datetime.datetime.now().strftime('%Y%m%d')
+
+          # Get short commit hash
+          short_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('utf-8').strip()
+
+          # Version string to use
+          version_string = f"{today}-{short_hash}"
+
+          # Files to update and their patterns
+          FILES_TO_UPDATE = [
+              {
+                  'path': 'custom_components/chores_manager/www/chores-dashboard/index.html',
+                  'patterns': [
+                      (r'(href="[^"]+\?v=)\d+(")', f'\\1{version_string}\\2'),
+                      (r'(src="[^"]+\?v=)\d+(")', f'\\1{version_string}\\2'),
+                      (r'CHORES_APP_VERSION = "([^"]+)-\d+-[^"]+"', f'CHORES_APP_VERSION = "\\1-{version_string}"')
+                  ]
+              },
+              {
+                  'path': 'custom_components/chores_manager/panel.py',
+                  'patterns': [
+                      (r'(js_url="/local/chores-dashboard/chores-dashboard.js\?v=)\d+(")', f'\\1{version_string}\\2')
+                  ]
+              }
+          ]
+
+          def update_file(file_path, patterns):
+              path = Path(file_path)
+              if not path.exists():
+                  print(f"File not found: {file_path}")
+                  return False
+                  
+              content = path.read_text()
+              original_content = content
+              
+              for pattern, replacement in patterns:
+                  content = re.sub(pattern, replacement, content)
+              
+              if content != original_content:
+                  path.write_text(content)
+                  print(f"Updated: {file_path}")
+                  return True
+              
+              print(f"No changes needed: {file_path}")
+              return False
+
+          def main():
+              updated = False
+              
+              for file_info in FILES_TO_UPDATE:
+                  file_updated = update_file(file_info['path'], file_info['patterns'])
+                  updated = updated or file_updated
+              
+              if updated:
+                  print(f"Version numbers updated to {version_string}")
+              else:
+                  print("No version numbers needed updating")
+
+          if __name__ == "__main__":
+              main()
+          EOF
+          chmod +x .github/scripts/update_versions.py
+          
+      - name: Update version numbers
+        run: |
+          python .github/scripts/update_versions.py
+        
+      - name: Commit changes if any
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto update version numbers [skip ci]" && git push)
