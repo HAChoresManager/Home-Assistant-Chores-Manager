@@ -8,7 +8,7 @@ on:
 
 jobs:
   update-versions:
-    # Only run if the PR was merged AND it's not a version update PR
+    # Only run if the PR was merged AND it's not a version update PR.
     if: |
       github.event.pull_request.merged == true && 
       !startsWith(github.event.pull_request.title, 'Update version numbers')
