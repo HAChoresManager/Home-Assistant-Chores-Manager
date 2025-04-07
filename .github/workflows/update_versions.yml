@@ -14,22 +14,16 @@ jobs:
     permissions:
       contents: write  # Needed to push changes back
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0  # Get full history for better commit messages
-          
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          
-      - name: Create scripts directory
-        run: mkdir -p .github/scripts
-          
-      - name: Create version update script
+      - name: Manual checkout
         run: |
-          cat > .github/scripts/update_versions.py << 'EOF'
+          git clone https://github.com/${GITHUB_REPOSITORY}.git .
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+      - name: Create and run version update script
+        run: |
+          # Create the Python script
+          cat > update_versions.py << 'EOF'
           #!/usr/bin/env python3
           import os
           import re
@@ -43,23 +37,26 @@ jobs:
           # Get short commit hash
           short_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('utf-8').strip()
 
-          # Version string to use
+          # Version string to use (date + commit hash)
           version_string = f"{today}-{short_hash}"
+          print(f"Using version string: {version_string}")
 
           # Files to update and their patterns
           FILES_TO_UPDATE = [
               {
                   'path': 'custom_components/chores_manager/www/chores-dashboard/index.html',
                   'patterns': [
-                      (r'(href="[^"]+\?v=)\d+(")', f'\\1{version_string}\\2'),
-                      (r'(src="[^"]+\?v=)\d+(")', f'\\1{version_string}\\2'),
+                      # Use full version string for all cache busting parameters
+                      (r'(href="[^"]+\?v=)[^"]+(")', f'\\1{version_string}\\2'),
+                      (r'(src="[^"]+\?v=)[^"]+(")', f'\\1{version_string}\\2'),
                       (r'CHORES_APP_VERSION = "([^"]+)-\d+-[^"]+"', f'CHORES_APP_VERSION = "\\1-{version_string}"')
                   ]
               },
               {
                   'path': 'custom_components/chores_manager/panel.py',
                   'patterns': [
-                      (r'(js_url="/local/chores-dashboard/chores-dashboard.js\?v=)\d+(")', f'\\1{version_string}\\2')
+                      # Use full version string here too
+                      (r'(js_url="/local/chores-dashboard/chores-dashboard.js\?v=)[^"]+(")', f'\\1{version_string}\\2')
                   ]
               }
           ]
@@ -99,15 +96,11 @@ jobs:
           if __name__ == "__main__":
               main()
           EOF
-          chmod +x .github/scripts/update_versions.py
           
-      - name: Update version numbers
-        run: |
-          python .github/scripts/update_versions.py
+          # Execute the script
+          python update_versions.py
         
-      - name: Commit changes if any
+      - name: Commit and push changes if any
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
           git add .
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto update version numbers [skip ci]" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto update version numbers [skip ci]" && git push https://${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git HEAD:main)
