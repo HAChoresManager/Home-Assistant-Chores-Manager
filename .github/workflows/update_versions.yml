@@ -4,11 +4,11 @@ on:
   pull_request:
     types: [closed]
     branches:
-      - main
+      - main  # or master, depending on your default branch name
 
 jobs:
   update-versions:
-    # Only run if the PR was merged
+    # Only run if the PR was merged.
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
@@ -16,9 +16,15 @@ jobs:
     steps:
       - name: Manual checkout
         run: |
-          git clone https://github.com/${GITHUB_REPOSITORY}.git .
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
+          # Configure safe directory
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          
+          # Clone the repository
+          git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY.git" .
+          
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           
       - name: Create and run version update script
         run: |
@@ -102,5 +108,18 @@ jobs:
         
       - name: Commit and push changes if any
         run: |
-          git add .
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto update version numbers [skip ci]" && git push https://${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git HEAD:main)
+          # Check for changes
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "Changes detected, committing and pushing..."
+            # Add all changes
+            git add .
+            
+            # Commit changes
+            git commit -m "Auto update version numbers [skip ci]"
+            
+            # Push using token authentication
+            git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY.git" HEAD:main
+            echo "Changes pushed successfully!"
+          else
+            echo "No changes to commit."
+          fi
