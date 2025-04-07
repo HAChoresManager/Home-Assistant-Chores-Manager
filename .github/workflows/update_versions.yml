@@ -8,27 +8,39 @@ on:
 
 jobs:
   update-versions:
-    # Only run if the PR was merged.
-    if: github.event.pull_request.merged == true
+    # Only run if the PR was merged AND it's not a version update PR
+    if: |
+      github.event.pull_request.merged == true && 
+      !startsWith(github.event.pull_request.title, 'Update version numbers')
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Needed to push changes back
+      contents: write
+      pull-requests: write
     steps:
-      - name: Manual checkout
+      - name: Check out repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Create new branch for version update
         run: |
-          # Configure safe directory
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          
-          # Clone the repository
-          git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY.git" .
-          
           # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-      - name: Create and run version update script
+          # Create a new branch for version updates
+          VERSION_BRANCH="version-update-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b $VERSION_BRANCH
+          echo "VERSION_BRANCH=$VERSION_BRANCH" >> $GITHUB_ENV
+      
+      - name: Update version numbers
         run: |
-          # Create the Python script
+          # Create the Python script for version updating
           cat > update_versions.py << 'EOF'
           #!/usr/bin/env python3
           import os
@@ -40,7 +52,7 @@ jobs:
           # Get current date in YYYYMMDD format
           today = datetime.datetime.now().strftime('%Y%m%d')
 
-          # Get short commit hash
+          # Get short commit hash 
           short_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('utf-8').strip()
 
           # Version string to use (date + commit hash)
@@ -55,7 +67,7 @@ jobs:
                       # Use full version string for all cache busting parameters
                       (r'(href="[^"]+\?v=)[^"]+(")', f'\\1{version_string}\\2'),
                       (r'(src="[^"]+\?v=)[^"]+(")', f'\\1{version_string}\\2'),
-                      (r'CHORES_APP_VERSION = "([^"]+)-\d+-[^"]+"', f'CHORES_APP_VERSION = "\\1-{version_string}"')
+                      (r'CHORES_APP_VERSION = "([^"]+)-[^"]+"', f'CHORES_APP_VERSION = "\\1-{version_string}"')
                   ]
               },
               {
@@ -105,21 +117,38 @@ jobs:
           
           # Execute the script
           python update_versions.py
-        
-      - name: Commit and push changes if any
+
+      - name: Commit changes and push branch
+        id: commit
         run: |
-          # Check for changes
-          if [[ -n "$(git status --porcelain)" ]]; then
-            echo "Changes detected, committing and pushing..."
-            # Add all changes
+          # Check if there are changes to commit
+          if git diff --name-only | grep -q .; then
+            echo "Making changes and pushing branch"
             git add .
-            
-            # Commit changes
-            git commit -m "Auto update version numbers [skip ci]"
-            
-            # Push using token authentication
-            git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY.git" HEAD:main
-            echo "Changes pushed successfully!"
+            # Include [skip ci] tag to prevent additional workflow runs
+            git commit -m "Update version numbers [skip ci]"
+            git push --set-upstream origin $VERSION_BRANCH
+            echo "changes=true" >> $GITHUB_OUTPUT
           else
-            echo "No changes to commit."
+            echo "No changes detected"
+            echo "changes=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Create Pull Request
+        if: steps.commit.outputs.changes == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "Update version numbers"
+          body: |
+            This PR updates version numbers in the application files for better cache busting.
+            
+            - Updates CSS and JS version parameters
+            - Updates app version variable
+            
+            This PR was automatically created after a successful merge to ensure all version numbers are up to date.
+            
+            **Note**: This PR is excluded from triggering additional workflows to prevent infinite loops.
+          branch: ${{ env.VERSION_BRANCH }}
+          base: main
+          delete-branch: true
