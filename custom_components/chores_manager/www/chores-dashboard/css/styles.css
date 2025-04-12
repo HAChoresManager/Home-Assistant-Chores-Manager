@@ -12,12 +12,18 @@ body {
     background-color: #ffffff;
 }
 
+/* Force high contrast text throughout the application */
+h1, h2, h3, h4, h5, h6, p, div, span, label, button {
+    color: #000000 !important;
+    text-shadow: none !important;
+}
+
 /* Card styling */
 .task-card {
     transition: all 0.2s ease;
     cursor: pointer;
     border-radius: 8px;
-    background-color: #ffffff;
+    background-color: #f8f8f8 !important;
     border: 1px solid #e0e0e0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     margin-bottom: 12px;
@@ -26,18 +32,10 @@ body {
 .task-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 /* Typography - High contrast */
-h1, h2, h3, h4, h5, h6 {
-    color: #000000;
-    font-weight: 600;
-}
-
-p, span, div, label, button {
-    color: #000000;
-}
-
 .text-gray-400, .text-gray-500, .text-gray-600 {
     color: #555555 !important;
 }
@@ -61,7 +59,14 @@ p, span, div, label, button {
     background-color: #ffffff;
     padding: 0 1rem;
     font-weight: 600;
-    color: #000000;
+    color: #000000 !important;
+}
+
+/* Aankomende Taken section header */
+div > h2.text-xl.font-semibold.mb-4 {
+    color: #000000 !important;
+    font-weight: 600 !important;
+    background: none !important;
 }
 
 /* Task status indicators */
@@ -100,17 +105,15 @@ p, span, div, label, button {
     padding: 2rem 0;
 }
 
-.modal-content {
-    background-color: #ffffff;
-    color: #000000;
+.modal-content, .bg-white {
+    background-color: #f8f8f8 !important;
+    color: #000000 !important;
     border-radius: 8px;
-    max-width: 28rem;
-    width: 100%;
-    margin: 0 2rem;
-    max-height: 90vh;
-    overflow-y: auto;
-    padding: 1.5rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.modal-content h2, .modal-content h3, .modal-content label {
+    color: #000000 !important;
 }
 
 /* Form elements */
@@ -145,53 +148,11 @@ button.bg-gray-100, button.bg-gray-200 {
     color: #000000 !important;
 }
 
-/* Status cards */
-.bg-white {
-    background-color: #ffffff !important;
-}
-
 /* Date pickers */
 .week-day-picker .grid-cols-7 > div,
 .month-day-picker .grid-cols-7 > div {
     color: #000000 !important;
     background-color: #f3f4f6;
-}
-
-/* User stats cards */
-.user-stats-card {
-    background-color: #ffffff;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-}
-
-.user-stats-card h3 {
-    color: #000000;
-    font-weight: 600;
-}
-
-/* Section headers at bottom of page */
-h2.text-xl {
-    color: #000000 !important;
-    font-weight: 600 !important;
-    margin-bottom: 1rem;
-    background: none !important;
-}
-
-/* Stats counter cards */
-.bg-white div, .bg-white h3, .bg-white span {
-    color: #000000 !important;
-}
-
-/* Override for specific section headers */
-.text-center span {
-    color: #000000 !important;
-}
-
-/* Aankomende Taken label */
-.section-divider + h2, .section-divider-text {
-    color: #000000 !important;
-    background: none !important;
-    background-color: #ffffff !important;
 }
 
 /* Progress bars */
@@ -236,36 +197,86 @@ h2.text-xl {
 .user-management-modal span,
 .user-management-modal div {
     color: #000000 !important;
-    background-color: #ffffff;
+    background-color: #f8f8f8;
 }
 
-/* Background override for all text and backgrounds */
-body, #root, .section-divider-text {
-    background-color: #ffffff !important;
+/* Theme settings styles */
+.theme-preview {
+    border: 1px solid #e0e0e0;
+    margin-top: 1rem;
+    border-radius: 0.5rem;
+    overflow: hidden;
 }
 
-/* Force black text for task cards */
-.task-card h3,
-.task-card div,
-.task-card span {
-    color: #000000 !important;
+.color-input-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
 }
 
-.task-card .text-gray-600 {
-    color: #555555 !important;
+.color-input-container input[type="color"] {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    margin-right: 0.5rem;
+    border: 1px solid #e0e0e0;
 }
 
-/* Fixing specific text labels */
-span.text-gray-500, span.text-gray-600 {
-    color: #555555 !important;
+.color-input-container input[type="text"] {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 0.25rem;
 }
 
-/* Special labels like Achterstallig */
+/* Override styling for specific elements */
 .text-red-500, .text-red-600, .text-red-700 {
     color: #dc2626 !important;
 }
 
-/* Make date and statistics visible */
-.lastDone, .timeStats {
-    color: #000000 !important;
+.text-orange-500, .text-orange-600, .text-orange-700 {
+    color: #f59e0b !important;
+}
+
+.text-green-500, .text-green-600, .text-green-700 {
+    color: #10b981 !important;
+}
+
+.text-blue-500, .text-blue-600, .text-blue-700 {
+    color: #3b82f6 !important;
+}
+
+/* Tabs in user/theme management */
+.user-tabs {
+    display: flex;
+    border-bottom: 1px solid #e0e0e0;
+    margin-bottom: 1rem;
+}
+
+.user-tab {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.user-tab.active {
+    border-bottom: 2px solid #3b82f6;
+    color: #3b82f6 !important;
+}
+
+/* Custom theme styling */
+#root {
+    background-color: var(--theme-background, #ffffff) !important;
+}
+
+.task-card, .modal-content, .bg-white {
+    background-color: var(--theme-card-color, #f8f8f8) !important;
+}
+
+h1, h2, h3, h4, h5, h6, p, div:not(.progress-bar):not(.bg-blue-500):not(.bg-green-500):not(.bg-red-500) {
+    color: var(--theme-primary-text, #000000) !important;
+}
+
+.text-gray-400, .text-gray-500, .text-gray-600 {
+    color: var(--theme-secondary-text, #555555) !important;
 }

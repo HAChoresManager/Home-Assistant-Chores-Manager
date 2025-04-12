@@ -35,6 +35,7 @@ from .schemas import (
     FORCE_DUE_SCHEMA,
     DELETE_CHORE_SCHEMA
 )
+from .theme_service import save_theme_settings
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -291,6 +292,33 @@ async def async_register_services(hass: HomeAssistant, database_path: str) -> No
         except Exception as err:
             _LOGGER.error("Error deleting subtask: %s", err)
             raise
+
+    async def handle_save_theme(call: ServiceCall) -> Dict[str, Any]:
+        """Handle saving theme settings."""
+        theme_data = dict(call.data)
+
+        try:
+            result = await hass.async_add_executor_job(
+                save_theme_settings, database_path, theme_data
+            )
+            async_dispatcher_send(hass, f"{DOMAIN}_theme_updated")
+            return result
+        except Exception as err:
+            _LOGGER.error("Error saving theme settings: %s", err)
+            raise
+
+    # Register the theme service
+    hass.services.async_register(
+        DOMAIN,
+        "save_theme",
+        handle_save_theme,
+        schema=vol.Schema({
+            vol.Required("backgroundColor"): cv.string,
+            vol.Required("cardColor"): cv.string,
+            vol.Required("primaryTextColor"): cv.string,
+            vol.Required("secondaryTextColor"): cv.string,
+        })
+    )
 
     # Register all services
     hass.services.async_register(
