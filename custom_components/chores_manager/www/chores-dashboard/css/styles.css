@@ -1,7 +1,7 @@
 :root {
     /* Default fallback values */
     --chores-primary-color: #03a9f4;
-    --chores-primary-background: transparent;
+    --chores-primary-background: rgba(255, 255, 255, 0.95);
     --chores-secondary-background: #ffffff;
     --chores-primary-text: #212121;
     --chores-secondary-text: #727272;
@@ -21,13 +21,16 @@ body {
 #root { 
     min-height: 100vh;
     padding: 1rem;
-    background-color: transparent;
+    background-color: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(5px);
+    border-radius: 8px;
 }
 
 .task-card {
     transition: all 0.2s ease;
     cursor: pointer;
     border-radius: var(--chores-card-radius);
+    background-color: var(--chores-secondary-background);
 }
 
 .task-card:hover {
@@ -58,6 +61,7 @@ body {
     border-radius: 0.25rem;
     cursor: pointer;
     border: 1px solid #e5e7eb;
+    background-color: white;
 }
 
 .icon-option:hover {
@@ -187,7 +191,6 @@ body {
     border: 2px dashed #3b82f6 !important;
     background-color: rgba(219, 234, 254, 0.7) !important;
     animation: processingPulse 1.5s infinite ease-in-out !important;
-    overflow: hidden;
 }
 
 @keyframes processingPulse {
@@ -203,8 +206,12 @@ body {
 
 /* Dark theme overrides */
 .ha-dark-theme {
-    --task-bg-color: rgba(40, 40, 40, 0.7);
-    --card-bg-color: rgba(50, 50, 50, 0.8);
+    --chores-primary-background: rgba(40, 40, 40, 0.9);
+    --chores-secondary-background: rgba(50, 50, 50, 0.95);
+}
+
+.ha-dark-theme #root {
+    background-color: rgba(30, 30, 30, 0.85);
 }
 
 .ha-dark-theme .bg-white {
@@ -300,6 +307,7 @@ body {
     cursor: pointer;
     padding: 0.5rem;
     border-radius: 0.25rem;
+    background-color: #f3f4f6;
 }
 
 .month-day-picker .grid-cols-7 > div {
@@ -308,6 +316,7 @@ body {
     padding: 0.5rem;
     border-radius: 0.25rem;
     margin-bottom: 0.25rem;
+    background-color: #f3f4f6;
 }
 
 /* Subtask styles */
@@ -329,6 +338,23 @@ body {
     color: #9ca3af;
 }
 
-html, body {
-    background: transparent !important;
+/* Button and card styling for better contrast */
+button {
+    background-color: var(--chores-secondary-background);
+}
+
+.bg-white, .bg-gray-50, .bg-gray-100, .bg-blue-50 {
+    background-color: var(--chores-secondary-background) !important;
+}
+
+/* Make section headers stand out */
+h2.text-xl {
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    display: inline-block;
+}
+
+.ha-dark-theme h2.text-xl {
+    background-color: rgba(50, 50, 50, 0.8);
 }
