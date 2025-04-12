@@ -1147,6 +1147,66 @@
                     );
                 };
 
+                // Add to your App component's state
+                const [themeSettings, setThemeSettings] = React.useState({
+                    backgroundColor: '#ffffff',
+                    cardColor: '#f8f8f8',
+                    primaryTextColor: '#000000',
+                    secondaryTextColor: '#333333'
+                });
+                
+                // Add to the useEffect that processes sensor data
+                if (data.attributes?.theme_settings) {
+                    setThemeSettings(data.attributes.theme_settings);
+                }
+                
+                // Apply theme to document root
+                React.useEffect(() => {
+                    // Apply custom theme variables to root element
+                    const root = document.documentElement;
+                    root.style.setProperty('--theme-background', themeSettings.backgroundColor);
+                    root.style.setProperty('--theme-card-color', themeSettings.cardColor);
+                    root.style.setProperty('--theme-primary-text', themeSettings.primaryTextColor);
+                    root.style.setProperty('--theme-secondary-text', themeSettings.secondaryTextColor);
+                }, [themeSettings]);
+                
+                // Add to handle the saving of theme settings
+                const handleSaveTheme = async (themeData) => {
+                    setLoading(true);
+                    try {
+                        const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/save_theme', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(themeData)
+                        });
+                    
+                        if (!response.ok) {
+                            throw new Error(`Failed to save theme: ${await response.text()}`);
+                        }
+                    
+                        // Immediately update local state
+                        setThemeSettings(themeData);
+                        setShowUserManagement(false);
+                    } catch (err) {
+                        console.error('Error saving theme:', err);
+                        setError('Error saving theme settings: ' + err.message);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                
+                // Pass the theme settings to UserManagement when showing it
+                showUserManagement && React.createElement(window.choreComponents.UserManagement, {
+                    users: assignees,
+                    onClose: toggleUserManagement,
+                    onAddUser: addUser,
+                    onDeleteUser: deleteUser,
+                    onSaveTheme: handleSaveTheme,
+                    currentTheme: themeSettings
+                });
+
                 // Render when DOM is ready
                 ReactDOM.render(
                     React.createElement(App),
