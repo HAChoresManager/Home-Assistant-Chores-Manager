@@ -25,17 +25,15 @@ class ChoresDashboard extends HTMLElement {
           display: block;
           height: 100%;
           overflow: hidden;
-          background: transparent;
         }
         iframe {
           border: 0;
           width: 100%;
           height: 100%;
           display: block;
-          background: transparent;
         }
       </style>
-      <iframe src="/local/chores-dashboard/index.html?v=${timestamp}${authParam}" style="background: transparent;" allowtransparency="true"></iframe>
+      <iframe src="/local/chores-dashboard/index.html?v=${timestamp}${authParam}"></iframe>
     `;
   }
 }
