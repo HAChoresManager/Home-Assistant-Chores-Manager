@@ -25,13 +25,21 @@ window.choreUtils.availableIcons = {
 
 // Improved token retrieval with priority on config.json
 window.choreUtils.getAuthToken = function() {
-    // First check session storage (where auth-helper.js stored it)
+    // CHANGED: Check localStorage first (instead of sessionStorage)
+    const localToken = localStorage.getItem('chores_auth_token');
+    if (localToken) {
+        return localToken;
+    }
+    
+    // Fallback to sessionStorage if localStorage is empty
     const sessionToken = sessionStorage.getItem('chores_auth_token');
     if (sessionToken) {
+        // Move to localStorage for persistence
+        localStorage.setItem('chores_auth_token', sessionToken);
         return sessionToken;
     }
     
-    // If no token in session storage, try to load from config.json synchronously
+    // If no token in storage, try to load from config.json synchronously
     try {
         const xhr = new XMLHttpRequest();
         xhr.open('GET', '/local/chores-dashboard/config.json?nocache=' + Date.now(), false);  // false = synchronous
@@ -40,7 +48,8 @@ window.choreUtils.getAuthToken = function() {
         if (xhr.status === 200) {
             const config = JSON.parse(xhr.responseText);
             if (config && config.api_token) {
-                sessionStorage.setItem('chores_auth_token', config.api_token);
+                // CHANGED: Store in localStorage
+                localStorage.setItem('chores_auth_token', config.api_token);
                 return config.api_token;
             }
         }
@@ -53,7 +62,8 @@ window.choreUtils.getAuthToken = function() {
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('auth');
         if (token) {
-            sessionStorage.setItem('chores_auth_token', token);
+            // CHANGED: Store in localStorage
+            localStorage.setItem('chores_auth_token', token);
             return token;
         }
     } catch (e) {
@@ -63,7 +73,7 @@ window.choreUtils.getAuthToken = function() {
     return null;
 };
 
-// Improved fetch with auth
+// Improved fetch with auth and exponential backoff
 window.choreUtils.fetchWithAuth = async function(url, options = {}) {
     // Get auth token
     const token = window.choreUtils.getAuthToken();
@@ -89,35 +99,116 @@ window.choreUtils.fetchWithAuth = async function(url, options = {}) {
         console.warn('No auth token available for API request');
     }
     
-    try {
-        // Use credentials to maintain session cookies too
-        fetchOptions.credentials = 'same-origin';
-        const response = await fetch(url, fetchOptions);
-        
-        if (response.status === 401) {
-            // Try to refresh token on auth failure
-            console.warn('Authentication failed, attempting to refresh token...');
-            sessionStorage.removeItem('chores_auth_token');
-            const newToken = window.choreUtils.getAuthToken();
+    // ADDED: Retry mechanism with exponential backoff
+    let retries = 0;
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 second initial delay
+    
+    while (retries <= maxRetries) {
+        try {
+            // Use credentials to maintain session cookies too
+            fetchOptions.credentials = 'same-origin';
+            const response = await fetch(url, fetchOptions);
             
-            if (newToken && newToken !== token) {
-                // Retry with new token
-                const retryOptions = {
-                    ...fetchOptions,
-                    headers: {
-                        ...fetchOptions.headers,
-                        'Authorization': `Bearer ${newToken}`
+            if (response.status === 401) {
+                // IMPROVED: Handle auth failures
+                console.warn(`Authentication failed (attempt ${retries+1}/${maxRetries+1}), attempting to refresh token...`);
+                
+                if (retries === maxRetries) {
+                    // Last attempt - clear token and try a complete token refresh
+                    localStorage.removeItem('chores_auth_token');
+                    sessionStorage.removeItem('chores_auth_token');
+                    
+                    // Try to reload the page to force a complete refresh
+                    const shouldReload = confirm("Authentication has failed. Would you like to reload the page to try again?");
+                    if (shouldReload) {
+                        window.location.reload(true);
+                        return new Response(JSON.stringify({error: "Authentication failed"}), {
+                            status: 401,
+                            headers: {'Content-Type': 'application/json'}
+                        });
                     }
-                };
-                return fetch(url, retryOptions);
+                }
+                
+                // Try to get a fresh token
+                const newToken = await window.choreUtils.refreshToken();
+                
+                if (newToken && newToken !== token) {
+                    // Retry with new token
+                    const retryOptions = {
+                        ...fetchOptions,
+                        headers: {
+                            ...fetchOptions.headers,
+                            'Authorization': `Bearer ${newToken}`
+                        }
+                    };
+                    retries++;
+                    
+                    // Exponential backoff
+                    const delay = baseDelay * Math.pow(2, retries - 1);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue; // Try again with new token
+                }
+            }
+            
+            return response;
+        } catch (e) {
+            console.error(`Fetch error (attempt ${retries+1}/${maxRetries+1}):`, e);
+            
+            if (retries === maxRetries) {
+                throw e; // Give up after max retries
+            }
+            
+            retries++;
+            // Exponential backoff
+            const delay = baseDelay * Math.pow(2, retries - 1);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+};
+
+// ADDED: Token refresh function
+window.choreUtils.refreshToken = async function() {
+    // Clear current token
+    const currentToken = localStorage.getItem('chores_auth_token');
+    localStorage.removeItem('chores_auth_token');
+    
+    // First try config.json
+    try {
+        const response = await fetch('/local/chores-dashboard/config.json?nocache=' + Date.now(), {
+            cache: 'no-store'
+        });
+        
+        if (response.ok) {
+            const config = await response.json();
+            if (config && config.api_token) {
+                const token = config.api_token;
+                localStorage.setItem('chores_auth_token', token);
+                console.log('Refreshed token from config.json');
+                return token;
             }
         }
-        
-        return response;
     } catch (e) {
-        console.error('Fetch error:', e);
-        throw e;
+        console.warn('Error refreshing token from config:', e);
     }
+    
+    // If that fails, try extracting from parent window
+    try {
+        if (window.parent && window.parent.hassConnection) {
+            const auth = window.parent.hassConnection.auth;
+            if (auth && auth.data && auth.data.access_token) {
+                const token = auth.data.access_token;
+                localStorage.setItem('chores_auth_token', token);
+                console.log('Refreshed token from parent window');
+                return token;
+            }
+        }
+    } catch (e) {
+        console.warn('Cannot refresh token from parent window:', e);
+    }
+    
+    // Last resort, return the original token
+    return currentToken;
 };
 
 window.choreUtils.isToday = function(dateString) {
@@ -329,6 +420,52 @@ window.choreUtils.formatTime = function(minutes) {
 // Force refresh to avoid caching problems
 window.choreUtils.forceRefresh = function() {
     window.location.reload(true);
+};
+
+// ADDED: Helper function to clear all tokens and force auth refresh
+window.choreUtils.resetAllTokens = function() {
+    localStorage.removeItem('chores_auth_token');
+    sessionStorage.removeItem('chores_auth_token');
+    console.log('All authentication tokens cleared');
+    return window.choreUtils.refreshToken();
+};
+
+// ADDED: Debug function to check token status
+window.choreUtils.checkTokenStatus = async function() {
+    const token = window.choreUtils.getAuthToken();
+    const tokenStatus = {
+        hasToken: !!token,
+        tokenSource: 'unknown',
+        tokenLength: token ? token.length : 0,
+        tokenFirstChars: token ? token.substring(0, 8) + '...' : 'none'
+    };
+    
+    if (localStorage.getItem('chores_auth_token')) {
+        tokenStatus.tokenSource = 'localStorage';
+    } else if (sessionStorage.getItem('chores_auth_token')) {
+        tokenStatus.tokenSource = 'sessionStorage';
+    }
+    
+    // Test the token
+    if (token) {
+        try {
+            const response = await fetch('/api/states', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            tokenStatus.isValid = response.ok;
+            tokenStatus.statusCode = response.status;
+        } catch (e) {
+            tokenStatus.isValid = false;
+            tokenStatus.error = e.message;
+        }
+    } else {
+        tokenStatus.isValid = false;
+    }
+    
+    console.table(tokenStatus);
+    return tokenStatus;
 };
 
 console.log('ChoreUtils initialized');
