@@ -2,7 +2,8 @@
 import sqlite3
 import logging
 import os
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,7 +39,13 @@ def init_database(database_path: str) -> None:
             startDay INTEGER DEFAULT 1,
             weekday INTEGER DEFAULT -1,
             monthday INTEGER DEFAULT -1,
-            notify_when_due BOOLEAN DEFAULT 0
+            notify_when_due BOOLEAN DEFAULT 0,
+            active_days TEXT DEFAULT NULL,
+            active_monthdays TEXT DEFAULT NULL,
+            has_subtasks BOOLEAN DEFAULT 0,
+            subtasks_completion_type TEXT DEFAULT 'all',
+            subtasks_streak_type TEXT DEFAULT 'period',
+            subtasks_period TEXT DEFAULT 'week'
         )
     ''')
 
@@ -69,6 +76,32 @@ def init_database(database_path: str) -> None:
             sent_at TIMESTAMP NOT NULL
         )
     ''')
+
+    # Create new tables for subtasks
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS subtasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chore_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (chore_id) REFERENCES chores(id) ON DELETE CASCADE
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS subtask_completions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subtask_id INTEGER NOT NULL,
+            done_by TEXT NOT NULL,
+            done_at TIMESTAMP NOT NULL,
+            FOREIGN KEY (subtask_id) REFERENCES subtasks(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Create indexes for better performance
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_subtasks_chore_id ON subtasks(chore_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_subtask_completions_subtask_id ON subtask_completions(subtask_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_subtask_completions_done_at ON subtask_completions(done_at)')
 
     # Set up default assignees if none exist
     cursor.execute("SELECT COUNT(*) FROM assignees")
@@ -105,7 +138,11 @@ def verify_database(database_path: str) -> bool:
 
 
 def add_chore_to_db(database_path: str, chore_data: dict) -> dict:
-    """Add or update a chore in the database."""
+    """Add or update a chore in the database, including subtasks."""
+    # Extract and handle subtasks separately
+    subtasks = chore_data.pop("subtasks", None)
+
+    # Main chore handling
     chore_id = chore_data.get("chore_id")
     if not chore_id:
         raise ValueError("Missing required chore_id")
@@ -113,15 +150,17 @@ def add_chore_to_db(database_path: str, chore_data: dict) -> dict:
     conn = sqlite3.connect(database_path)
     cursor = conn.cursor()
 
-    # Build field lists for dynamic query
-    fields = [key for key in chore_data.keys() if key != "chore_id"]
-    values = [chore_data[key] for key in fields]
-
     try:
-        # Convert boolean values for SQLite
-        for i, value in enumerate(values):
+        # Build field lists for dynamic query
+        fields = [key for key in chore_data.keys() if key != "chore_id"]
+        values = [chore_data[key] for key in fields]
+
+        # Convert boolean values for SQLite and JSON encode complex structures
+        for i, (key, value) in enumerate(zip(fields, values)):
             if isinstance(value, bool):
                 values[i] = 1 if value else 0
+            elif key in ["active_days", "active_monthdays"] and isinstance(value, dict):
+                values[i] = json.dumps(value)
 
         # Check if this is an update or a new entry
         cursor.execute("SELECT * FROM chores WHERE id = ?", (chore_id,))
@@ -155,9 +194,25 @@ def add_chore_to_db(database_path: str, chore_data: dict) -> dict:
             query = f"INSERT INTO chores (id, {', '.join(fields)}) VALUES (?, {', '.join(['?'] * len(fields))})"
             cursor.execute(query, [chore_id] + values)
 
+        # Handle subtasks if provided
+        if subtasks is not None:
+            # First delete existing subtasks for this chore
+            cursor.execute("DELETE FROM subtasks WHERE chore_id = ?", (chore_id,))
+
+            # Then add the new ones
+            for i, subtask in enumerate(subtasks):
+                if not subtask.get("name"):
+                    continue  # Skip empty subtasks
+
+                cursor.execute(
+                    "INSERT INTO subtasks (chore_id, name, position) VALUES (?, ?, ?)",
+                    (chore_id, subtask["name"], i)
+                )
+
         conn.commit()
         return {"success": True, "chore_id": chore_id}
     except Exception as e:
+        conn.rollback()
         _LOGGER.error("Error in add_chore_to_db: %s", e)
         raise
     finally:
@@ -201,9 +256,31 @@ def mark_chore_done(database_path: str, chore_id: str, person: str) -> dict:
             VALUES (?, ?, ?)
         ''', (chore_id, person, now))
 
+        # If has subtasks, check their completion status
+        cursor.execute(
+            "SELECT has_subtasks FROM chores WHERE id = ?",
+            (chore_id,)
+        )
+        has_subtasks = cursor.fetchone()[0]
+
+        if has_subtasks:
+            # Mark all subtasks as completed
+            cursor.execute(
+                "SELECT id FROM subtasks WHERE chore_id = ?",
+                (chore_id,)
+            )
+            subtask_ids = [row[0] for row in cursor.fetchall()]
+
+            for subtask_id in subtask_ids:
+                cursor.execute(
+                    "INSERT INTO subtask_completions (subtask_id, done_by, done_at) VALUES (?, ?, ?)",
+                    (subtask_id, person, now)
+                )
+
         conn.commit()
         return {"success": True, "chore_id": chore_id, "done_at": now, "done_by": person}
     except Exception as e:
+        conn.rollback()
         _LOGGER.error("Error in mark_chore_done: %s", e)
         raise
     finally:
@@ -223,6 +300,7 @@ def update_chore_description(database_path: str, chore_id: str, description: str
         conn.commit()
         return {"success": True, "chore_id": chore_id}
     except Exception as e:
+        conn.rollback()
         _LOGGER.error("Error in update_chore_description: %s", e)
         raise
     finally:
@@ -248,9 +326,32 @@ def reset_chore(database_path: str, chore_id: str) -> dict:
             WHERE id = ?
         ''', (chore_id,))
 
+        # Check if this chore has subtasks
+        cursor.execute(
+            "SELECT has_subtasks FROM chores WHERE id = ?",
+            (chore_id,)
+        )
+        has_subtasks = cursor.fetchone() and cursor.fetchone()[0]
+
+        if has_subtasks:
+            # Get all subtask IDs
+            cursor.execute(
+                "SELECT id FROM subtasks WHERE chore_id = ?",
+                (chore_id,)
+            )
+            subtask_ids = [row[0] for row in cursor.fetchall()]
+
+            # Delete subtask completions for today
+            for subtask_id in subtask_ids:
+                cursor.execute('''
+                    DELETE FROM subtask_completions
+                    WHERE subtask_id = ? AND date(done_at) = date('now')
+                ''', (subtask_id,))
+
         conn.commit()
         return {"success": True, "chore_id": chore_id}
     except Exception as e:
+        conn.rollback()
         _LOGGER.error("Error in reset_chore: %s", e)
         raise
     finally:
@@ -290,6 +391,7 @@ def add_user(database_path: str, user_data: dict) -> dict:
         conn.commit()
         return {"success": True, "user_id": user_id}
     except Exception as e:
+        conn.rollback()
         _LOGGER.error("Error in add_user: %s", e)
         raise
     finally:
@@ -331,6 +433,7 @@ def delete_user(database_path: str, user_id: str) -> dict:
         conn.commit()
         return {"success": True, "user_id": user_id}
     except Exception as e:
+        conn.rollback()
         _LOGGER.error("Error in delete_user: %s", e)
         raise
     finally:
@@ -374,6 +477,14 @@ def delete_chore(database_path: str, chore_id: str) -> dict:
 
         chore_name = chore[0]
 
+        # Delete all related subtasks and completions
+        cursor.execute("""
+            DELETE FROM subtask_completions
+            WHERE subtask_id IN (SELECT id FROM subtasks WHERE chore_id = ?)
+        """, (chore_id,))
+
+        cursor.execute("DELETE FROM subtasks WHERE chore_id = ?", (chore_id,))
+
         # Delete from chore_history
         cursor.execute("DELETE FROM chore_history WHERE chore_id = ?", (chore_id,))
 
@@ -386,6 +497,7 @@ def delete_chore(database_path: str, chore_id: str) -> dict:
         conn.commit()
         return {"success": True, "chore_id": chore_id, "name": chore_name}
     except Exception as e:
+        conn.rollback()
         _LOGGER.error("Error in delete_chore: %s", e)
         raise
     finally:
@@ -419,6 +531,8 @@ def force_chore_due(database_path: str, chore_id: str) -> dict:
             shift_days = 3  # Conservative estimate
         elif frequency_type == 'Maandelijks':
             shift_days = 30
+        elif frequency_type == 'Flexibel':
+            shift_days = 1  # Minimum for flexible tasks
         else:
             shift_days = frequency_days or 7
 
@@ -450,7 +564,254 @@ def force_chore_due(database_path: str, chore_id: str) -> dict:
             "has_auto_notify": bool(notify_when_due)
         }
     except Exception as e:
+        conn.rollback()
         _LOGGER.error("Error in force_chore_due: %s", e)
+        raise
+    finally:
+        conn.close()
+
+
+def complete_subtask(database_path: str, subtask_id: int, person: str) -> dict:
+    """Mark a subtask as completed."""
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(database_path)
+    cursor = conn.cursor()
+
+    try:
+        # Get the chore_id for this subtask
+        cursor.execute(
+            "SELECT chore_id FROM subtasks WHERE id = ?",
+            (subtask_id,)
+        )
+        result = cursor.fetchone()
+
+        if not result:
+            raise ValueError(f"Subtask with ID {subtask_id} not found")
+
+        chore_id = result[0]
+
+        # Record completion
+        cursor.execute(
+            "INSERT INTO subtask_completions (subtask_id, done_by, done_at) VALUES (?, ?, ?)",
+            (subtask_id, person, now)
+        )
+
+        # Get chore details for completion check
+        cursor.execute("""
+            SELECT subtasks_completion_type, subtasks_period
+            FROM chores
+            WHERE id = ?
+        """, (chore_id,))
+
+        comp_type, period = cursor.fetchone()
+
+        # Check if all required subtasks are now complete for this period
+        # This will determine if the main chore should be marked as complete
+        update_chore_completion_status(database_path, chore_id)
+
+        conn.commit()
+        return {
+            "success": True,
+            "subtask_id": subtask_id,
+            "chore_id": chore_id,
+            "done_at": now,
+            "done_by": person
+        }
+    except Exception as e:
+        conn.rollback()
+        _LOGGER.error("Error in complete_subtask: %s", e)
+        raise
+    finally:
+        conn.close()
+
+
+def add_subtask(database_path: str, chore_id: str, name: str, position: int = 0) -> dict:
+    """Add a subtask to a chore."""
+    conn = sqlite3.connect(database_path)
+    cursor = conn.cursor()
+
+    try:
+        # Check if chore exists
+        cursor.execute("SELECT id FROM chores WHERE id = ?", (chore_id,))
+        if not cursor.fetchone():
+            raise ValueError(f"Chore with ID {chore_id} not found")
+
+        # Add subtask
+        cursor.execute(
+            "INSERT INTO subtasks (chore_id, name, position) VALUES (?, ?, ?)",
+            (chore_id, name, position)
+        )
+
+        # Enable subtasks on the chore if not already
+        cursor.execute(
+            "UPDATE chores SET has_subtasks = 1 WHERE id = ?",
+            (chore_id,)
+        )
+
+        subtask_id = cursor.lastrowid
+        conn.commit()
+
+        return {
+            "success": True,
+            "subtask_id": subtask_id,
+            "chore_id": chore_id,
+            "name": name
+        }
+    except Exception as e:
+        conn.rollback()
+        _LOGGER.error("Error in add_subtask: %s", e)
+        raise
+    finally:
+        conn.close()
+
+
+def delete_subtask(database_path: str, subtask_id: int) -> dict:
+    """Delete a subtask."""
+    conn = sqlite3.connect(database_path)
+    cursor = conn.cursor()
+
+    try:
+        # Get chore_id before deletion
+        cursor.execute("SELECT chore_id, name FROM subtasks WHERE id = ?", (subtask_id,))
+        result = cursor.fetchone()
+
+        if not result:
+            raise ValueError(f"Subtask with ID {subtask_id} not found")
+
+        chore_id, subtask_name = result
+
+        # Delete any completions
+        cursor.execute("DELETE FROM subtask_completions WHERE subtask_id = ?", (subtask_id,))
+
+        # Delete the subtask
+        cursor.execute("DELETE FROM subtasks WHERE id = ?", (subtask_id,))
+
+        # Check if any subtasks remain for this chore
+        cursor.execute("SELECT COUNT(*) FROM subtasks WHERE chore_id = ?", (chore_id,))
+        remaining_count = cursor.fetchone()[0]
+
+        # If no subtasks remain, disable has_subtasks flag
+        if remaining_count == 0:
+            cursor.execute(
+                "UPDATE chores SET has_subtasks = 0 WHERE id = ?",
+                (chore_id,)
+            )
+
+        conn.commit()
+
+        return {
+            "success": True,
+            "subtask_id": subtask_id,
+            "chore_id": chore_id,
+            "name": subtask_name
+        }
+    except Exception as e:
+        conn.rollback()
+        _LOGGER.error("Error in delete_subtask: %s", e)
+        raise
+    finally:
+        conn.close()
+
+
+def update_chore_completion_status(database_path: str, chore_id: str) -> None:
+    """Update the chore completion status based on subtask completions."""
+    conn = sqlite3.connect(database_path)
+    cursor = conn.cursor()
+
+    try:
+        # Get chore details
+        cursor.execute("""
+            SELECT has_subtasks, subtasks_completion_type, subtasks_period
+            FROM chores
+            WHERE id = ?
+        """, (chore_id,))
+
+        result = cursor.fetchone()
+        if not result:
+            raise ValueError(f"Chore with ID {chore_id} not found")
+
+        has_subtasks, completion_type, period = result
+
+        if not has_subtasks:
+            return  # No subtasks, nothing to update
+
+        # Get all subtasks for this chore
+        cursor.execute("SELECT id FROM subtasks WHERE chore_id = ?", (chore_id,))
+        subtask_ids = [row[0] for row in cursor.fetchall()]
+
+        if not subtask_ids:
+            return  # No subtasks found
+
+        # Determine period start time
+        now = datetime.now()
+        if period == 'day':
+            period_start = datetime(now.year, now.month, now.day).isoformat()
+        elif period == 'week':
+            # Get start of week (Monday)
+            days_since_monday = now.weekday()
+            period_start = (now - timedelta(days=days_since_monday)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ).isoformat()
+        elif period == 'month':
+            period_start = datetime(now.year, now.month, 1).isoformat()
+        else:
+            # Default to today
+            period_start = datetime(now.year, now.month, now.day).isoformat()
+
+        # Count completed subtasks in this period
+        placeholders = ','.join(['?'] * len(subtask_ids))
+        cursor.execute(f"""
+            SELECT COUNT(DISTINCT subtask_id)
+            FROM subtask_completions
+            WHERE subtask_id IN ({placeholders})
+            AND done_at >= ?
+        """, subtask_ids + [period_start])
+
+        completed_count = cursor.fetchone()[0]
+
+        # Determine if the chore should be marked as complete
+        should_complete = False
+        if completion_type == 'all':
+            should_complete = completed_count == len(subtask_ids)
+        else:  # 'any'
+            should_complete = completed_count > 0
+
+        # Update chore completion status if all required subtasks are complete
+        if should_complete:
+            # Get the latest completion timestamp
+            cursor.execute(f"""
+                SELECT MAX(done_at), done_by
+                FROM subtask_completions
+                WHERE subtask_id IN ({placeholders})
+                AND done_at >= ?
+            """, subtask_ids + [period_start])
+
+            latest = cursor.fetchone()
+            if latest and latest[0]:
+                latest_done_at, latest_done_by = latest
+
+                # Only update if the current last_done is before this completion
+                cursor.execute(
+                    "SELECT last_done FROM chores WHERE id = ?",
+                    (chore_id,)
+                )
+                current_last_done = cursor.fetchone()[0]
+
+                if (not current_last_done or
+                    current_last_done < latest_done_at or
+                    datetime.fromisoformat(current_last_done.replace('Z', '+00:00') if current_last_done.endswith('Z') else current_last_done).date() <
+                   datetime.fromisoformat(latest_done_at.replace('Z', '+00:00') if latest_done_at.endswith('Z') else latest_done_at).date()):
+
+                    cursor.execute("""
+                        UPDATE chores
+                        SET last_done = ?, last_done_by = ?
+                        WHERE id = ?
+                    """, (latest_done_at, latest_done_by, chore_id))
+
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        _LOGGER.error("Error in update_chore_completion_status: %s", e)
         raise
     finally:
         conn.close()
