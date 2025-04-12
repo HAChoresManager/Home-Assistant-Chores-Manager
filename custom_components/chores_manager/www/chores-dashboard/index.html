@@ -6,7 +6,7 @@
     <title>Huishoudelijke Taken</title>
     <!-- Force cache refresh with timestamp -->
     <link rel="stylesheet" href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" type="text/css">
-    <link rel="stylesheet" href="css/styles.css?v=20250412" type="text/css">
+    <link rel="stylesheet" href="css/styles.css?v=20250412-update2" type="text/css">
     <style>
         /* Make processing state more visible */
         .task-processing {
@@ -82,6 +82,23 @@
             padding: 0.25rem 0.75rem;
             border-radius: 0.25rem;
         }
+        
+        /* Add for WeekDayPicker styling */
+        .week-day-picker .grid-cols-7 > div {
+            text-align: center;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+        }
+        
+        /* Add for MonthDayPicker styling */  
+        .month-day-picker .grid-cols-7 > div {
+            text-align: center;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            margin-bottom: 0.25rem;
+        }
     </style>
 </head>
 <body>
@@ -92,14 +109,15 @@
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
 
     <!-- Load auth-helper first to extract token before other scripts -->
-    <script src="js/auth-helper.js?v=20250412" type="text/javascript"></script>
+    <script src="js/auth-helper.js?v=20250412-update2" type="text/javascript"></script>
     <!-- Load our scripts with explicit type, timestamp and defer -->
-    <script src="js/utils.js?v=20250412" type="text/javascript"></script>
-    <script src="js/components.js?v=20250412" type="text/javascript"></script>
+    <script src="js/utils.js?v=20250412-update2" type="text/javascript"></script>
+    <script src="js/components.js?v=20250412-update2" type="text/javascript"></script>
+    <script src="js/theme-integration.js?v=20250412-update2" type="text/javascript"></script>
 
     <script type="text/javascript">
         // Add version info to global object
-        window.CHORES_APP_VERSION = "1.3.1-20250412";
+        window.CHORES_APP_VERSION = "1.3.2-20250412-update2";
         
         // ADDED: Auth error component
         const AuthErrorBanner = function({onRefresh}) {
@@ -362,7 +380,7 @@
                     const addChore = async (choreData) => {
                         setLoading(true);
                         try {
-                            console.log('Adding/updating chore');
+                            console.log('Adding/updating chore', choreData);
 
                             // Normalize the data for API
                             const normalizedData = {
@@ -388,6 +406,17 @@
                             // Handle quarterly and semi-annual start dates
                             if (choreData.startMonth !== undefined) normalizedData.startMonth = Number(choreData.startMonth);
                             if (choreData.startDay !== undefined) normalizedData.startDay = Number(choreData.startDay);
+
+                            // NEW: Handle special fields for day selections
+                            if (choreData.active_days) normalizedData.active_days = choreData.active_days;
+                            if (choreData.active_monthdays) normalizedData.active_monthdays = choreData.active_monthdays;
+                            
+                            // NEW: Handle subtasks
+                            if (choreData.has_subtasks !== undefined) normalizedData.has_subtasks = Boolean(choreData.has_subtasks);
+                            if (choreData.subtasks) normalizedData.subtasks = choreData.subtasks;
+                            if (choreData.subtasks_completion_type) normalizedData.subtasks_completion_type = choreData.subtasks_completion_type;
+                            if (choreData.subtasks_streak_type) normalizedData.subtasks_streak_type = choreData.subtasks_streak_type;
+                            if (choreData.subtasks_period) normalizedData.subtasks_period = choreData.subtasks_period;
 
                             // Handle special frequency values
                             if (normalizedData.frequency_type === "Meerdere keren per week") {
@@ -593,6 +622,61 @@
                             
                             setError(`Error completing task: ${err.message}`);
                             setSkipNextRefresh(false);
+                        }
+                    };
+
+                    // NEW: Function to mark a subtask as complete
+                    const markSubtaskDone = async (choreId, subtaskId, person) => {
+                        if (!choreId || !subtaskId) return;
+                        
+                        try {
+                            console.log(`Marking subtask ${subtaskId} for chore ${choreId} as done by ${person}`);
+                            
+                            // Make the API call
+                            const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/complete_subtask', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    subtask_id: subtaskId,
+                                    person: person
+                                })
+                            });
+                            
+                            if (!response.ok) {
+                                throw new Error(`API call failed: ${await response.text()}`);
+                            }
+                            
+                            // Update the UI optimistically
+                            setChores(prevChores => 
+                                prevChores.map(c => {
+                                    if (c.chore_id === choreId && c.subtasks) {
+                                        return {
+                                            ...c,
+                                            subtasks: c.subtasks.map(s => {
+                                                if (s.id === subtaskId) {
+                                                    return {
+                                                        ...s,
+                                                        completed: true
+                                                    };
+                                                }
+                                                return s;
+                                            })
+                                        };
+                                    }
+                                    return c;
+                                })
+                            );
+                            
+                            // Refresh after a short delay
+                            setTimeout(() => {
+                                fetchChores();
+                            }, 1000);
+                            
+                        } catch (err) {
+                            console.error('Error completing subtask:', err);
+                            setError(`Error completing subtask: ${err.message}`);
                         }
                     };
 
@@ -849,6 +933,7 @@
                     // Edit chore handler
                     const handleEdit = (chore) => {
                         setSelectedChore(chore);
+                        setShowForm(true);
                     };
 
                     // Show description handler
@@ -964,6 +1049,7 @@
                                             onEdit: handleEdit,
                                             onShowDescription: updateDescription,
                                             onToggleDescription: handleToggleDescription,
+                                            onMarkSubtaskDone: markSubtaskDone,
                                             assignees: assignees
                                         })
                                     )
@@ -1040,8 +1126,9 @@
                                         chore: chore,
                                         onMarkDone: markDone,
                                         onEdit: handleEdit,
-                                        onShowDescription: updateDescription,
+                                        onShowDescription: updateDescription, 
                                         onToggleDescription: handleToggleDescription,
+                                        onMarkSubtaskDone: markSubtaskDone,
                                         assignees: assignees
                                     })
                                 )
