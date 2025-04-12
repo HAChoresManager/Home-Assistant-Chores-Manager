@@ -1,11 +1,11 @@
 :root {
     --chores-primary-color: #03a9f4;
-    --chores-background: #f5f7f9;
+    --chores-background: #f9fafb;
     --chores-card-background: #ffffff;
-    --chores-primary-text: #212121;
-    --chores-secondary-text: #727272;
+    --chores-primary-text: #1f2937; /* Much darker text */
+    --chores-secondary-text: #4b5563; /* Darker secondary text */
     --chores-card-radius: 0.5rem;
-    --chores-box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --chores-box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     --chores-border-color: #e5e7eb;
     --chores-hover-color: #f3f4f6;
     --chores-accent-color: #3b82f6;
@@ -36,7 +36,7 @@ body {
 
 .task-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 .task-icon {
@@ -87,8 +87,8 @@ body {
     transform: translateX(-50%);
     background-color: var(--chores-background);
     padding: 0 1rem;
-    font-weight: 500;
-    color: var(--chores-secondary-text);
+    font-weight: 600;
+    color: var(--chores-primary-text);
 }
 
 .past-due {
@@ -188,7 +188,7 @@ body {
 /* Processing state for tasks */
 .task-processing {
     position: relative;
-    opacity: 0.7;
+    opacity: 0.8;
     border: 2px dashed #3b82f6;
     background-color: rgba(219, 234, 254, 0.7);
     animation: processingPulse 1.5s infinite ease-in-out;
@@ -202,35 +202,40 @@ body {
 
 /* Dark theme styles */
 .ha-dark-theme {
-    --chores-background: #1c1c1c;
+    --chores-background: #1e1e1e;
     --chores-card-background: #2d2d2d;
-    --chores-primary-text: #f0f0f0;
-    --chores-secondary-text: #a0a0a0;
+    --chores-primary-text: #e0e0e0; /* Brighter text for dark theme */
+    --chores-secondary-text: #b0b0b0; /* Brighter secondary text */
     --chores-border-color: #444444;
     --chores-hover-color: #3d3d3d;
 }
 
-.ha-dark-theme .bg-white,
-.ha-dark-theme .bg-gray-50,
-.ha-dark-theme .bg-gray-100 {
-    background-color: var(--chores-card-background) !important;
+/* Home Assistant green theme compatibility */
+.ha-theme-green {
+    --chores-background: #2a3e2f;
+    --chores-card-background: #344d3a;
+    --chores-primary-text: #e0e0e0;
+    --chores-secondary-text: #b8c7bd;
+    --chores-border-color: #3e5745;
+    --chores-hover-color: #405a48;
+    --chores-accent-color: #80bf95;
 }
 
-.ha-dark-theme .border-gray-300,
-.ha-dark-theme .border {
-    border-color: var(--chores-border-color) !important;
+/* Tailwind CSS overrides to ensure text is visible */
+.text-gray-400, .text-gray-500 {
+    color: var(--chores-secondary-text) !important;
 }
 
-.ha-dark-theme .text-gray-700,
-.ha-dark-theme .text-gray-800,
-.ha-dark-theme .text-black {
+.text-gray-600, .text-gray-700, .text-gray-800, .text-gray-900 {
     color: var(--chores-primary-text) !important;
 }
 
-.ha-dark-theme .text-gray-600,
-.ha-dark-theme .text-gray-500,
-.ha-dark-theme .text-gray-400 {
-    color: var(--chores-secondary-text) !important;
+.bg-white, .bg-gray-50, .bg-gray-100, .bg-blue-50 {
+    background-color: var(--chores-card-background) !important;
+}
+
+.border-gray-200, .border-gray-300 {
+    border-color: var(--chores-border-color) !important;
 }
 
 /* Optimistic update indicator */
@@ -285,6 +290,7 @@ body {
     padding: 0.5rem;
     border-radius: 0.25rem;
     background-color: var(--chores-hover-color);
+    color: var(--chores-primary-text);
 }
 
 .month-day-picker .grid-cols-7 > div {
@@ -294,6 +300,7 @@ body {
     border-radius: 0.25rem;
     margin-bottom: 0.25rem;
     background-color: var(--chores-hover-color);
+    color: var(--chores-primary-text);
 }
 
 /* Subtask styles */
@@ -308,6 +315,7 @@ body {
     align-items: center;
     padding: 0.25rem 0;
     margin-bottom: 0.25rem;
+    color: var(--chores-primary-text);
 }
 
 .subtask-item.completed {
@@ -315,29 +323,68 @@ body {
     color: var(--chores-secondary-text);
 }
 
-/* Stats cards */
-.bg-white, .bg-gray-50, .bg-gray-100, .bg-blue-50 {
-    background-color: var(--chores-card-background) !important;
+/* Headers and text */
+h2, h3, p, span, div, label, button {
+    color: var(--chores-primary-text);
+    text-shadow: none !important; /* Remove any text shadow */
 }
 
-/* Button styling */
-button {
-    background-color: var(--chores-card-background);
-}
-
-/* Headers */
-h2.text-xl, h3.text-lg {
+/* Bold/emphasized text */
+h2.text-xl, h3.text-lg, .font-medium, .font-semibold, .font-bold {
     font-weight: 600;
     color: var(--chores-primary-text);
 }
 
-/* Home Assistant green theme compatibility */
-.ha-theme-green {
-    --chores-background: #2a3e2f;
-    --chores-card-background: #344d3a;
-    --chores-primary-text: #f0f0f0;
-    --chores-secondary-text: #b8c7bd;
-    --chores-border-color: #3e5745;
-    --chores-hover-color: #405a48;
-    --chores-accent-color: #629e73;
+/* Create New Task button (dashed border) */
+.border-2.border-dashed {
+    border-color: var(--chores-border-color);
+    background-color: var(--chores-card-background);
+    color: var(--chores-primary-text);
+}
+
+/* Task form inputs */
+input, select, textarea {
+    background-color: var(--chores-card-background);
+    color: var(--chores-primary-text);
+    border-color: var(--chores-border-color);
+}
+
+/* Achterstallig label */
+.text-red-500, .text-red-600, .text-red-700 {
+    color: #ef4444 !important;
+}
+
+/* Form sections */
+.p-3.mt-2.bg-gray-50, .p-4.bg-blue-50 {
+    background-color: var(--chores-hover-color) !important;
+    border-color: var(--chores-border-color) !important;
+}
+
+/* Modal positioning */
+.modal-container {
+    align-items: flex-start;
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+/* Buttons */
+button.bg-blue-600, button.bg-blue-500 {
+    background-color: #3b82f6 !important;
+    color: white !important;
+}
+
+button.bg-red-600 {
+    background-color: #ef4444 !important;
+    color: white !important;
+}
+
+button.bg-gray-100, button.bg-gray-200 {
+    background-color: var(--chores-hover-color) !important;
+    color: var(--chores-primary-text) !important;
+}
+
+/* Ensure all input labels are visible */
+label.text-sm {
+    color: var(--chores-primary-text) !important;
+    font-weight: 500;
 }
