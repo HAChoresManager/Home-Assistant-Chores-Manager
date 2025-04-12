@@ -89,53 +89,54 @@
         };
 
         // User Management Component
-        const UserManagement = function({ users, onClose, onAddUser, onDeleteUser }) {
+        const UserManagement = function({ users, onClose, onAddUser, onDeleteUser, onSaveTheme, currentTheme = {} }) {
             const [newUser, setNewUser] = React.useState({ name: '', color: '#CCCCCC' });
             const [showConfirmDelete, setShowConfirmDelete] = React.useState(false);
             const [userToDelete, setUserToDelete] = React.useState(null);
             const [editMode, setEditMode] = React.useState(false);
             const [editingUser, setEditingUser] = React.useState(null);
-            
+            const [activeTab, setActiveTab] = React.useState('users'); // 'users' or 'theme'
+        
             const handleSubmit = (e) => {
                 e.preventDefault();
                 if (!newUser.name.trim()) return;
-                
+        
                 const userId = newUser.name.toLowerCase().replace(/\s+/g, '_');
-                
+        
                 onAddUser({
                     id: userId,
                     name: newUser.name.trim(),
                     color: newUser.color,
                     active: true
                 });
-                
+        
                 setNewUser({ name: '', color: '#CCCCCC' });
             };
-            
+        
             const handleEditClick = (user) => {
                 setEditMode(true);
                 setEditingUser({...user});
             };
-            
+        
             const handleSaveEdit = () => {
                 if (!editingUser || !editingUser.name.trim()) return;
-                
+        
                 onAddUser({
                     id: editingUser.id,
                     name: editingUser.name.trim(),
                     color: editingUser.color,
                     active: true
                 });
-                
+        
                 setEditMode(false);
                 setEditingUser(null);
             };
-            
+        
             const handleDeleteClick = (user) => {
                 setUserToDelete(user);
                 setShowConfirmDelete(true);
             };
-            
+        
             const confirmDelete = () => {
                 if (userToDelete) {
                     onDeleteUser(userToDelete.id);
@@ -143,143 +144,159 @@
                 setShowConfirmDelete(false);
                 setUserToDelete(null);
             };
-            
+        
             const isDefaultUser = (name) => {
                 return ["Laura", "Martijn", "Samen"].includes(name);
             };
-            
-            return React.createElement('div', 
+        
+            return React.createElement('div',
                 { className: "modal-container" },
                 React.createElement('div',
                     { className: "bg-white p-6 rounded-lg shadow-lg max-w-lg w-full mx-auto" },
-                    
-                    // Header
+        
+                    // Header with tabs
                     React.createElement('div', { className: "flex justify-between items-center mb-4" },
-                        React.createElement('h2', { className: "text-xl font-bold" }, "Gebruikers beheren"),
+                        React.createElement('div', { className: "flex space-x-4 user-tabs" },
+                            React.createElement('button', {
+                                className: `user-tab ${activeTab === 'users' ? 'active' : ''}`,
+                                onClick: () => setActiveTab('users')
+                            }, "Gebruikers"),
+                            React.createElement('button', {
+                                className: `user-tab ${activeTab === 'theme' ? 'active' : ''}`,
+                                onClick: () => setActiveTab('theme')
+                            }, "Thema")
+                        ),
                         React.createElement('button', {
                             onClick: onClose,
                             className: "text-gray-400 hover:text-gray-600"
                         }, "✕")
                     ),
-                    
-                    // Current users list or Edit form
-                    editMode && editingUser ? 
-                        // Edit user form
-                        React.createElement('div', { className: "mb-6" },
-                            React.createElement('h3', { className: "text-lg font-medium mb-2" }, 
-                                "Bewerk gebruiker: " + editingUser.name
-                            ),
-                            React.createElement('form', { className: "space-y-4" },
-                                React.createElement('div', null,
-                                    React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Naam"),
-                                    React.createElement('input', {
-                                        type: "text",
-                                        className: "w-full p-2 border rounded",
-                                        value: editingUser.name,
-                                        onChange: (e) => setEditingUser({...editingUser, name: e.target.value}),
-                                        disabled: isDefaultUser(editingUser.name),
-                                        required: true
-                                    }),
-                                    isDefaultUser(editingUser.name) && 
-                                        React.createElement('p', { className: "text-xs text-gray-500 mt-1" },
-                                            "Standaard gebruikers kunnen niet hernoemd worden"
-                                        )
-                                ),
-                                React.createElement('div', null,
-                                    React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Kleur"),
-                                    React.createElement('input', {
-                                        type: "color",
-                                        className: "p-1 border rounded w-20 h-10",
-                                        value: editingUser.color,
-                                        onChange: (e) => setEditingUser({...editingUser, color: e.target.value})
-                                    })
-                                ),
-                                React.createElement('div', { className: "flex justify-end space-x-2" },
-                                    React.createElement('button', {
-                                        type: "button",
-                                        onClick: () => {
-                                            setEditMode(false);
-                                            setEditingUser(null);
-                                        },
-                                        className: "px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                                    }, "Annuleren"),
-                                    React.createElement('button', {
-                                        type: "button",
-                                        onClick: handleSaveEdit,
-                                        className: "px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600"
-                                    }, "Opslaan")
-                                )
-                            )
-                        )
-                        :
-                        // Users list
-                        React.createElement('div', { className: "mb-6" },
-                            React.createElement('h3', { className: "text-lg font-medium mb-2" }, "Huidige gebruikers"),
-                            React.createElement('div', { className: "border rounded divide-y" },
-                                users.map(user => 
-                                    React.createElement('div', {
-                                        key: user.id || user.name,
-                                        className: "flex items-center justify-between p-3"
-                                    },
-                                        React.createElement('div', { className: "flex items-center" },
-                                            React.createElement('div', {
-                                                className: "w-4 h-4 rounded-full mr-3",
-                                                style: { backgroundColor: user.color }
+        
+                    // Conditional content based on active tab
+                    activeTab === 'users' ?
+                        // Users tab content
+                        React.createElement('div', null,
+                            editMode && editingUser ?
+                                // Edit user form
+                                React.createElement('div', { className: "mb-6" },
+                                    React.createElement('h3', { className: "text-lg font-medium mb-2" },
+                                        "Bewerk gebruiker: " + editingUser.name
+                                    ),
+                                    React.createElement('form', { className: "space-y-4" },
+                                        React.createElement('div', null,
+                                            React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Naam"),
+                                            React.createElement('input', {
+                                                type: "text",
+                                                className: "w-full p-2 border rounded",
+                                                value: editingUser.name,
+                                                onChange: (e) => setEditingUser({...editingUser, name: e.target.value}),
+                                                disabled: isDefaultUser(editingUser.name),
+                                                required: true
                                             }),
-                                            React.createElement('span', null, user.name)
+                                            isDefaultUser(editingUser.name) &&
+                                                React.createElement('p', { className: "text-xs text-gray-500 mt-1" },
+                                                    "Standaard gebruikers kunnen niet hernoemd worden"
+                                                )
                                         ),
-                                        React.createElement('div', { className: "flex space-x-2" },
+                                        React.createElement('div', null,
+                                            React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Kleur"),
+                                            React.createElement('input', {
+                                                type: "color",
+                                                className: "p-1 border rounded w-20 h-10",
+                                                value: editingUser.color,
+                                                onChange: (e) => setEditingUser({...editingUser, color: e.target.value})
+                                            })
+                                        ),
+                                        React.createElement('div', { className: "flex justify-end space-x-2" },
                                             React.createElement('button', {
-                                                onClick: () => handleEditClick(user),
-                                                className: "text-blue-500 hover:text-blue-700"
-                                            }, "Bewerken"),
+                                                type: "button",
+                                                onClick: () => {
+                                                    setEditMode(false);
+                                                    setEditingUser(null);
+                                                },
+                                                className: "px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                                            }, "Annuleren"),
                                             React.createElement('button', {
-                                                onClick: () => handleDeleteClick(user),
-                                                className: "text-red-500 hover:text-red-700",
-                                                disabled: isDefaultUser(user.name)
-                                            }, isDefaultUser(user.name) ? 
-                                                "Standaard" : "Verwijderen")
+                                                type: "button",
+                                                onClick: handleSaveEdit,
+                                                className: "px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                            }, "Opslaan")
                                         )
                                     )
                                 )
-                            )
-                        ),
-                    
-                    // Add new user form (only shown when not editing)
-                    !editMode && React.createElement('div', null,
-                        React.createElement('h3', { className: "text-lg font-medium mb-2" }, "Nieuwe gebruiker toevoegen"),
-                        React.createElement('form', { 
-                            onSubmit: handleSubmit,
-                            className: "space-y-4" 
-                        },
-                            React.createElement('div', null,
-                                React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Naam"),
-                                React.createElement('input', {
-                                    type: "text",
-                                    className: "w-full p-2 border rounded",
-                                    value: newUser.name,
-                                    onChange: (e) => setNewUser({...newUser, name: e.target.value}),
-                                    required: true
-                                })
-                            ),
-                            React.createElement('div', null,
-                                React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Kleur"),
-                                React.createElement('input', {
-                                    type: "color",
-                                    className: "p-1 border rounded w-20 h-10",
-                                    value: newUser.color,
-                                    onChange: (e) => setNewUser({...newUser, color: e.target.value})
-                                })
-                            ),
-                            React.createElement('div', { className: "flex justify-end" },
-                                React.createElement('button', {
-                                    type: "submit",
-                                    className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                                }, "Toevoegen")
-                            )
+                                :
+                                // Users list
+                                React.createElement('div', { className: "mb-6" },
+                                    React.createElement('h3', { className: "text-lg font-medium mb-2" }, "Huidige gebruikers"),
+                                    React.createElement('div', { className: "border rounded divide-y" },
+                                        users.map(user =>
+                                            React.createElement('div', {
+                                                key: user.id || user.name,
+                                                className: "flex items-center justify-between p-3"
+                                            },
+                                                React.createElement('div', { className: "flex items-center" },
+                                                    React.createElement('div', {
+                                                        className: "w-4 h-4 rounded-full mr-3",
+                                                        style: { backgroundColor: user.color }
+                                                    }),
+                                                    React.createElement('span', null, user.name)
+                                                ),
+                                                React.createElement('div', { className: "flex space-x-2" },
+                                                    React.createElement('button', {
+                                                        onClick: () => handleEditClick(user),
+                                                        className: "text-blue-500 hover:text-blue-700"
+                                                    }, "Bewerken"),
+                                                    React.createElement('button', {
+                                                        onClick: () => handleDeleteClick(user),
+                                                        className: "text-red-500 hover:text-red-700",
+                                                        disabled: isDefaultUser(user.name)
+                                                    }, isDefaultUser(user.name) ?
+                                                        "Standaard" : "Verwijderen")
+                                                )
+                                            )
+                                        )
+                                    ),
+        
+                                    React.createElement('h3', { className: "text-lg font-medium mb-2 mt-6" }, "Nieuwe gebruiker toevoegen"),
+                                    React.createElement('form', {
+                                        onSubmit: handleSubmit,
+                                        className: "space-y-4"
+                                    },
+                                        React.createElement('div', null,
+                                            React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Naam"),
+                                            React.createElement('input', {
+                                                type: "text",
+                                                className: "w-full p-2 border rounded",
+                                                value: newUser.name,
+                                                onChange: (e) => setNewUser({...newUser, name: e.target.value}),
+                                                required: true
+                                            })
+                                        ),
+                                        React.createElement('div', null,
+                                            React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Kleur"),
+                                            React.createElement('input', {
+                                                type: "color",
+                                                className: "p-1 border rounded w-20 h-10",
+                                                value: newUser.color,
+                                                onChange: (e) => setNewUser({...newUser, color: e.target.value})
+                                            })
+                                        ),
+                                        React.createElement('div', { className: "flex justify-end" },
+                                            React.createElement('button', {
+                                                type: "submit",
+                                                className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                            }, "Toevoegen")
+                                        )
+                                    )
+                                )
                         )
-                    ),
-                    
+                        :
+                        // Theme tab content
+                        React.createElement(ThemeSettings, {
+                            onSave: onSaveTheme,
+                            currentTheme: currentTheme
+                        }),
+        
                     // Confirmation dialog for deletion
                     showConfirmDelete && userToDelete && React.createElement(ConfirmDialog, {
                         isOpen: true,
@@ -293,7 +310,7 @@
                     })
                 )
             );
-        };
+        };;
 
         // Priority indicator component
         const PriorityIndicator = function({ priority, small = false }) {
@@ -1250,16 +1267,19 @@
 
         // Export the components to window object
         window.choreComponents = {
-            PriorityIndicator,
-            IconSelector,
-            TaskDescription,
-            TaskForm,
-            TaskCard,
-            StatsCard,
-            UserStatsCard,
-            ConfirmDialog,
-            CompletionConfirmDialog,
-            UserManagement
+          PriorityIndicator,
+          IconSelector,
+          TaskDescription,
+          TaskForm,
+          TaskCard,
+          StatsCard,
+          UserStatsCard,
+          ConfirmDialog,
+          CompletionConfirmDialog,
+          UserManagement,
+          WeekDayPicker,
+          MonthDayPicker,
+          ThemeSettings
         };
     }
 })();
