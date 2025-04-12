@@ -28,6 +28,7 @@ from .schemas import (
     FORCE_DUE_SCHEMA,
     DELETE_CHORE_SCHEMA
 )
+from .theme_service import save_theme_settings
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -219,6 +220,97 @@ async def async_register_services(hass: HomeAssistant, database_path: str) -> No
         except Exception as err:
             _LOGGER.error("Error deleting chore: %s", err)
             raise
+
+    async def handle_complete_subtask(call: ServiceCall) -> Dict[str, Any]:
+        """Handle completing a subtask."""
+        subtask_id = call.data.get(ATTR_SUBTASK_ID)
+        person = call.data.get(ATTR_PERSON)
+
+        if not subtask_id or not person:
+            raise ValueError("subtask_id and person are required")
+
+        try:
+            result = await hass.async_add_executor_job(
+                complete_subtask, database_path, subtask_id, person
+            )
+
+            # Also update the main chore completion status based on completion rules
+            chore_id = result.get("chore_id")
+            if chore_id:
+                await hass.async_add_executor_job(
+                    update_chore_completion_status, database_path, chore_id
+                )
+
+            async_dispatcher_send(hass, f"{DOMAIN}_updated")
+            return result
+        except Exception as err:
+            _LOGGER.error("Error completing subtask: %s", err)
+            raise
+
+    async def handle_add_subtask(call: ServiceCall) -> Dict[str, Any]:
+        """Handle adding a subtask to a chore."""
+        chore_id = call.data.get(ATTR_CHORE_ID)
+        name = call.data.get("name")
+        position = call.data.get("position", 0)
+
+        try:
+            result = await hass.async_add_executor_job(
+                add_subtask, database_path, chore_id, name, position
+            )
+            async_dispatcher_send(hass, f"{DOMAIN}_updated")
+            return result
+        except Exception as err:
+            _LOGGER.error("Error adding subtask: %s", err)
+            raise
+
+    async def handle_delete_subtask(call: ServiceCall) -> Dict[str, Any]:
+        """Handle deleting a subtask."""
+        subtask_id = call.data.get(ATTR_SUBTASK_ID)
+
+        try:
+            result = await hass.async_add_executor_job(
+                delete_subtask, database_path, subtask_id
+            )
+
+            # Update parent chore completion status after deletion
+            chore_id = result.get("chore_id")
+            if chore_id:
+                await hass.async_add_executor_job(
+                    update_chore_completion_status, database_path, chore_id
+                )
+
+            async_dispatcher_send(hass, f"{DOMAIN}_updated")
+            return result
+        except Exception as err:
+            _LOGGER.error("Error deleting subtask: %s", err)
+            raise
+
+    async def handle_save_theme(call: ServiceCall) -> Dict[str, Any]:
+        """Handle saving theme settings."""
+        theme_data = dict(call.data)
+
+        try:
+            result = await hass.async_add_executor_job(
+                save_theme_settings, database_path, theme_data
+            )
+            async_dispatcher_send(hass, f"{DOMAIN}_theme_updated")
+            return result
+        except Exception as err:
+            _LOGGER.error("Error saving theme settings: %s", err)
+            raise
+
+    # Register the theme service
+    hass.services.async_register(
+        DOMAIN,
+        "save_theme",
+        handle_save_theme,
+        schema=vol.Schema({
+            vol.Required("backgroundColor"): cv.string,
+            vol.Required("cardColor"): cv.string,
+            vol.Required("primaryTextColor"): cv.string,
+            vol.Required("secondaryTextColor"): cv.string,
+        })
+    )
 
     # Register all services
     hass.services.async_register(

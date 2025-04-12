@@ -1013,6 +1013,160 @@
             );
         };
 
+        // Theme Settings Component
+        const ThemeSettings = function({ onSave, currentTheme = {} }) {
+          const [theme, setTheme] = React.useState({
+              backgroundColor: currentTheme.backgroundColor || '#ffffff',
+              cardColor: currentTheme.cardColor || '#f8f8f8',
+              primaryTextColor: currentTheme.primaryTextColor || '#000000',
+              secondaryTextColor: currentTheme.secondaryTextColor || '#333333',
+              ...currentTheme
+          });
+          
+          const handleChange = (e) => {
+              const { name, value } = e.target;
+              setTheme({
+                  ...theme,
+                  [name]: value
+              });
+          };
+          
+          const handleSave = () => {
+              onSave(theme);
+          };
+          
+          const applyPreview = () => {
+              // Apply colors to the preview container
+              const previewStyle = {
+                  backgroundColor: theme.backgroundColor,
+                  padding: '1rem',
+                  borderRadius: '0.5rem',
+                  marginTop: '1rem'
+              };
+              
+              const cardStyle = {
+                  backgroundColor: theme.cardColor,
+                  color: theme.primaryTextColor,
+                  padding: '1rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid #e0e0e0'
+              };
+              
+              const secondaryTextStyle = {
+                  color: theme.secondaryTextColor,
+                  marginTop: '0.5rem'
+              };
+              
+              return React.createElement('div', { style: previewStyle, className: 'theme-preview' },
+                  React.createElement('h3', { style: { color: theme.primaryTextColor, marginBottom: '1rem' } }, "Thema Voorbeeld"),
+                  React.createElement('div', { style: cardStyle },
+                      React.createElement('h4', { style: { color: theme.primaryTextColor } }, "Voorbeeld Taakkaart"),
+                      React.createElement('p', { style: secondaryTextStyle }, "Dit is een voorbeeld van de secundaire tekst.")
+                  )
+              );
+          };
+          
+          return React.createElement('div', null,
+              React.createElement('h3', { className: "text-lg font-medium mb-4" }, "Thema Instellingen"),
+              
+              // Background color picker
+              React.createElement('div', { className: "mb-4" },
+                  React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Achtergrondkleur"),
+                  React.createElement('div', { className: "flex items-center" },
+                      React.createElement('input', {
+                          type: "color",
+                          name: "backgroundColor",
+                          value: theme.backgroundColor,
+                          onChange: handleChange,
+                          className: "w-10 h-10 mr-2"
+                      }),
+                      React.createElement('input', {
+                          type: "text",
+                          name: "backgroundColor",
+                          value: theme.backgroundColor,
+                          onChange: handleChange,
+                          className: "flex-1 p-2 border rounded"
+                      })
+                  )
+              ),
+              
+              // Card color picker
+              React.createElement('div', { className: "mb-4" },
+                  React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Kaartkleur"),
+                  React.createElement('div', { className: "flex items-center" },
+                      React.createElement('input', {
+                          type: "color",
+                          name: "cardColor",
+                          value: theme.cardColor,
+                          onChange: handleChange,
+                          className: "w-10 h-10 mr-2"
+                      }),
+                      React.createElement('input', {
+                          type: "text",
+                          name: "cardColor",
+                          value: theme.cardColor,
+                          onChange: handleChange,
+                          className: "flex-1 p-2 border rounded"
+                      })
+                  )
+              ),
+              
+              // Primary text color picker
+              React.createElement('div', { className: "mb-4" },
+                  React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Hoofdtekstkleur"),
+                  React.createElement('div', { className: "flex items-center" },
+                      React.createElement('input', {
+                          type: "color",
+                          name: "primaryTextColor",
+                          value: theme.primaryTextColor,
+                          onChange: handleChange,
+                          className: "w-10 h-10 mr-2"
+                      }),
+                      React.createElement('input', {
+                          type: "text",
+                          name: "primaryTextColor",
+                          value: theme.primaryTextColor,
+                          onChange: handleChange,
+                          className: "flex-1 p-2 border rounded"
+                      })
+                  )
+              ),
+              
+              // Secondary text color picker
+              React.createElement('div', { className: "mb-4" },
+                  React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Secundaire tekstkleur"),
+                  React.createElement('div', { className: "flex items-center" },
+                      React.createElement('input', {
+                          type: "color",
+                          name: "secondaryTextColor",
+                          value: theme.secondaryTextColor,
+                          onChange: handleChange,
+                          className: "w-10 h-10 mr-2"
+                      }),
+                      React.createElement('input', {
+                          type: "text",
+                          name: "secondaryTextColor",
+                          value: theme.secondaryTextColor,
+                          onChange: handleChange,
+                          className: "flex-1 p-2 border rounded"
+                      })
+                  )
+              ),
+              
+              // Preview section
+              applyPreview(),
+              
+              // Save button
+              React.createElement('div', { className: "mt-6 flex justify-end" },
+                  React.createElement('button', {
+                      type: "button",
+                      onClick: handleSave,
+                      className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  }, "Thema Opslaan")
+              )
+          );
+        };
+
         const UserStatsCard = function({ assignee, stats, assignees = [] }) {
             const bgColorClass = window.choreUtils.getBackgroundColor(assignee, assignees);
             const assigneeObj = assignees.find(a => a.name === assignee);

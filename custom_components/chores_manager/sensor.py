@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import generate_entity_id
 
 from . import DOMAIN
+from .theme_service import get_theme_settings
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -287,6 +288,12 @@ class ChoresOverviewSensor(SensorEntity):
                 raise
             finally:
                 conn.close()
+
+        try:
+            theme_settings = await self.hass.async_add_executor_job(get_theme_settings, self._database_path)
+            self._attrs['theme_settings'] = theme_settings
+        except Exception as e:
+            _LOGGER.error("Error loading theme settings: %s", e)
 
         try:
             tasks, stats, assignees, completed_tasks_count = await self.hass.async_add_executor_job(get_data)
