@@ -1,42 +1,38 @@
 :root {
+    /* Default fallback values */
     --chores-primary-color: #03a9f4;
-    --chores-background: #f9fafb;
-    --chores-card-background: #ffffff;
-    --chores-primary-text: #1f2937; /* Much darker text */
+    --chores-primary-background: #f5f7f9;
+    --chores-secondary-background: #ffffff;
+    --chores-primary-text: #1f2937; /* Darker text */
     --chores-secondary-text: #4b5563; /* Darker secondary text */
     --chores-card-radius: 0.5rem;
     --chores-box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    --chores-border-color: #e5e7eb;
-    --chores-hover-color: #f3f4f6;
-    --chores-accent-color: #3b82f6;
 }
 
 body { 
     margin: 0; 
     padding: 0;
-    background-color: var(--chores-background);
+    background-color: var(--chores-primary-background);
     color: var(--chores-primary-text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 #root { 
     min-height: 100vh;
     padding: 1rem;
-    background-color: var(--chores-background);
+    background-color: var(--chores-primary-background);
 }
 
 .task-card {
     transition: all 0.2s ease;
     cursor: pointer;
     border-radius: var(--chores-card-radius);
-    background-color: var(--chores-card-background);
-    border: 1px solid var(--chores-border-color);
-    box-shadow: var(--chores-box-shadow);
 }
 
 .task-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .task-icon {
@@ -61,22 +57,21 @@ body {
     text-align: center;
     border-radius: 0.25rem;
     cursor: pointer;
-    border: 1px solid var(--chores-border-color);
-    background-color: var(--chores-card-background);
+    border: 1px solid #e5e7eb;
 }
 
 .icon-option:hover {
-    background-color: var(--chores-hover-color);
+    background-color: #f3f4f6;
 }
 
 .icon-option.selected {
-    background-color: var(--chores-hover-color);
-    border-color: var(--chores-accent-color);
+    background-color: #e5e7eb;
+    border-color: #9ca3af;
 }
 
 .section-divider {
     margin: 1.5rem 0;
-    border-top: 1px solid var(--chores-border-color);
+    border-top: 1px solid #e5e7eb;
     position: relative;
 }
 
@@ -85,10 +80,10 @@ body {
     top: -12px;
     left: 50%;
     transform: translateX(-50%);
-    background-color: var(--chores-background);
+    background-color: var(--chores-primary-background);
     padding: 0 1rem;
-    font-weight: 600;
-    color: var(--chores-primary-text);
+    font-weight: 500;
+    color: var(--chores-primary-text); /* Changed to primary text color */
 }
 
 .past-due {
@@ -103,7 +98,7 @@ body {
     border-left-color: #f59e0b;
 }
 
-/* Modal styling */
+/* Mobile scrolling fix for modal */
 .modal-container {
     position: fixed;
     top: 0;
@@ -119,7 +114,7 @@ body {
 }
 
 .modal-content {
-    background-color: var(--chores-card-background);
+    background-color: var(--chores-secondary-background);
     color: var(--chores-primary-text);
     border-radius: var(--chores-card-radius);
     max-width: 28rem;
@@ -131,23 +126,23 @@ body {
     box-shadow: var(--chores-box-shadow);
 }
 
-/* Progress bar styles */
+/* Progress bar styles - UPDATED to fix overflow */
 .progress-container {
     width: 100%;
     height: 8px;
     background-color: #f3f4f6;
     border-radius: 4px;
     margin-top: 4px;
-    overflow: hidden;
+    overflow: hidden; /* Added to prevent overflow */
 }
 
 .progress-bar {
     height: 100%;
     border-radius: 4px;
-    max-width: 100%;
+    max-width: 100%; /* Added to prevent overflow */
 }
 
-/* Streak flame animation */
+/* Add pulse animation to the streak flame */
 @keyframes pulse {
     0% { transform: scale(1); }
     50% { transform: scale(1.1); }
@@ -169,7 +164,7 @@ body {
 }
 
 .task-description.expanded {
-    max-height: 500px;
+    max-height: 500px; /* Adjust as needed */
     opacity: 1;
     margin-top: 0.5rem;
 }
@@ -188,10 +183,11 @@ body {
 /* Processing state for tasks */
 .task-processing {
     position: relative;
-    opacity: 0.8;
+    opacity: 0.7;
     border: 2px dashed #3b82f6;
-    background-color: rgba(219, 234, 254, 0.7);
-    animation: processingPulse 1.5s infinite ease-in-out;
+    background-color: rgba(219, 234, 254, 0.7) !important;
+    animation: processingPulse 1.5s infinite ease-in-out !important;
+    overflow: hidden;
 }
 
 @keyframes processingPulse {
@@ -200,45 +196,20 @@ body {
     100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
 }
 
-/* Dark theme styles */
+@keyframes processingShimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+/* Dark theme overrides */
 .ha-dark-theme {
-    --chores-background: #1e1e1e;
-    --chores-card-background: #2d2d2d;
-    --chores-primary-text: #e0e0e0; /* Brighter text for dark theme */
-    --chores-secondary-text: #b0b0b0; /* Brighter secondary text */
-    --chores-border-color: #444444;
-    --chores-hover-color: #3d3d3d;
-}
-
-/* Home Assistant green theme compatibility */
-.ha-theme-green {
-    --chores-background: #2a3e2f;
-    --chores-card-background: #344d3a;
+    --chores-primary-background: #1c1c1c;
+    --chores-secondary-background: #2d2d2d;
     --chores-primary-text: #e0e0e0;
-    --chores-secondary-text: #b8c7bd;
-    --chores-border-color: #3e5745;
-    --chores-hover-color: #405a48;
-    --chores-accent-color: #80bf95;
+    --chores-secondary-text: #b0b0b0;
 }
 
-/* Tailwind CSS overrides to ensure text is visible */
-.text-gray-400, .text-gray-500 {
-    color: var(--chores-secondary-text) !important;
-}
-
-.text-gray-600, .text-gray-700, .text-gray-800, .text-gray-900 {
-    color: var(--chores-primary-text) !important;
-}
-
-.bg-white, .bg-gray-50, .bg-gray-100, .bg-blue-50 {
-    background-color: var(--chores-card-background) !important;
-}
-
-.border-gray-200, .border-gray-300 {
-    border-color: var(--chores-border-color) !important;
-}
-
-/* Optimistic update indicator */
+/* Add visual indicator for optimistic updates */
 .optimistic-update {
     position: relative;
 }
@@ -250,7 +221,7 @@ body {
     right: 2px;
     font-size: 18px;
     color: #10b981;
-    background-color: var(--chores-card-background);
+    background-color: white;
     width: 20px;
     height: 20px;
     border-radius: 50%;
@@ -258,6 +229,41 @@ body {
     align-items: center;
     justify-content: center;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Improved text contrast */
+h2.text-xl, h2.text-2xl, h3.text-lg, h3.text-xl {
+    color: var(--chores-primary-text) !important;
+    font-weight: 600 !important;
+    text-shadow: none !important;
+}
+
+/* Fix the text in the dashed border "new task" button */
+.border-2.border-dashed.border-gray-300 span.text-gray-700 {
+    color: var(--chores-primary-text) !important;
+}
+
+/* Apply consistent text colors throughout */
+.text-gray-400, .text-gray-500 {
+    color: var(--chores-secondary-text) !important;
+}
+
+.text-gray-600, .text-gray-700, .text-gray-800, .text-gray-900 {
+    color: var(--chores-primary-text) !important;
+}
+
+/* Modal consistency */
+.modal-content h2, .modal-content h3, .modal-content label {
+    color: var(--chores-primary-text) !important;
+    text-shadow: none !important;
+}
+
+/* User management window consistency */
+.user-management-modal h2, .user-management-modal h3, 
+.user-management-modal label, .user-management-modal span,
+.user-management-modal button {
+    color: var(--chores-primary-text) !important;
+    text-shadow: none !important;
 }
 
 /* Auth error banner */
@@ -271,7 +277,7 @@ body {
     padding: 0.75rem;
     text-align: center;
     z-index: 50;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .auth-error-banner button {
@@ -283,13 +289,12 @@ body {
     border-radius: 0.25rem;
 }
 
-/* Date picker styles */
+/* Week/Month day picker styles */
 .week-day-picker .grid-cols-7 > div {
     text-align: center;
     cursor: pointer;
     padding: 0.5rem;
     border-radius: 0.25rem;
-    background-color: var(--chores-hover-color);
     color: var(--chores-primary-text);
 }
 
@@ -299,92 +304,28 @@ body {
     padding: 0.5rem;
     border-radius: 0.25rem;
     margin-bottom: 0.25rem;
-    background-color: var(--chores-hover-color);
     color: var(--chores-primary-text);
 }
 
-/* Subtask styles */
-.subtasks-container {
-    margin-top: 0.5rem;
-    padding-left: 0.5rem;
-    border-left: 2px solid var(--chores-border-color);
+/* Ensure consistent text colors in forms */
+input, select, textarea {
+    color: var(--chores-primary-text) !important;
 }
 
+label {
+    color: var(--chores-primary-text) !important;
+}
+
+/* Subtask text color */
 .subtask-item {
-    display: flex;
-    align-items: center;
-    padding: 0.25rem 0;
-    margin-bottom: 0.25rem;
     color: var(--chores-primary-text);
 }
 
 .subtask-item.completed {
-    text-decoration: line-through;
     color: var(--chores-secondary-text);
 }
 
-/* Headers and text */
-h2, h3, p, span, div, label, button {
-    color: var(--chores-primary-text);
-    text-shadow: none !important; /* Remove any text shadow */
-}
-
-/* Bold/emphasized text */
-h2.text-xl, h3.text-lg, .font-medium, .font-semibold, .font-bold {
-    font-weight: 600;
-    color: var(--chores-primary-text);
-}
-
-/* Create New Task button (dashed border) */
-.border-2.border-dashed {
-    border-color: var(--chores-border-color);
-    background-color: var(--chores-card-background);
-    color: var(--chores-primary-text);
-}
-
-/* Task form inputs */
-input, select, textarea {
-    background-color: var(--chores-card-background);
-    color: var(--chores-primary-text);
-    border-color: var(--chores-border-color);
-}
-
-/* Achterstallig label */
-.text-red-500, .text-red-600, .text-red-700 {
-    color: #ef4444 !important;
-}
-
-/* Form sections */
-.p-3.mt-2.bg-gray-50, .p-4.bg-blue-50 {
-    background-color: var(--chores-hover-color) !important;
-    border-color: var(--chores-border-color) !important;
-}
-
-/* Modal positioning */
-.modal-container {
-    align-items: flex-start;
-    padding-top: 2rem;
-    padding-bottom: 2rem;
-}
-
-/* Buttons */
-button.bg-blue-600, button.bg-blue-500 {
-    background-color: #3b82f6 !important;
-    color: white !important;
-}
-
-button.bg-red-600 {
-    background-color: #ef4444 !important;
-    color: white !important;
-}
-
-button.bg-gray-100, button.bg-gray-200 {
-    background-color: var(--chores-hover-color) !important;
+/* Override for completion stats headers */
+.mx-auto .font-medium {
     color: var(--chores-primary-text) !important;
-}
-
-/* Ensure all input labels are visible */
-label.text-sm {
-    color: var(--chores-primary-text) !important;
-    font-weight: 500;
 }
