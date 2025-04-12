@@ -7,24 +7,27 @@
             if (window.parent && window.parent.document) {
                 // Get computed styles to extract theme variables
                 const styles = window.getComputedStyle(window.parent.document.body);
+                const backgroundColor = styles.getPropertyValue('background-color');
+                
+                // Detect if it's a green theme
+                const isGreenTheme = detectGreenTheme(backgroundColor);
                 
                 return {
                     // Primary colors
-                    primaryColor: styles.getPropertyValue('--primary-color').trim(),
-                    primaryBackground: styles.getPropertyValue('--primary-background-color').trim(),
-                    secondaryBackground: styles.getPropertyValue('--card-background-color').trim(),
+                    primaryColor: styles.getPropertyValue('--primary-color').trim() || '#03a9f4',
+                    backgroundColor: backgroundColor || '#f5f7f9',
                     
                     // Text colors
-                    primaryText: styles.getPropertyValue('--primary-text-color').trim(),
-                    secondaryText: styles.getPropertyValue('--secondary-text-color').trim(),
+                    primaryText: styles.getPropertyValue('--primary-text-color').trim() || '#212121',
+                    secondaryText: styles.getPropertyValue('--secondary-text-color').trim() || '#727272',
                     
                     // Card and UI styles
-                    cardBorderRadius: styles.getPropertyValue('--ha-card-border-radius') || '4px',
-                    boxShadow: styles.getPropertyValue('--ha-card-box-shadow') || 'none',
+                    cardBorderRadius: styles.getPropertyValue('--ha-card-border-radius') || '0.5rem',
+                    boxShadow: styles.getPropertyValue('--ha-card-box-shadow') || '0 2px 4px rgba(0, 0, 0, 0.1)',
                     
                     // Is this a dark theme?
-                    isDark: window.parent.document.body.classList.contains('themable') && 
-                           (window.parent.document.querySelector('html').getAttribute('data-theme') || '').includes('dark')
+                    isDark: detectDarkTheme(backgroundColor),
+                    isGreenTheme: isGreenTheme
                 };
             }
         } catch (e) {
@@ -34,14 +37,57 @@
         // Fallback to light theme
         return {
             primaryColor: '#03a9f4',
-            primaryBackground: '#f5f5f5',
-            secondaryBackground: '#ffffff',
+            backgroundColor: '#f5f7f9',
             primaryText: '#212121',
             secondaryText: '#727272',
-            cardBorderRadius: '4px',
-            boxShadow: '0 2px 2px 0 rgba(0,0,0,0.14)',
-            isDark: false
+            cardBorderRadius: '0.5rem',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+            isDark: false,
+            isGreenTheme: false
         };
+    }
+    
+    // Detect if a color is dark
+    function detectDarkTheme(backgroundColor) {
+        // Simple check for dark background
+        if (!backgroundColor) return false;
+        
+        // Parse RGB values from background color
+        const rgbMatch = backgroundColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/i);
+        if (rgbMatch) {
+            const r = parseInt(rgbMatch[1], 10);
+            const g = parseInt(rgbMatch[2], 10);
+            const b = parseInt(rgbMatch[3], 10);
+            
+            // Calculate perceived brightness (ITU-R BT.709)
+            const brightness = (0.2126 * r + 0.7152 * g + 0.0722 * b);
+            return brightness < 128;
+        }
+        
+        // Fallback for other formats - check if color name contains 'dark'
+        return backgroundColor.includes('dark') || 
+               backgroundColor === '#000' || 
+               backgroundColor === '#000000' ||
+               backgroundColor === 'black';
+    }
+    
+    // Detect if it's a green theme
+    function detectGreenTheme(backgroundColor) {
+        if (!backgroundColor) return false;
+        
+        // Parse RGB values
+        const rgbMatch = backgroundColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/i);
+        if (rgbMatch) {
+            const r = parseInt(rgbMatch[1], 10);
+            const g = parseInt(rgbMatch[2], 10);
+            const b = parseInt(rgbMatch[3], 10);
+            
+            // Check if green is the dominant component and it's a darker color
+            return g > r && g > b && g < 150;
+        }
+        
+        // Fallback - check if color includes green
+        return backgroundColor.includes('green') || backgroundColor.includes('forest');
     }
     
     // Apply theme to document
@@ -49,26 +95,16 @@
         const theme = getHAThemeVariables();
         const root = document.documentElement;
         
-        // Set CSS variables
-        root.style.setProperty('--chores-primary-color', theme.primaryColor);
-        root.style.setProperty('--chores-primary-background', theme.primaryBackground);
-        root.style.setProperty('--chores-secondary-background', theme.secondaryBackground);
-        root.style.setProperty('--chores-primary-text', theme.primaryText);
-        root.style.setProperty('--chores-secondary-text', theme.secondaryText);
-        root.style.setProperty('--chores-card-radius', theme.cardBorderRadius);
-        root.style.setProperty('--chores-box-shadow', theme.boxShadow);
-        
-        // Apply background to body
-        document.body.style.backgroundColor = theme.primaryBackground;
-        document.body.style.color = theme.primaryText;
-        
-        // Apply theme class to body
-        if (theme.isDark) {
+        // Apply appropriate theme class
+        if (theme.isGreenTheme) {
+            document.body.classList.add('ha-theme-green');
+            document.body.classList.remove('ha-dark-theme', 'ha-light-theme');
+        } else if (theme.isDark) {
             document.body.classList.add('ha-dark-theme');
-            document.body.classList.remove('ha-light-theme');
+            document.body.classList.remove('ha-light-theme', 'ha-theme-green');
         } else {
             document.body.classList.add('ha-light-theme');
-            document.body.classList.remove('ha-dark-theme');
+            document.body.classList.remove('ha-dark-theme', 'ha-theme-green');
         }
     }
     

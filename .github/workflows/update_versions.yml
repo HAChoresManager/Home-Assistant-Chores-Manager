@@ -8,7 +8,7 @@ on:
 
 jobs:
   update-versions:
-    # Only run if the PR was merged AND it's not a version update PR
+    # Only run if the PR was merged AND it's not a version update PR.
     if: |
       github.event.pull_request.merged == true && 
       !startsWith(github.event.pull_request.title, 'Update version numbers')
@@ -27,18 +27,8 @@ jobs:
         with:
           python-version: '3.10'
       
-      - name: Create new branch for version update
-        run: |
-          # Configure git
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Create a new branch for version updates
-          VERSION_BRANCH="version-update-$(date +%Y%m%d-%H%M%S)"
-          git checkout -b $VERSION_BRANCH
-          echo "VERSION_BRANCH=$VERSION_BRANCH" >> $GITHUB_ENV
-      
       - name: Update version numbers
+        id: update_version
         run: |
           # Create the Python script for version updating
           cat > update_versions.py << 'EOF'
@@ -137,6 +127,7 @@ jobs:
           
           # Check if updates were made
           if [ -f "version_updated.txt" ]; then
+            echo "VERSION_STRING=$(cat version_updated.txt | cut -d' ' -f3)" >> $GITHUB_ENV
             echo "changes=true" >> $GITHUB_OUTPUT
             cat version_updated.txt
             
@@ -151,34 +142,34 @@ jobs:
             echo "No changes were made to version numbers"
           fi
 
-      - name: Commit changes and push branch
-        id: commit
-        run: |
-          # Check if there are changes to commit
-          if git diff --name-only | grep -q .; then
-            echo "Making changes and pushing branch"
-            git add .
-            git commit -m "Update version numbers [skip ci]"
-            git push --set-upstream origin $VERSION_BRANCH
-            echo "changes=true" >> $GITHUB_OUTPUT
-          else
-            echo "No changes detected"
-            echo "changes=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Create Pull Request
-        if: steps.commit.outputs.changes == 'true'
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          title: "Update version numbers"
-          body: |
-            This PR updates version numbers in the application files for better cache busting.
+        if: steps.update_version.outputs.changes == 'true'
+        run: |
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Create a new branch
+          VERSION_BRANCH="version-update-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b $VERSION_BRANCH
+          
+          # Add and commit changes
+          git add .
+          git commit -m "Update version numbers to $VERSION_STRING [skip ci]"
+          
+          # Push to the remote repository
+          git push --set-upstream origin $VERSION_BRANCH
+          
+          # Create pull request using GitHub CLI
+          gh pr create \
+            --title "Update version numbers" \
+            --body "This PR updates version numbers in the application files for better cache busting.
             
-            - Updates CSS and JS version parameters
-            - Updates app version variable
+          - Updates CSS and JS version parameters to $VERSION_STRING
+          - Updates app version variable
             
-            This PR was automatically created after a successful merge to ensure all version numbers are up to date.
-          branch: ${{ env.VERSION_BRANCH }}
-          base: main
-          delete-branch: false
+          This PR was automatically created after a successful merge to ensure all version numbers are up to date." \
+            --base main \
+            --head $VERSION_BRANCH
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

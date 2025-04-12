@@ -7,7 +7,10 @@ from .const import (
     ATTR_FREQUENCY_TIMES, ATTR_ASSIGNED_TO, ATTR_PRIORITY, ATTR_DURATION,
     ATTR_PERSON, ATTR_ICON, ATTR_DESCRIPTION, ATTR_ALTERNATE_WITH,
     ATTR_USE_ALTERNATING, ATTR_START_MONTH, ATTR_START_DAY, ATTR_WEEKDAY,
-    ATTR_MONTHDAY, ATTR_USER_ID, ATTR_COLOR, ATTR_ACTIVE, DEFAULT_DB, DEFAULT_NOTIFICATION_TIME
+    ATTR_MONTHDAY, ATTR_USER_ID, ATTR_COLOR, ATTR_ACTIVE,
+    ATTR_ACTIVE_DAYS, ATTR_ACTIVE_MONTHDAYS, ATTR_HAS_SUBTASKS, ATTR_SUBTASKS,
+    ATTR_SUBTASKS_COMPLETION_TYPE, ATTR_SUBTASKS_STREAK_TYPE, ATTR_SUBTASKS_PERIOD,
+    DEFAULT_DB, DEFAULT_NOTIFICATION_TIME
 )
 
 CONFIG_SCHEMA = vol.Schema({
@@ -35,6 +38,17 @@ ADD_CHORE_SCHEMA = vol.Schema({
     vol.Optional(ATTR_WEEKDAY): vol.Coerce(int),      # For weekly tasks (0=Monday, 6=Sunday)
     vol.Optional(ATTR_MONTHDAY): vol.Coerce(int),     # For monthly tasks (1-31)
     vol.Optional("notify_when_due"): vol.Any(bool, vol.Coerce(bool)),  # Notification option
+
+    # New fields for active days and flexible
+    vol.Optional(ATTR_ACTIVE_DAYS): vol.Any(dict, str),  # Can be a dict or JSON string
+    vol.Optional(ATTR_ACTIVE_MONTHDAYS): vol.Any(dict, str),  # Can be a dict or JSON string
+
+    # Subtask fields
+    vol.Optional(ATTR_HAS_SUBTASKS): vol.Any(bool, vol.Coerce(bool)),
+    vol.Optional(ATTR_SUBTASKS): vol.Any(list, str),  # List of subtasks or JSON string
+    vol.Optional(ATTR_SUBTASKS_COMPLETION_TYPE): str,
+    vol.Optional(ATTR_SUBTASKS_STREAK_TYPE): str,
+    vol.Optional(ATTR_SUBTASKS_PERIOD): str,
 }, extra=vol.ALLOW_EXTRA)  # Allow any extra fields to pass through
 
 MARK_DONE_SCHEMA = vol.Schema({

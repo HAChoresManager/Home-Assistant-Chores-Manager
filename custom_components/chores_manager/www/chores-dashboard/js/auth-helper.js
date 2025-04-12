@@ -81,7 +81,8 @@
         const configToken = await getConfigToken();
         
         if (configToken) {
-            sessionStorage.setItem('chores_auth_token', configToken);
+            // CHANGED: Use localStorage instead of sessionStorage for persistence
+            localStorage.setItem('chores_auth_token', configToken);
             
             // Create a global event that other scripts can listen for
             const event = new CustomEvent('chores-auth-ready', { detail: { token: configToken } });
@@ -90,7 +91,8 @@
             // If config token fails, try other methods
             const token = extractHassToken();
             if (token) {
-                sessionStorage.setItem('chores_auth_token', token);
+                // CHANGED: Use localStorage instead of sessionStorage
+                localStorage.setItem('chores_auth_token', token);
                 console.log('Successfully retrieved Home Assistant auth token');
                 
                 // Create a global event

@@ -2,6 +2,7 @@
 import logging
 from datetime import datetime, timedelta
 import re
+import json
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
@@ -112,7 +113,10 @@ class ChoresOverviewSensor(SensorEntity):
                         COALESCE(startMonth, 0) as startMonth,
                         COALESCE(startDay, 1) as startDay,
                         COALESCE(weekday, -1) as weekday,
-                        COALESCE(monthday, -1) as monthday
+                        COALESCE(monthday, -1) as monthday,
+                        active_days, active_monthdays, has_subtasks,
+                        subtasks_completion_type, subtasks_streak_type, subtasks_period,
+                        notify_when_due
                     FROM chores
                 ''')
 
@@ -140,7 +144,14 @@ class ChoresOverviewSensor(SensorEntity):
                         'startMonth': row[15],
                         'startDay': row[16],
                         'weekday': row[17],
-                        'monthday': row[18]
+                        'monthday': row[18],
+                        'active_days': row[19],
+                        'active_monthdays': row[20],
+                        'has_subtasks': bool(row[21]),
+                        'subtasks_completion_type': row[22] or 'all',
+                        'subtasks_streak_type': row[23] or 'period',
+                        'subtasks_period': row[24] or 'week',
+                        'notify_when_due': bool(row[25])
                     }
 
                     all_tasks.append(task_data)
@@ -205,6 +216,79 @@ class ChoresOverviewSensor(SensorEntity):
 
                     # Track completed task IDs
                     completed_task_ids.add(chore_id)
+
+                # Get subtasks for any task that has them
+                for task in all_tasks:
+                    if task.get('has_subtasks'):
+                        cursor.execute("""
+                            SELECT s.id, s.name, s.position,
+                                (SELECT COUNT(*) FROM subtask_completions sc
+                                WHERE sc.subtask_id = s.id
+                                AND date(sc.done_at) = date('now')) > 0 as completed_today
+                            FROM subtasks s
+                            WHERE s.chore_id = ?
+                            ORDER BY s.position
+                        """, (task['chore_id'],))
+
+                        subtasks = []
+                        for row in cursor.fetchall():
+                            subtasks.append({
+                                'id': row[0],
+                                'name': row[1],
+                                'position': row[2],
+                                'completed': bool(row[3])
+                            })
+
+                        task['subtasks'] = subtasks
+
+                        # Get completion statistics for this period
+                        period = task.get('subtasks_period', 'week')
+                        if period == 'day':
+                            period_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                        elif period == 'week':
+                            days_since_monday = datetime.now().weekday()
+                            period_start = (datetime.now() - timedelta(days=days_since_monday)).replace(
+                                hour=0, minute=0, second=0, microsecond=0
+                            )
+                        elif period == 'month':
+                            period_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+                        # Count subtask completions in the current period
+                        if len(subtasks) > 0:
+                            subtask_ids = [s['id'] for s in subtasks]
+                            placeholders = ','.join(['?'] * len(subtask_ids))
+                            cursor.execute(f"""
+                                SELECT COUNT(DISTINCT sc.subtask_id)
+                                FROM subtask_completions sc
+                                JOIN subtasks s ON sc.subtask_id = s.id
+                                WHERE s.chore_id = ? AND sc.done_at >= ?
+                                AND sc.subtask_id IN ({placeholders})
+                            """, [task['chore_id'], period_start.isoformat()] + subtask_ids)
+
+                            completed_subtasks_count = cursor.fetchone()[0]
+                            task['subtasks_completed_count'] = completed_subtasks_count
+                            task['subtasks_total_count'] = len(subtasks)
+                        else:
+                            task['subtasks_completed_count'] = 0
+                            task['subtasks_total_count'] = 0
+                    else:
+                        task['subtasks'] = []
+                        task['subtasks_completed_count'] = 0
+                        task['subtasks_total_count'] = 0
+
+                    # Parse active_days JSON if it exists and is a string
+                    if task.get('active_days') and isinstance(task['active_days'], str):
+                        try:
+                            task['active_days'] = json.loads(task['active_days'])
+                        except json.JSONDecodeError:
+                            task['active_days'] = {}
+
+                    # Parse active_monthdays JSON if it exists and is a string
+                    if task.get('active_monthdays') and isinstance(task['active_monthdays'], str):
+                        try:
+                            task['active_monthdays'] = json.loads(task['active_monthdays'])
+                        except json.JSONDecodeError:
+                            task['active_monthdays'] = {}
 
                 # Calculate streaks
                 for assignee in list(stats.keys()):
@@ -340,7 +424,7 @@ class ChoresOverviewSensor(SensorEntity):
             return datetime.now()
 
     def calculate_next_due_date(self, chore):
-        """Calculate the next due date for a chore."""
+        """Calculate the next due date for a chore with enhanced frequency rules."""
         if not chore['last_done']:
             return datetime.now().date()
 
@@ -353,7 +437,63 @@ class ChoresOverviewSensor(SensorEntity):
         if frequency_type == 'Dagelijks':
             next_due = last_done + timedelta(days=1)
 
+            # Handle day exclusions if set
+            if chore.get('active_days'):
+                active_days = {}
+                # Convert from string if needed
+                if isinstance(chore['active_days'], str):
+                    try:
+                        active_days = json.loads(chore['active_days'])
+                    except:
+                        active_days = {}
+                else:
+                    active_days = chore['active_days']
+
+                # Keep advancing until we find an active day
+                while True:
+                    # Get day of week (0=Monday, 6=Sunday)
+                    day_of_week = next_due.weekday()
+                    day_names = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+                    day_name = day_names[day_of_week]
+
+                    # Check if this day is active (default to True if not specified)
+                    if active_days.get(day_name, True):
+                        break
+
+                    # If not active, advance to next day
+                    next_due = next_due + timedelta(days=1)
+
+        elif frequency_type == 'Flexibel':
+            # Get completion requirements
+            required = chore.get('frequency_times', 1)
+            period = chore.get('subtasks_period', 'week')
+
+            # Calculate period end date
+            if period == 'day':
+                period_end = last_done + timedelta(days=1)
+            elif period == 'week':
+                # End of week (Sunday)
+                days_to_sunday = 6 - last_done.weekday()
+                period_end = last_done + timedelta(days=days_to_sunday)
+            elif period == 'month':
+                # End of month
+                if last_done.month == 12:
+                    next_month = 1
+                    next_year = last_done.year + 1
+                else:
+                    next_month = last_done.month + 1
+                    next_year = last_done.year
+
+                # Last day of current month
+                from calendar import monthrange
+                days_in_current_month = monthrange(last_done.year, last_done.month)[1]
+                period_end = last_done.replace(day=days_in_current_month)
+
+            # Set next due date to period end
+            next_due = period_end
+
         elif frequency_type == 'Wekelijks':
+            # Standard weekly logic
             if chore['weekday'] is not None and chore['weekday'] >= 0:
                 # Use specified weekday (0=Monday, 6=Sunday)
                 target_weekday = int(chore['weekday'])
@@ -366,9 +506,48 @@ class ChoresOverviewSensor(SensorEntity):
                 next_due = last_done + timedelta(days=7)
 
         elif frequency_type == 'Meerdere keren per week':
-            # Divide week by frequency_times to get interval
-            interval = max(1, round(7 / chore['frequency_times']))
-            next_due = last_done + timedelta(days=interval)
+            # Check for active days
+            if chore.get('active_days'):
+                active_days = {}
+                # Convert from string if needed
+                if isinstance(chore['active_days'], str):
+                    try:
+                        active_days = json.loads(chore['active_days'])
+                    except:
+                        active_days = {}
+                else:
+                    active_days = chore['active_days']
+
+                # Get number of times required per week
+                times_per_week = chore.get('frequency_times', 3)
+
+                # Calculate days needed between completions based on active days count
+                active_days_count = sum(1 for v in active_days.values() if v)
+                if active_days_count > 0:
+                    days_between = max(1, min(7, 7 // times_per_week))
+                else:
+                    days_between = max(1, min(7, 7 // times_per_week))
+
+                # Start from the day after last_done
+                next_due = last_done + timedelta(days=1)
+
+                # Keep advancing until we find an active day
+                while True:
+                    # Get day of week (0=Monday, 6=Sunday)
+                    day_of_week = next_due.weekday()
+                    day_names = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+                    day_name = day_names[day_of_week]
+
+                    # Check if this day is active (default to True if not specified)
+                    if active_days.get(day_name, True):
+                        break
+
+                    # If not active, advance to next day
+                    next_due = next_due + timedelta(days=1)
+            else:
+                # Divide week by frequency_times to get interval
+                interval = max(1, round(7 / chore['frequency_times']))
+                next_due = last_done + timedelta(days=interval)
 
         elif frequency_type == 'Maandelijks':
             if chore['monthday'] is not None and chore['monthday'] > 0:
@@ -401,9 +580,52 @@ class ChoresOverviewSensor(SensorEntity):
                     next_due = datetime(last_done.year, next_month, day).date()
 
         elif frequency_type == 'Meerdere keren per maand':
-            # Divide month by frequency_times to get interval
-            interval = max(1, round(30 / chore['frequency_times']))
-            next_due = last_done + timedelta(days=interval)
+            # Check if there are active month days
+            if chore.get('active_monthdays'):
+                active_days = {}
+                # Convert from string if needed
+                if isinstance(chore['active_monthdays'], str):
+                    try:
+                        active_days = json.loads(chore['active_monthdays'])
+                    except:
+                        active_days = {}
+                else:
+                    active_days = chore['active_monthdays']
+
+                # Get number of times required per month
+                times_per_month = chore.get('frequency_times', 4)
+
+                # Calculate days needed between completions based on specified days
+                active_days_count = sum(1 for v in active_days.values() if v)
+                if active_days_count > 0:
+                    # Find the next active day after last_done
+                    found = False
+                    curr_date = last_done + timedelta(days=1)
+
+                    # Try days for up to a month (31 days)
+                    for _ in range(31):
+                        day_str = str(curr_date.day)
+                        if active_days.get(day_str, False):
+                            next_due = curr_date
+                            found = True
+                            break
+
+                        # Move to next day
+                        curr_date += timedelta(days=1)
+
+                    # If no active day was found, use standard calculation
+                    if not found:
+                        # Divide month by frequency_times to get interval
+                        interval = max(1, round(30 / times_per_month))
+                        next_due = last_done + timedelta(days=interval)
+                else:
+                    # Divide month by frequency_times to get interval
+                    interval = max(1, round(30 / times_per_month))
+                    next_due = last_done + timedelta(days=interval)
+            else:
+                # Divide month by frequency_times to get interval
+                interval = max(1, round(30 / chore['frequency_times']))
+                next_due = last_done + timedelta(days=interval)
 
         elif frequency_type == 'Per kwartaal':
             # Add 3 months

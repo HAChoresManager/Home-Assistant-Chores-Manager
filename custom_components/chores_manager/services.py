@@ -5,8 +5,10 @@ from typing import Dict, Any, List, Optional
 
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers import config_validation as cv
+import voluptuous as vol
 
-from .const import DOMAIN, ATTR_CHORE_ID, ATTR_PERSON, ATTR_DESCRIPTION
+from .const import DOMAIN, ATTR_CHORE_ID, ATTR_PERSON, ATTR_DESCRIPTION, ATTR_SUBTASK_ID
 from .database import (
     add_chore_to_db,
     mark_chore_done,
@@ -15,7 +17,12 @@ from .database import (
     add_user,
     delete_user,
     force_chore_due,
-    get_ha_user_id_for_assignee
+    get_ha_user_id_for_assignee,
+    delete_chore,
+    complete_subtask,
+    add_subtask,
+    delete_subtask,
+    update_chore_completion_status
 )
 from .utils import async_check_due_notifications, send_user_summary_notification
 from .schemas import (
@@ -31,6 +38,7 @@ from .schemas import (
 from .theme_service import save_theme_settings
 
 _LOGGER = logging.getLogger(__name__)
+
 
 async def async_register_services(hass: HomeAssistant, database_path: str) -> None:
     """Register services for chores manager."""
@@ -99,7 +107,7 @@ async def async_register_services(hass: HomeAssistant, database_path: str) -> No
     async def handle_add_user(call: ServiceCall) -> Dict[str, Any]:
         """Handle adding or updating a user."""
         user_data = dict(call.data)
-        
+
         try:
             result = await hass.async_add_executor_job(
                 add_user, database_path, user_data
@@ -373,4 +381,35 @@ async def async_register_services(hass: HomeAssistant, database_path: str) -> No
         "delete_chore",
         handle_delete_chore,
         schema=DELETE_CHORE_SCHEMA
+    )
+
+    # Register subtask services
+    hass.services.async_register(
+        DOMAIN,
+        "complete_subtask",
+        handle_complete_subtask,
+        schema=vol.Schema({
+            vol.Required(ATTR_SUBTASK_ID): vol.Coerce(int),
+            vol.Required(ATTR_PERSON): cv.string
+        })
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "add_subtask",
+        handle_add_subtask,
+        schema=vol.Schema({
+            vol.Required(ATTR_CHORE_ID): cv.string,
+            vol.Required("name"): cv.string,
+            vol.Optional("position", default=0): vol.Coerce(int)
+        })
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "delete_subtask",
+        handle_delete_subtask,
+        schema=vol.Schema({
+            vol.Required(ATTR_SUBTASK_ID): vol.Coerce(int)
+        })
     )
