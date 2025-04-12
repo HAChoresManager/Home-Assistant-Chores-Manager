@@ -6,98 +6,15 @@
     <title>Huishoudelijke Taken</title>
     <!-- Force cache refresh with timestamp -->
     <link rel="stylesheet" href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" type="text/css">
-    <link rel="stylesheet" href="css/styles.css?v=20250412-update2" type="text/css">
+    <link rel="stylesheet" href="css/styles.css?v=20250412-update3" type="text/css">
     <style>
-        /* Make processing state more visible */
-        .task-processing {
-            position: relative;
-            opacity: 0.7 !important;
-            border: 2px dashed #3b82f6 !important;
-            background-color: rgba(219, 234, 254, 0.7) !important;
-            animation: processingPulse 1.5s infinite ease-in-out !important;
-        }
-
-        @keyframes processingPulse {
-            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
-            50% { transform: scale(1.01); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
-            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-        }
-
-        /* Add visual indicator for optimistic updates */
-        .optimistic-update {
-            position: relative;
-        }
-
-        .optimistic-update::after {
-            content: "✓";
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            font-size: 18px;
-            color: #10b981;
-            background-color: white;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-        }
-
-        .task-card {
-            transition: all 0.5s ease-in-out !important;
-        }
-
-        /* Add completion animation */
-        @keyframes completionAnimation {
-            0% { transform: scale(1); background-color: rgba(74, 222, 128, 0.1); }
-            50% { transform: scale(1.03); background-color: rgba(74, 222, 128, 0.2); }
-            100% { transform: scale(1); background-color: rgba(74, 222, 128, 0); }
-        }
-
-        .completion-animation {
-            animation: completionAnimation 0.8s ease-out;
+        /* Ensure transparency */
+        html, body {
+            background: transparent !important;
         }
         
-        /* ADDED: Auth error banner */
-        .auth-error-banner {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            background-color: #ef4444;
-            color: white;
-            padding: 0.75rem;
-            text-align: center;
-            z-index: 50;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .auth-error-banner button {
-            margin-left: 1rem;
-            background: white;
-            color: #ef4444;
-            font-weight: bold;
-            padding: 0.25rem 0.75rem;
-            border-radius: 0.25rem;
-        }
-        
-        /* Add for WeekDayPicker styling */
-        .week-day-picker .grid-cols-7 > div {
-            text-align: center;
-            cursor: pointer;
-            padding: 0.5rem;
-            border-radius: 0.25rem;
-        }
-        
-        /* Add for MonthDayPicker styling */  
-        .month-day-picker .grid-cols-7 > div {
-            text-align: center;
-            cursor: pointer;
-            padding: 0.5rem;
-            border-radius: 0.25rem;
-            margin-bottom: 0.25rem;
+        #root {
+            background: transparent !important;
         }
     </style>
 </head>
@@ -109,15 +26,15 @@
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
 
     <!-- Load auth-helper first to extract token before other scripts -->
-    <script src="js/auth-helper.js?v=20250412-update2" type="text/javascript"></script>
+    <script src="js/auth-helper.js?v=20250412-update3" type="text/javascript"></script>
     <!-- Load our scripts with explicit type, timestamp and defer -->
-    <script src="js/utils.js?v=20250412-update2" type="text/javascript"></script>
-    <script src="js/components.js?v=20250412-update2" type="text/javascript"></script>
-    <script src="js/theme-integration.js?v=20250412-update2" type="text/javascript"></script>
+    <script src="js/utils.js?v=20250412-update3" type="text/javascript"></script>
+    <script src="js/components.js?v=20250412-update3" type="text/javascript"></script>
+    <script src="js/theme-integration.js?v=20250412-update3" type="text/javascript"></script>
 
     <script type="text/javascript">
         // Add version info to global object
-        window.CHORES_APP_VERSION = "1.3.2-20250412-update2";
+        window.CHORES_APP_VERSION = "1.3.2-20250412-update3";
         
         // ADDED: Auth error component
         const AuthErrorBanner = function({onRefresh}) {

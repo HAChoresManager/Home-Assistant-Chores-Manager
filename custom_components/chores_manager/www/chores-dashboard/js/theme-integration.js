@@ -11,7 +11,7 @@
                 return {
                     // Primary colors
                     primaryColor: styles.getPropertyValue('--primary-color').trim(),
-                    primaryBackground: styles.getPropertyValue('--primary-background-color').trim(),
+                    primaryBackground: 'transparent', // Always use transparent
                     secondaryBackground: styles.getPropertyValue('--card-background-color').trim(),
                     
                     // Text colors
@@ -31,10 +31,10 @@
             console.warn('Could not access Home Assistant theme variables:', e);
         }
         
-        // Fallback to light theme
+        // Fallback to light theme with transparent background
         return {
             primaryColor: '#03a9f4',
-            primaryBackground: '#f5f5f5',
+            primaryBackground: 'transparent',
             secondaryBackground: '#ffffff',
             primaryText: '#212121',
             secondaryText: '#727272',
@@ -51,15 +51,15 @@
         
         // Set CSS variables
         root.style.setProperty('--chores-primary-color', theme.primaryColor);
-        root.style.setProperty('--chores-primary-background', theme.primaryBackground);
+        root.style.setProperty('--chores-primary-background', 'transparent');
         root.style.setProperty('--chores-secondary-background', theme.secondaryBackground);
         root.style.setProperty('--chores-primary-text', theme.primaryText);
         root.style.setProperty('--chores-secondary-text', theme.secondaryText);
         root.style.setProperty('--chores-card-radius', theme.cardBorderRadius);
         root.style.setProperty('--chores-box-shadow', theme.boxShadow);
         
-        // Apply background to body
-        document.body.style.backgroundColor = theme.primaryBackground;
+        // Apply background to body - force transparency
+        document.body.style.backgroundColor = 'transparent';
         document.body.style.color = theme.primaryText;
         
         // Apply theme class to body

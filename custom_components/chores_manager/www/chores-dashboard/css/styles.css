@@ -1,7 +1,7 @@
 :root {
     /* Default fallback values */
     --chores-primary-color: #03a9f4;
-    --chores-primary-background: #f9fafb;
+    --chores-primary-background: transparent;
     --chores-secondary-background: #ffffff;
     --chores-primary-text: #212121;
     --chores-secondary-text: #727272;
@@ -12,7 +12,7 @@
 body { 
     margin: 0; 
     padding: 0;
-    background-color: var(--chores-primary-background);
+    background-color: transparent !important;
     color: var(--chores-primary-text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     transition: background-color 0.3s ease, color 0.3s ease;
@@ -21,6 +21,7 @@ body {
 #root { 
     min-height: 100vh;
     padding: 1rem;
+    background-color: transparent;
 }
 
 .task-card {
@@ -181,21 +182,18 @@ body {
 
 /* Processing state for tasks */
 .task-processing {
-    opacity: 0.6;
-    background-color: rgba(203, 213, 225, 0.3);
     position: relative;
+    opacity: 0.7 !important;
+    border: 2px dashed #3b82f6 !important;
+    background-color: rgba(219, 234, 254, 0.7) !important;
+    animation: processingPulse 1.5s infinite ease-in-out !important;
     overflow: hidden;
 }
 
-.task-processing::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-    animation: processingShimmer 1.5s infinite;
+@keyframes processingPulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+    50% { transform: scale(1.01); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
 }
 
 @keyframes processingShimmer {
@@ -273,17 +271,64 @@ body {
     animation: completionAnimation 0.8s ease-out;
 }
 
-/* Make processing state more visible */
-.task-processing {
-    position: relative;
-    opacity: 0.7 !important;
-    border: 2px dashed #3b82f6 !important;
-    background-color: rgba(219, 234, 254, 0.7) !important;
-    animation: processingPulse 1.5s infinite ease-in-out !important;
+/* Auth error banner */
+.auth-error-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background-color: #ef4444;
+    color: white;
+    padding: 0.75rem;
+    text-align: center;
+    z-index: 50;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-@keyframes processingPulse {
-    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
-    50% { transform: scale(1.01); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
-    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+.auth-error-banner button {
+    margin-left: 1rem;
+    background: white;
+    color: #ef4444;
+    font-weight: bold;
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.25rem;
+}
+
+/* Date picker styles */
+.week-day-picker .grid-cols-7 > div {
+    text-align: center;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+}
+
+.month-day-picker .grid-cols-7 > div {
+    text-align: center;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    margin-bottom: 0.25rem;
+}
+
+/* Subtask styles */
+.subtasks-container {
+    margin-top: 0.5rem;
+    padding-left: 0.5rem;
+    border-left: 2px solid #e5e7eb;
+}
+
+.subtask-item {
+    display: flex;
+    align-items: center;
+    padding: 0.25rem 0;
+    margin-bottom: 0.25rem;
+}
+
+.subtask-item.completed {
+    text-decoration: line-through;
+    color: #9ca3af;
+}
+
+html, body {
+    background: transparent !important;
 }
