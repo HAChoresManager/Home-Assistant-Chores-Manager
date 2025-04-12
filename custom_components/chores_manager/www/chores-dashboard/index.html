@@ -8,13 +8,30 @@
     <link rel="stylesheet" href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" type="text/css">
     <link rel="stylesheet" href="css/styles.css?v=20250412-update3" type="text/css">
     <style>
-        /* Ensure transparency */
+        /* Base styling for better readability */
         html, body {
-            background: transparent !important;
+            background-color: transparent !important;
         }
         
         #root {
-            background: transparent !important;
+            background-color: rgba(255, 255, 255, 0.85);
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
+        }
+        
+        /* Force better contrast */
+        .task-card, .bg-white, button {
+            background-color: white !important;
+        }
+        
+        /* Ensure text is readable */
+        h2, h3, p, span, div {
+            text-shadow: 0 0 4px rgba(255, 255, 255, 0.7);
+        }
+        
+        .ha-dark-theme h2, .ha-dark-theme h3, .ha-dark-theme p, 
+        .ha-dark-theme span, .ha-dark-theme div {
+            text-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
         }
     </style>
 </head>

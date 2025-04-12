@@ -11,12 +11,12 @@
                 return {
                     // Primary colors
                     primaryColor: styles.getPropertyValue('--primary-color').trim(),
-                    primaryBackground: 'transparent', // Always use transparent
-                    secondaryBackground: styles.getPropertyValue('--card-background-color').trim(),
+                    primaryBackground: styles.getPropertyValue('--primary-background-color').trim() || 'rgba(255, 255, 255, 0.9)',
+                    secondaryBackground: styles.getPropertyValue('--card-background-color').trim() || '#ffffff',
                     
                     // Text colors
-                    primaryText: styles.getPropertyValue('--primary-text-color').trim(),
-                    secondaryText: styles.getPropertyValue('--secondary-text-color').trim(),
+                    primaryText: styles.getPropertyValue('--primary-text-color').trim() || '#212121',
+                    secondaryText: styles.getPropertyValue('--secondary-text-color').trim() || '#727272',
                     
                     // Card and UI styles
                     cardBorderRadius: styles.getPropertyValue('--ha-card-border-radius') || '4px',
@@ -31,10 +31,10 @@
             console.warn('Could not access Home Assistant theme variables:', e);
         }
         
-        // Fallback to light theme with transparent background
+        // Fallback to light theme
         return {
             primaryColor: '#03a9f4',
-            primaryBackground: 'transparent',
+            primaryBackground: 'rgba(255, 255, 255, 0.9)',
             secondaryBackground: '#ffffff',
             primaryText: '#212121',
             secondaryText: '#727272',
@@ -51,14 +51,14 @@
         
         // Set CSS variables
         root.style.setProperty('--chores-primary-color', theme.primaryColor);
-        root.style.setProperty('--chores-primary-background', 'transparent');
-        root.style.setProperty('--chores-secondary-background', theme.secondaryBackground);
+        root.style.setProperty('--chores-primary-background', theme.isDark ? 'rgba(40, 40, 40, 0.9)' : 'rgba(255, 255, 255, 0.9)');
+        root.style.setProperty('--chores-secondary-background', theme.isDark ? 'rgba(50, 50, 50, 0.95)' : theme.secondaryBackground);
         root.style.setProperty('--chores-primary-text', theme.primaryText);
         root.style.setProperty('--chores-secondary-text', theme.secondaryText);
         root.style.setProperty('--chores-card-radius', theme.cardBorderRadius);
         root.style.setProperty('--chores-box-shadow', theme.boxShadow);
         
-        // Apply background to body - force transparency
+        // Apply background to body
         document.body.style.backgroundColor = 'transparent';
         document.body.style.color = theme.primaryText;
         
