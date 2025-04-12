@@ -5,8 +5,10 @@ from typing import Dict, Any, List, Optional
 
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers import config_validation as cv
+import voluptuous as vol
 
-from .const import DOMAIN, ATTR_CHORE_ID, ATTR_PERSON, ATTR_DESCRIPTION
+from .const import DOMAIN, ATTR_CHORE_ID, ATTR_PERSON, ATTR_DESCRIPTION, ATTR_SUBTASK_ID
 from .database import (
     add_chore_to_db,
     mark_chore_done,
@@ -15,7 +17,12 @@ from .database import (
     add_user,
     delete_user,
     force_chore_due,
-    get_ha_user_id_for_assignee
+    get_ha_user_id_for_assignee,
+    delete_chore,
+    complete_subtask,
+    add_subtask,
+    delete_subtask,
+    update_chore_completion_status
 )
 from .utils import async_check_due_notifications, send_user_summary_notification
 from .schemas import (
@@ -30,6 +37,7 @@ from .schemas import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
 
 async def async_register_services(hass: HomeAssistant, database_path: str) -> None:
     """Register services for chores manager."""
@@ -98,7 +106,7 @@ async def async_register_services(hass: HomeAssistant, database_path: str) -> No
     async def handle_add_user(call: ServiceCall) -> Dict[str, Any]:
         """Handle adding or updating a user."""
         user_data = dict(call.data)
-        
+
         try:
             result = await hass.async_add_executor_job(
                 add_user, database_path, user_data
@@ -220,6 +228,70 @@ async def async_register_services(hass: HomeAssistant, database_path: str) -> No
             _LOGGER.error("Error deleting chore: %s", err)
             raise
 
+    async def handle_complete_subtask(call: ServiceCall) -> Dict[str, Any]:
+        """Handle completing a subtask."""
+        subtask_id = call.data.get(ATTR_SUBTASK_ID)
+        person = call.data.get(ATTR_PERSON)
+
+        if not subtask_id or not person:
+            raise ValueError("subtask_id and person are required")
+
+        try:
+            result = await hass.async_add_executor_job(
+                complete_subtask, database_path, subtask_id, person
+            )
+
+            # Also update the main chore completion status based on completion rules
+            chore_id = result.get("chore_id")
+            if chore_id:
+                await hass.async_add_executor_job(
+                    update_chore_completion_status, database_path, chore_id
+                )
+
+            async_dispatcher_send(hass, f"{DOMAIN}_updated")
+            return result
+        except Exception as err:
+            _LOGGER.error("Error completing subtask: %s", err)
+            raise
+
+    async def handle_add_subtask(call: ServiceCall) -> Dict[str, Any]:
+        """Handle adding a subtask to a chore."""
+        chore_id = call.data.get(ATTR_CHORE_ID)
+        name = call.data.get("name")
+        position = call.data.get("position", 0)
+
+        try:
+            result = await hass.async_add_executor_job(
+                add_subtask, database_path, chore_id, name, position
+            )
+            async_dispatcher_send(hass, f"{DOMAIN}_updated")
+            return result
+        except Exception as err:
+            _LOGGER.error("Error adding subtask: %s", err)
+            raise
+
+    async def handle_delete_subtask(call: ServiceCall) -> Dict[str, Any]:
+        """Handle deleting a subtask."""
+        subtask_id = call.data.get(ATTR_SUBTASK_ID)
+
+        try:
+            result = await hass.async_add_executor_job(
+                delete_subtask, database_path, subtask_id
+            )
+
+            # Update parent chore completion status after deletion
+            chore_id = result.get("chore_id")
+            if chore_id:
+                await hass.async_add_executor_job(
+                    update_chore_completion_status, database_path, chore_id
+                )
+
+            async_dispatcher_send(hass, f"{DOMAIN}_updated")
+            return result
+        except Exception as err:
+            _LOGGER.error("Error deleting subtask: %s", err)
+            raise
+
     # Register all services
     hass.services.async_register(
         DOMAIN,
@@ -281,4 +353,35 @@ async def async_register_services(hass: HomeAssistant, database_path: str) -> No
         "delete_chore",
         handle_delete_chore,
         schema=DELETE_CHORE_SCHEMA
+    )
+
+    # Register subtask services
+    hass.services.async_register(
+        DOMAIN,
+        "complete_subtask",
+        handle_complete_subtask,
+        schema=vol.Schema({
+            vol.Required(ATTR_SUBTASK_ID): vol.Coerce(int),
+            vol.Required(ATTR_PERSON): cv.string
+        })
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "add_subtask",
+        handle_add_subtask,
+        schema=vol.Schema({
+            vol.Required(ATTR_CHORE_ID): cv.string,
+            vol.Required("name"): cv.string,
+            vol.Optional("position", default=0): vol.Coerce(int)
+        })
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "delete_subtask",
+        handle_delete_subtask,
+        schema=vol.Schema({
+            vol.Required(ATTR_SUBTASK_ID): vol.Coerce(int)
+        })
     )
