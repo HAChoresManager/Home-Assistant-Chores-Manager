@@ -16,7 +16,6 @@
         #root {
             background-color: rgba(255, 255, 255, 0.85);
             border-radius: 8px;
-            backdrop-filter: blur(5px);
         }
         
         /* Force better contrast */
@@ -26,14 +25,22 @@
         
         /* Ensure text is readable */
         h2, h3, p, span, div {
-            text-shadow: 0 0 4px rgba(255, 255, 255, 0.7);
-        }
-        
-        .ha-dark-theme h2, .ha-dark-theme h3, .ha-dark-theme p, 
-        .ha-dark-theme span, .ha-dark-theme div {
-            text-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
+            color: #000000 !important;
         }
     </style>
+    <script>
+        // Global error handler for better debugging
+        window.addEventListener('error', function(event) {
+            console.error('Global error caught:', event.error);
+            document.getElementById('root').innerHTML = 
+                `<div style="color: #000; padding: 20px; background: #fff;">
+                    <h2>Dashboard Error</h2>
+                    <p>Error: ${event.error ? event.error.message : 'Unknown error'}</p>
+                    <pre>${event.error ? event.error.stack : ''}</pre>
+                    <button onclick="window.location.reload()">Reload Page</button>
+                </div>`;
+        });
+    </script>
 </head>
 <body>
     <div id="root">Loading dashboard...</div>
@@ -72,7 +79,17 @@
             function waitForDependencies() {
                 if (window.choreUtils && window.choreComponents) {
                     console.log('Dependencies loaded, initializing app...');
-                    initApp();
+                    try {
+                        initApp();
+                    } catch (error) {
+                        console.error('Error initializing app:', error);
+                        document.getElementById('root').innerHTML = 
+                            `<div style="color: #000; padding: 20px; background: #fff;">
+                                <h2>Error Loading Dashboard</h2>
+                                <p>An error occurred while initializing the dashboard: ${error.message}</p>
+                                <button onclick="window.location.reload()">Reload Page</button>
+                            </div>`;
+                    }
                 } else {
                     console.log('Waiting for dependencies...');
                     setTimeout(waitForDependencies, 100);
@@ -111,6 +128,13 @@
                     const [forceStableState, setForceStableState] = React.useState({});
                     // ADDED: Auth error state
                     const [authError, setAuthError] = React.useState(false);
+                    // ADDED: Theme settings state
+                    const [themeSettings, setThemeSettings] = React.useState({
+                        backgroundColor: '#ffffff',
+                        cardColor: '#f8f8f8',
+                        primaryTextColor: '#000000',
+                        secondaryTextColor: '#333333'
+                    });
 
                     // Debug log function
                     const debugLog = (message, data) => {
@@ -145,6 +169,16 @@
                             setLoading(false);
                         }
                     };
+
+                    // Apply theme to document root
+                    React.useEffect(() => {
+                        // Apply custom theme variables to root element
+                        const root = document.documentElement;
+                        root.style.setProperty('--theme-background', themeSettings.backgroundColor);
+                        root.style.setProperty('--theme-card-color', themeSettings.cardColor);
+                        root.style.setProperty('--theme-primary-text', themeSettings.primaryTextColor);
+                        root.style.setProperty('--theme-secondary-text', themeSettings.secondaryTextColor);
+                    }, [themeSettings]);
 
                     // Load config
                     React.useEffect(() => {
@@ -218,6 +252,12 @@
                             }
                     
                             const data = await response.json();
+                            
+                            // ADDED: Check for theme settings
+                            if (data.attributes?.theme_settings) {
+                                setThemeSettings(data.attributes.theme_settings);
+                            }
+                            
                             processChoreTasks(data);
                     
                         } catch (err) {
@@ -803,6 +843,33 @@
                         }
                     };
 
+                    // ADDED: Theme settings save function
+                    const handleSaveTheme = async (themeData) => {
+                        setLoading(true);
+                        try {
+                            const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/save_theme', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify(themeData)
+                            });
+                        
+                            if (!response.ok) {
+                                throw new Error(`Failed to save theme: ${await response.text()}`);
+                            }
+                        
+                            // Immediately update local state
+                            setThemeSettings(themeData);
+                            setShowUserManagement(false);
+                        } catch (err) {
+                            console.error('Error saving theme:', err);
+                            setError('Error saving theme settings: ' + err.message);
+                        } finally {
+                            setLoading(false);
+                        }
+                    };
+
                     // Undo last completed task with confirmation
                     const handleUndoLastCompleted = () => {
                         if (lastCompletedTask) {
@@ -1124,7 +1191,9 @@
                             users: assignees,
                             onClose: toggleUserManagement,
                             onAddUser: addUser,
-                            onDeleteUser: deleteUser
+                            onDeleteUser: deleteUser,
+                            onSaveTheme: handleSaveTheme,
+                            currentTheme: themeSettings
                         }),
 
                         // Loading overlay
@@ -1146,66 +1215,6 @@
                         )
                     );
                 };
-
-                // Add to your App component's state
-                const [themeSettings, setThemeSettings] = React.useState({
-                    backgroundColor: '#ffffff',
-                    cardColor: '#f8f8f8',
-                    primaryTextColor: '#000000',
-                    secondaryTextColor: '#333333'
-                });
-                
-                // Add to the useEffect that processes sensor data
-                if (data.attributes?.theme_settings) {
-                    setThemeSettings(data.attributes.theme_settings);
-                }
-                
-                // Apply theme to document root
-                React.useEffect(() => {
-                    // Apply custom theme variables to root element
-                    const root = document.documentElement;
-                    root.style.setProperty('--theme-background', themeSettings.backgroundColor);
-                    root.style.setProperty('--theme-card-color', themeSettings.cardColor);
-                    root.style.setProperty('--theme-primary-text', themeSettings.primaryTextColor);
-                    root.style.setProperty('--theme-secondary-text', themeSettings.secondaryTextColor);
-                }, [themeSettings]);
-                
-                // Add to handle the saving of theme settings
-                const handleSaveTheme = async (themeData) => {
-                    setLoading(true);
-                    try {
-                        const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/save_theme', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify(themeData)
-                        });
-                    
-                        if (!response.ok) {
-                            throw new Error(`Failed to save theme: ${await response.text()}`);
-                        }
-                    
-                        // Immediately update local state
-                        setThemeSettings(themeData);
-                        setShowUserManagement(false);
-                    } catch (err) {
-                        console.error('Error saving theme:', err);
-                        setError('Error saving theme settings: ' + err.message);
-                    } finally {
-                        setLoading(false);
-                    }
-                };
-                
-                // Pass the theme settings to UserManagement when showing it
-                showUserManagement && React.createElement(window.choreComponents.UserManagement, {
-                    users: assignees,
-                    onClose: toggleUserManagement,
-                    onAddUser: addUser,
-                    onDeleteUser: deleteUser,
-                    onSaveTheme: handleSaveTheme,
-                    currentTheme: themeSettings
-                });
 
                 // Render when DOM is ready
                 ReactDOM.render(
