@@ -1154,14 +1154,14 @@
             );
         };
 
-        const TaskCard = function({
+        const const TaskCard = function({
           chore,
           onMarkDone,
           onEdit,
           onShowDescription,
           onToggleDescription,
           assignees = [],
-          onMarkSubtaskDone  // Add this prop
+          onMarkSubtaskDone
         }) {
             const id = chore.chore_id || chore.id;
             const bgColorClass = window.choreUtils.getBackgroundColor(chore.assigned_to, assignees);
@@ -1173,14 +1173,14 @@
             const isDueTodayValue = !isPastDue && window.choreUtils.isDueToday(chore);
             const dueStatusClass = isPastDue ? 'past-due' : (isDueTodayValue ? 'due-today' : '');
             const hasDescription = chore.description && chore.description.trim() !== '';
-
+        
             // Get custom style for this assignee
             const assigneeObj = assignees.find(a => a.name === chore.assigned_to);
             const customStyle = assigneeObj && assigneeObj.color ? {
                 backgroundColor: `${assigneeObj.color}20`,
                 borderColor: assigneeObj.color
             } : {};
-
+        
             // Filter available assignees for completion
             const availableAssignees = assignees.length > 0
                 ? assignees.filter(a => a.name !== "Wie kan")
@@ -1188,15 +1188,15 @@
                     { id: "laura", name: "Laura" },
                     { id: "martijn", name: "Martijn" }
                 ];
-
+        
             // State for description toggle and completion animation
             const [showDescription, setShowDescription] = React.useState(false);
             const [isCompleting, setIsCompleting] = React.useState(false);
             const [showConfirm, setShowConfirm] = React.useState(false);
-
+        
             // State to track expanded subtasks
             const [expandedSubtasks, setExpandedSubtasks] = React.useState({});
-
+        
             // Function to toggle subtask expansion
             const toggleSubtasks = (choreId) => {
               setExpandedSubtasks(prev => ({
@@ -1204,7 +1204,7 @@
                 [choreId]: !prev[choreId]
               }));
             };
-
+        
             // Function to complete a subtask
             const onCompleteSubtask = (choreId, subtaskId, person) => {
               // Call the parent completion handler if provided
@@ -1212,30 +1212,43 @@
                 onMarkSubtaskDone(choreId, subtaskId, person);
               }
             };
-
+        
             const handleCardClick = () => {
                 if (isProcessing) return; // Prevent clicks while processing
                 setShowConfirm(true);
             };
-
+        
             const handleConfirmComplete = (selectedUser) => {
                 setShowConfirm(false);
                 // Show immediate feedback animation
                 setIsCompleting(true);
-
+        
                 // Call the actual mark done function with the selected user
                 onMarkDone(id, selectedUser);
-
+        
                 // Reset animation state after a delay
                 setTimeout(() => {
                     setIsCompleting(false);
                 }, 600);
             };
-
+        
             const toggleDescription = () => {
+                // Toggle state
                 setShowDescription(!showDescription);
+                
+                // Force re-render of description container
+                setTimeout(() => {
+                    const descEl = document.querySelector(`.task-description[data-chore-id="${id}"]`);
+                    if (descEl) {
+                        if (showDescription) {
+                            descEl.classList.remove('expanded');
+                        } else {
+                            descEl.classList.add('expanded');
+                        }
+                    }
+                }, 10);
             };
-
+        
             return React.createElement('div',
                 { className: "mb-4" }, // Wrapper div for card + description
                 React.createElement('div', {
@@ -1300,7 +1313,7 @@
                                 className: "text-gray-500 hover:text-gray-700",
                                 title: showDescription ? "Verberg beschrijving" : "Bekijk beschrijving"
                             }, showDescription ? "🔼" : "📝"),
-
+        
                             // Edit button
                             React.createElement('button', {
                                 onClick: (e) => {
@@ -1310,7 +1323,7 @@
                                 className: "text-gray-500 hover:text-gray-700",
                                 title: "Bewerk taak"
                             }, "✏️"),
-
+        
                             // Completed check (only shown if completed today)
                             isCompletedToday && React.createElement('span', {
                                 className: "text-green-600 text-xl",
@@ -1318,7 +1331,7 @@
                             }, "✓")
                         )
                     ),
-
+        
                     // Add subtask display
                     chore.has_subtasks && chore.subtasks && chore.subtasks.length > 0 &&
                     React.createElement('div', { className: "mt-2" },
@@ -1337,7 +1350,7 @@
                           }
                         })
                       ),
-
+        
                       // Collapsible list of subtasks
                       React.createElement('div', { className: "mt-2" },
                         React.createElement('button', {
@@ -1354,7 +1367,7 @@
                           )
                         )
                       ),
-
+        
                       // Expanded subtasks list
                       expandedSubtasks[chore.chore_id] && React.createElement('div', {
                         className: "mt-2 pl-2 border-l-2 border-gray-200"
@@ -1381,10 +1394,11 @@
                       )
                     )
                 ),
-
+        
                 // Description section - now directly below the task card
                 hasDescription && React.createElement('div', {
                     className: `task-description ${showDescription ? 'expanded' : ''}`,
+                    "data-chore-id": id,
                     style: {
                         marginLeft: '1rem',
                         marginRight: '1rem',
@@ -1398,7 +1412,7 @@
                         inTaskCard: true
                     })
                 ),
-
+        
                 // User Selection Completion Dialog
                 React.createElement(CompletionConfirmDialog, {
                     isOpen: showConfirm,
