@@ -1154,7 +1154,7 @@
             );
         };
 
-        const const TaskCard = function({
+        const TaskCard = function({
           chore,
           onMarkDone,
           onEdit,
