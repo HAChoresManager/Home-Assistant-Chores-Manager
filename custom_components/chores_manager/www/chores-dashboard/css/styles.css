@@ -1,18 +1,34 @@
-/* Enhanced task width and alignment fixes while maintaining max-width */
-.task-card, div.border-dashed, button.w-full {
+/* MAX WIDTH FIX - Make sure this is at the top and very specific */
+#root > div {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
     width: 100% !important;
-    box-sizing: border-box !important;
+    max-width: 768px !important; 
     margin-left: auto !important;
     margin-right: auto !important;
 }
 
-/* Fix alignment of all content - maintain max-width from before */
-#root > div {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 100%;
-    max-width: 768px !important; /* Maintain a reasonable max width */
+/* CRITICAL: Fix Achterstallig text color */
+span[innerHTML="Achterstallig"],
+span:contains("Achterstallig"),
+div:contains("Achterstallig") > span,
+.text-red-600,
+span.text-red-600 {
+    color: #ef4444 !important;
+    font-weight: bold !important;
+}
+
+/* Super specific fix for task status text */
+.flex.items-center.mt-1 span:contains("Achterstallig") {
+    color: #ef4444 !important;
+    font-weight: bold !important;
+}
+
+/* Enhanced task width and alignment fixes while maintaining max-width */
+.task-card, div.border-dashed, button.w-full {
+    width: 100% !important;
+    box-sizing: border-box !important;
     margin-left: auto !important;
     margin-right: auto !important;
 }
@@ -35,15 +51,6 @@ div.border-dashed:hover, div[class*="border-dashed"]:hover {
 div.border-dashed span, div[class*="border-dashed"] span {
     color: #4b5563 !important;
     font-weight: 500 !important;
-}
-
-/* Fix achterstallig text to be red */
-.text-red-600,
-span.text-gray-600[innerHTML="Achterstallig"],
-.text-gray-600:contains("Achterstallig"),
-span:contains("Achterstallig") {
-    color: #ef4444 !important;
-    font-weight: bold !important;
 }
 
 /* Fix stats card grid layout */
