@@ -200,6 +200,38 @@
                         loadConfig();
                     }, []);
 
+                    // Set up token refresh and auth error handling
+                    React.useEffect(() => {
+                        // Set up periodic token refresh
+                        window.choreUtils.setupPeriodicTokenRefresh();
+
+                        // Clean up on unmount
+                        return () => {
+                            if (window.tokenRefreshInterval) {
+                                clearInterval(window.tokenRefreshInterval);
+                            }
+                        };
+                    }, []);
+
+                    React.useEffect(() => {
+                        // Set up periodic token refresh
+                        window.choreUtils.setupPeriodicTokenRefresh();
+
+                        // Listen for auth errors
+                        const handleAuthError = () => {
+                            setAuthError(true);
+                        };
+
+                        window.addEventListener('chores-auth-error', handleAuthError);
+
+                        return () => {
+                            if (window.tokenRefreshInterval) {
+                                clearInterval(window.tokenRefreshInterval);
+                            }
+                            window.removeEventListener('chores-auth-error', handleAuthError);
+                        };
+                    }, []);
+
                     // Fetch chores data with robust optimistic update handling
                     const fetchChores = async () => {
                         if (skipNextRefresh) {
