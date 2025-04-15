@@ -1,26 +1,22 @@
-/* MAX WIDTH FIX - Make sure this is at the top and very specific */
+/* MAX WIDTH FIX - Increase to 75% width/1024px */
 #root > div {
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
     width: 100% !important;
-    max-width: 768px !important; 
+    max-width: 1024px !important; 
     margin-left: auto !important;
     margin-right: auto !important;
 }
 
-/* CRITICAL: Fix Achterstallig text color */
-span[innerHTML="Achterstallig"],
+/* CRITICAL: Fix Achterstallig text color - with highest priority override */
 span:contains("Achterstallig"),
-div:contains("Achterstallig") > span,
-.text-red-600,
-span.text-red-600 {
-    color: #ef4444 !important;
-    font-weight: bold !important;
-}
-
-/* Super specific fix for task status text */
-.flex.items-center.mt-1 span:contains("Achterstallig") {
+.flex-1 span:contains("Achterstallig"),
+.task-card span:contains("Achterstallig"),
+div:has(> span:contains("Achterstallig")) span,
+.text-red-600[innerHTML="Achterstallig"],
+span[innerHTML="Achterstallig"],
+.past-due span:contains("Achterstallig") {
     color: #ef4444 !important;
     font-weight: bold !important;
 }
