@@ -5,6 +5,11 @@
     box-sizing: border-box;
 }
 
+/* Fix inconsistent button widths */
+.w-full, div[class*="border-dashed"], button[class*="w-full"] {
+    width: 100% !important;
+}
+
 /* Make new task button match undo task style (white/grey instead of orange) */
 .border-dashed {
     border: 2px dashed #d1d5db !important;
@@ -23,11 +28,6 @@
 /* Ensure task headings use theme variables */
 .task-card h3.text-xl, .task-card h3 {
     color: var(--theme-primary-text, #000000) !important;
-}
-
-/* Fix inconsistent button widths */
-.w-full, div[class*="border-dashed"], button[class*="w-full"] {
-    width: 100% !important;
 }
 
 /* Reset and base styles */
