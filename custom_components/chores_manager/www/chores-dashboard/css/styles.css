@@ -43,11 +43,7 @@ div.bg-green-100 {
 }
 
 /* FIX TASK DESCRIPTION ALIGNMENT - SLIGHTLY INSET FROM CARD EDGES */
-/* FIX TASK DESCRIPTION ALIGNMENT - SLIGHTLY INSET FROM CARD EDGES */
 .task-description {
-    width: calc(100% - 16px) !important;
-    max-width: calc(100% - 16px) !important;
-    margin: 0 8px !important;
     width: calc(100% - 16px) !important;
     max-width: calc(100% - 16px) !important;
     margin: 0 8px !important;
@@ -70,43 +66,6 @@ div.bg-green-100 {
     border-bottom-left-radius: 8px !important;
     border-bottom-right-radius: 8px !important;
     border-top: none !important;
-}
-
-/* CONSISTENT STYLE FOR ALL FOLDOUT ELEMENTS */
-.foldout-section {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease-out;
-    width: calc(100% - 16px) !important;
-    margin: 0 8px !important;
-    box-sizing: border-box !important;
-}
-
-.foldout-section.expanded {
-    max-height: 500px;
-    transition: max-height 0.5s ease-in;
-}
-
-/* CONSISTENT TOGGLE BUTTONS for foldouts */
-.foldout-toggle-button {
-    display: inline-flex !important;
-    align-items: center !important;
-    font-size: 0.875rem !important;
-    color: #3b82f6 !important;
-    background: none !important;
-    border: none !important;
-    padding: 0.25rem 0.5rem !important;
-    cursor: pointer !important;
-    transition: color 0.2s !important;
-}
-
-.foldout-toggle-button:hover {
-    color: #2563eb !important;
-    text-decoration: underline !important;
-}
-
-.foldout-toggle-button > span {
-    margin-left: 0.25rem !important;
 }
 
 /* CONSISTENT STYLE FOR ALL FOLDOUT ELEMENTS */
@@ -538,15 +497,12 @@ h1, h2, h3, h4, h5, h6, p, div:not(.progress-bar):not(.bg-blue-500):not(.bg-gree
 }
 
 /* Fix task description toggle - UPDATED TO MATCH EXACT TASK CARD WIDTH MINUS INSET */
-/* Fix task description toggle - UPDATED TO MATCH EXACT TASK CARD WIDTH MINUS INSET */
 .task-description {
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.3s ease-out;
     width: calc(100% - 16px) !important;
-    width: calc(100% - 16px) !important;
     box-sizing: border-box !important;
-    margin: 0 8px !important;
     margin: 0 8px !important;
     padding: 0 !important;
     border-top: none !important;
@@ -570,30 +526,6 @@ h1, h2, h3, h4, h5, h6, p, div:not(.progress-bar):not(.bg-blue-500):not(.bg-gree
     border-bottom-left-radius: 8px !important;
     border-bottom-right-radius: 8px !important;
     border-top: none !important;
-}
-
-/* Fix toggle buttons for both description and subtasks to match */
-.text-xs.text-blue-600,
-button.text-xs.text-blue-600,
-button.text-blue-500,
-.text-blue-600 {
-    color: #3b82f6 !important;
-    padding: 0.25rem 0.5rem !important;
-    background: none !important;
-    border: none !important;
-    font-size: 0.875rem !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    cursor: pointer !important;
-    transition: color 0.2s !important;
-}
-
-.text-xs.text-blue-600:hover,
-button.text-xs.text-blue-600:hover,
-button.text-blue-500:hover,
-.text-blue-600:hover {
-    color: #2563eb !important;
-    text-decoration: underline !important;
 }
 
 /* Fix toggle buttons for both description and subtasks to match */
@@ -713,15 +645,7 @@ button.text-blue-500:hover,
 .task-card + .task-description {
     width: calc(100% - 16px) !important;
     margin: 0 8px 12px 8px !important;
-    width: calc(100% - 16px) !important;
-    margin: 0 8px 12px 8px !important;
     border-radius: 0 0 8px 8px !important;
-}
-
-/* Also fix text alignment icons in toggle buttons */
-.ml-1, .mr-1 {
-    margin-left: 0.25rem !important;
-    margin-right: 0.25rem !important;
 }
 
 /* Also fix text alignment icons in toggle buttons */
