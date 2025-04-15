@@ -1,10 +1,6 @@
-/* Global Reset - Ensure LIGHT theme is default */
-body, #root, .modal-content, .bg-white, .task-card {
-    background-color: #ffffff !important;
-    color: #000000 !important;
-}
+/* custom_components/chores_manager/www/chores-dashboard/css/styles.css */
 
-/* WIDTH FIX - Force ALL components to use the same container width */
+/* MAX WIDTH FIX - Increase to 75% width/1024px */
 #root > div {
     display: flex !important;
     flex-direction: column !important;
@@ -15,51 +11,91 @@ body, #root, .modal-content, .bg-white, .task-card {
     margin-right: auto !important;
 }
 
-/* Direct children take same width */
-.task-card, 
-.border-dashed,
-.w-full,
-div[class*="grid-cols"],
-.section-divider,
-.modal-content,
-.grid.grid-cols-1, 
-.grid.grid-cols-2, 
-.grid.grid-cols-3,
-button.w-full,
-.prestaties-stats > div,
-[class*="prestaties-stats"],
-.stats-container,
-.aankomende-taken > *,
-.voltooid-vandaag,
-.achterstallig {
+/* CRITICAL: Fix Achterstallig text color - with highest priority override */
+span:contains("Achterstallig"),
+.flex-1 span:contains("Achterstallig"),
+.task-card span:contains("Achterstallig"),
+div:has(> span:contains("Achterstallig")) span,
+.text-red-600[innerHTML="Achterstallig"],
+span[innerHTML="Achterstallig"],
+.past-due span:contains("Achterstallig"),
+*[innerHTML*="Achterstallig"],
+span.text-gray-600.text-red-600,
+[class*="text-red"],
+span:has(> span:contains("Achterstallig")),
+span:after(> span:contains("Achterstallig")),
+.task-card .text-gray-600[innerHTML*="Achterstallig"],
+div > span:has(> span:contains("Achterstallig")) {
+    color: #ef4444 !important;
+    font-weight: bold !important;
+    text-shadow: none !important;
+}
+
+/* All direct children take FULL WIDTH to ensure consistency */
+#root > div > * {
     width: 100% !important;
-    max-width: 100% !important;
+}
+
+/* Enhanced task width and alignment fixes while maintaining max-width */
+.task-card, div.border-dashed, button.w-full,
+.grid.grid-cols-1, .grid.grid-cols-2, .grid.grid-cols-3,
+.section-divider, .modal-content {
+    width: 100% !important;
     box-sizing: border-box !important;
     margin-left: auto !important;
     margin-right: auto !important;
 }
 
-/* Fix grid layouts to match container width */
-div[class*="grid"] {
+/* Make new task button match undo task style (white/grey instead of orange) */
+div.border-dashed, div[class*="border-dashed"] {
+    border: 2px dashed #d1d5db !important;
+    background-color: rgba(243, 244, 246, 0.5) !important;
+    border-color: #d1d5db !important;
+}
+
+div.border-dashed:hover, div[class*="border-dashed"]:hover {
+    background-color: rgba(229, 231, 235, 0.7) !important;
+}
+
+div.border-dashed span, div[class*="border-dashed"] span {
+    color: #4b5563 !important;
+    font-weight: 500 !important;
+}
+
+/* Fix stats card grid layout */
+.grid.grid-cols-1, .grid.grid-cols-2, .grid.grid-cols-3 {
     display: grid !important;
     width: 100% !important;
     gap: 1rem !important;
     margin-bottom: 1rem !important;
 }
 
-/* CRITICAL: Fix Achterstallig text color with maximum specificity */
-span[innerHTML*="Achterstallig"],
-span:contains("Achterstallig"),
-.text-red-600,
-div[class*="task-card"] span[class*="text-red"],
-div[class*="task-card"] .text-gray-600[class*="text-red"],
-div[class*="task-card"] span:contains("Achterstallig") {
-    color: #ef4444 !important;
-    font-weight: bold !important;
+/* Ensure task headings use theme variables */
+.task-card h3.text-xl, .task-card h3 {
+    color: var(--theme-primary-text, #000000) !important;
+}
+
+/* Reset and base styles */
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+#root {
+    min-height: 100vh;
+    padding: 1rem;
+    background-color: #ffffff;
+}
+
+/* Force high contrast text throughout the application */
+h1, h2, h3, h4, h5, h6, p, div, span, label, button {
+    color: var(--theme-primary-text, #000000) !important;
     text-shadow: none !important;
 }
 
-/* CARD STYLING */
+/* Card styling */
 .task-card {
     transition: all 0.2s ease;
     cursor: pointer;
@@ -73,23 +109,6 @@ div[class*="task-card"] span:contains("Achterstallig") {
 .task-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-/* Make new task button match undo task style */
-div.border-dashed, div[class*="border-dashed"] {
-    border: 2px dashed #d1d5db !important;
-    background-color: rgba(243, 244, 246, 0.5) !important;
-    border-color: #d1d5db !important;
-    width: 100% !important;
-}
-
-div.border-dashed:hover, div[class*="border-dashed"]:hover {
-    background-color: rgba(229, 231, 235, 0.7) !important;
-}
-
-div.border-dashed span, div[class*="border-dashed"] span {
-    color: #4b5563 !important;
-    font-weight: 500 !important;
 }
 
 /* Typography - High contrast */
@@ -157,7 +176,7 @@ div > h2.text-xl.font-semibold.mb-4 {
     border-radius: 8px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     max-width: 90%;
-    width: 100%;
+    width: 550px;
     margin: 0 auto;
     padding: 1.5rem;
 }
@@ -326,6 +345,23 @@ button.bg-gray-100, button.bg-gray-200 {
     color: #3b82f6 !important;
 }
 
+/* Custom theme styling */
+#root {
+    background-color: var(--theme-background, #ffffff) !important;
+}
+
+.task-card, .modal-content, .bg-white {
+    background-color: var(--theme-card-color, #f8f8f8) !important;
+}
+
+h1, h2, h3, h4, h5, h6, p, div:not(.progress-bar):not(.bg-blue-500):not(.bg-green-500):not(.bg-red-500) {
+    color: var(--theme-primary-text, #000000) !important;
+}
+
+.text-gray-400, .text-gray-500, .text-gray-600 {
+    color: var(--theme-secondary-text, #555555) !important;
+}
+
 /* Fix task description toggle */
 .task-description {
     max-height: 0;
@@ -362,6 +398,12 @@ button.bg-gray-100, button.bg-gray-200 {
     background-color: #3b82f6;
     color: white;
     border-color: #2563eb;
+}
+
+/* Ensure the "Achterstallig" text is ALWAYS red regardless of theme */
+.task-card span:contains("Achterstallig") {
+    color: #ef4444 !important;
+    font-weight: bold !important;
 }
 
 /* Subtask styling improvements */
@@ -420,142 +462,4 @@ button.bg-gray-100, button.bg-gray-200 {
 
 .auth-error-banner button:hover {
     background-color: #fca5a5;
-}
-
-/* DARK THEME - Only applied when class is present */
-body.ha-dark-theme {
-    background-color: #121212 !important;
-    color: #f5f5f5 !important;
-}
-
-body.ha-dark-theme #root {
-    background-color: #121212 !important;
-}
-
-body.ha-dark-theme .task-card {
-    background-color: #1e1e1e !important;
-    border-color: #3d3d3d !important;
-    color: #f5f5f5 !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5) !important;
-}
-
-body.ha-dark-theme .task-card:hover {
-    background-color: #252525 !important;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.7) !important;
-}
-
-body.ha-dark-theme h1, 
-body.ha-dark-theme h2, 
-body.ha-dark-theme h3, 
-body.ha-dark-theme h4, 
-body.ha-dark-theme h5, 
-body.ha-dark-theme h6,
-body.ha-dark-theme .text-xl,
-body.ha-dark-theme .text-lg {
-    color: #ffffff !important;
-}
-
-body.ha-dark-theme .section-divider-text {
-    background-color: #121212;
-}
-
-body.ha-dark-theme .bg-white,
-body.ha-dark-theme .modal-content {
-    background-color: #1e1e1e !important;
-    border-color: #3d3d3d !important;
-}
-
-body.ha-dark-theme p,
-body.ha-dark-theme div:not(.progress-bar):not(.bg-blue-500):not(.bg-green-500),
-body.ha-dark-theme span:not(.text-red-600):not([class*="text-red"]):not([innerHTML*="Achterstallig"]) {
-    color: #e0e0e0 !important;
-}
-
-body.ha-dark-theme input, 
-body.ha-dark-theme select, 
-body.ha-dark-theme textarea {
-    background-color: #2a2a2a !important;
-    border-color: #4d4d4d !important;
-    color: #f5f5f5 !important;
-}
-
-body.ha-dark-theme button.bg-gray-100,
-body.ha-dark-theme button.bg-gray-200 {
-    background-color: #2d2d2d !important;
-    color: #e0e0e0 !important;
-    border-color: #3d3d3d !important;
-}
-
-body.ha-dark-theme button.bg-blue-500,
-body.ha-dark-theme button.bg-blue-600 {
-    background-color: #2563eb !important;
-    color: white !important;
-}
-
-/* Dark mode day/date pickers */
-body.ha-dark-theme .week-day-picker .grid-cols-7 > div,
-body.ha-dark-theme .month-day-picker .grid-cols-7 > div {
-    color: #e0e0e0 !important;
-    background-color: #2a2a2a !important;
-    border-color: #4d4d4d !important;
-}
-
-body.ha-dark-theme .week-day-picker .grid-cols-7 > div[class*="bg-blue"],
-body.ha-dark-theme .month-day-picker .grid-cols-7 > div[class*="bg-blue"] {
-    background-color: #3b82f6 !important;
-    color: #ffffff !important;
-    border-color: #2563eb !important;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5) !important;
-}
-
-body.ha-dark-theme .task-card .subtask-list {
-    border-left-color: #4d4d4d;
-}
-
-body.ha-dark-theme .task-card .subtask-item:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-}
-
-/* Additional overrides for problematic selectors in dark mode */
-body.ha-dark-theme .text-gray-400, 
-body.ha-dark-theme .text-gray-500, 
-body.ha-dark-theme .text-gray-600,
-body.ha-dark-theme .text-gray-700 {
-    color: #c0c0c0 !important;
-}
-
-/* Ensure Achterstallig text is always red regardless of theme */
-body .task-card span:contains("Achterstallig"),
-body.ha-dark-theme .task-card span:contains("Achterstallig"),
-body.ha-theme-green .task-card span:contains("Achterstallig") {
-    color: #ef4444 !important;
-    font-weight: bold !important;
-}
-
-/* Custom theme support */
-.custom-theme {
-    background-color: var(--theme-background, #ffffff) !important;
-}
-
-.custom-theme .task-card, 
-.custom-theme .modal-content, 
-.custom-theme .bg-white {
-    background-color: var(--theme-card-color, #f8f8f8) !important;
-}
-
-.custom-theme h1, 
-.custom-theme h2, 
-.custom-theme h3, 
-.custom-theme h4, 
-.custom-theme h5, 
-.custom-theme h6, 
-.custom-theme p, 
-.custom-theme div:not(.progress-bar):not(.bg-blue-500):not(.bg-green-500):not(.bg-red-500) {
-    color: var(--theme-primary-text, #000000) !important;
-}
-
-.custom-theme .text-gray-400, 
-.custom-theme .text-gray-500, 
-.custom-theme .text-gray-600 {
-    color: var(--theme-secondary-text, #555555) !important;
 }
