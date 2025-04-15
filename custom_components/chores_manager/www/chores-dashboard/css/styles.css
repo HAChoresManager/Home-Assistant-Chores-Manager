@@ -1,24 +1,24 @@
-/* Enhanced task width and alignment fixes */
+/* Enhanced task width and alignment fixes while maintaining max-width */
 .task-card, div.border-dashed, button.w-full {
     width: 100% !important;
-    max-width: 100% !important;
     box-sizing: border-box !important;
     margin-left: auto !important;
     margin-right: auto !important;
 }
 
-/* Fix alignment of all content */
+/* Fix alignment of all content - maintain max-width from before */
 #root > div {
     display: flex;
     flex-direction: column;
     align-items: center;
     width: 100%;
-    max-width: 100%;
+    max-width: 768px !important; /* Maintain a reasonable max width */
+    margin-left: auto !important;
+    margin-right: auto !important;
 }
 
 #root > div > * {
     width: 100%;
-    max-width: 100%;
 }
 
 /* Make new task button match undo task style (white/grey instead of orange) */
