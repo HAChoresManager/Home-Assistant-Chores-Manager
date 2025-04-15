@@ -9,14 +9,6 @@
                 const styles = window.getComputedStyle(window.parent.document.body);
                 const backgroundColor = styles.getPropertyValue('background-color');
                 
-                // Detect if it's a green theme
-                const isGreenTheme = detectGreenTheme(backgroundColor);
-                
-                // Detect if it's a dark theme
-                const isDark = detectDarkTheme(backgroundColor);
-                
-                console.log('Theme detection:', { backgroundColor, isDark, isGreenTheme });
-                
                 return {
                     // Primary colors
                     primaryColor: styles.getPropertyValue('--primary-color').trim() || '#03a9f4',
@@ -28,11 +20,7 @@
                     
                     // Card and UI styles
                     cardBorderRadius: styles.getPropertyValue('--ha-card-border-radius') || '0.5rem',
-                    boxShadow: styles.getPropertyValue('--ha-card-box-shadow') || '0 2px 4px rgba(0, 0, 0, 0.1)',
-                    
-                    // Is this a dark theme?
-                    isDark: isDark,
-                    isGreenTheme: isGreenTheme
+                    boxShadow: styles.getPropertyValue('--ha-card-box-shadow') || '0 2px 4px rgba(0, 0, 0, 0.1)'
                 };
             }
         } catch (e) {
@@ -46,73 +34,18 @@
             primaryText: '#212121',
             secondaryText: '#727272',
             cardBorderRadius: '0.5rem',
-            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
-            isDark: false,
-            isGreenTheme: false
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
         };
     }
     
-    // Detect if a color is dark
-    function detectDarkTheme(backgroundColor) {
-        // Simple check for dark background
-        if (!backgroundColor) return false;
-        
-        // Parse RGB values from background color
-        const rgbMatch = backgroundColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/i);
-        if (rgbMatch) {
-            const r = parseInt(rgbMatch[1], 10);
-            const g = parseInt(rgbMatch[2], 10);
-            const b = parseInt(rgbMatch[3], 10);
-            
-            // Calculate perceived brightness (ITU-R BT.709)
-            const brightness = (0.2126 * r + 0.7152 * g + 0.0722 * b);
-            console.log('Brightness calculation:', brightness, backgroundColor);
-            return brightness < 128;
-        }
-        
-        // Fallback for other formats - check if color name contains 'dark'
-        return backgroundColor.includes('dark') || 
-               backgroundColor === '#000' || 
-               backgroundColor === '#000000' ||
-               backgroundColor === 'black';
-    }
-    
-    // Detect if it's a green theme
-    function detectGreenTheme(backgroundColor) {
-        if (!backgroundColor) return false;
-        
-        // Parse RGB values
-        const rgbMatch = backgroundColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/i);
-        if (rgbMatch) {
-            const r = parseInt(rgbMatch[1], 10);
-            const g = parseInt(rgbMatch[2], 10);
-            const b = parseInt(rgbMatch[3], 10);
-            
-            // Check if green is the dominant component and it's a darker color
-            return g > r && g > b && g < 150;
-        }
-        
-        // Fallback - check if color includes green
-        return backgroundColor.includes('green') || backgroundColor.includes('forest');
-    }
-    
-    // Apply theme to document
+    // Apply theme to document - simplified version without dark mode detection
     function applyTheme() {
+        // Just get theme variables, but don't apply any automatic theme classes
         const theme = getHAThemeVariables();
+        const root = document.documentElement;
         
-        // Remove any existing theme classes first
-        document.body.classList.remove('ha-dark-theme', 'ha-light-theme', 'ha-theme-green', 'custom-theme');
-        
-        // Apply appropriate theme class
-        if (theme.isGreenTheme) {
-            document.body.classList.add('ha-theme-green');
-        } else if (theme.isDark) {
-            document.body.classList.add('ha-dark-theme');
-        } else {
-            document.body.classList.add('ha-light-theme');
-        }
-        
-        console.log('Theme applied:', theme.isDark ? 'dark' : 'light');
+        // Remove any theme classes that might have been applied previously
+        document.body.classList.remove('ha-dark-theme', 'ha-light-theme', 'ha-theme-green');
     }
     
     // Check for theme changes periodically
@@ -121,7 +54,7 @@
         applyTheme();
         
         // Then check periodically for changes
-        setInterval(applyTheme, 3000);
+        setInterval(applyTheme, 2000);
         
         // Also check when window gets focus
         window.addEventListener('focus', applyTheme);
