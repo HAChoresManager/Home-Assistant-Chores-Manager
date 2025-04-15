@@ -12,6 +12,11 @@
                 // Detect if it's a green theme
                 const isGreenTheme = detectGreenTheme(backgroundColor);
                 
+                // Detect if it's a dark theme
+                const isDark = detectDarkTheme(backgroundColor);
+                
+                console.log('Theme detection:', { backgroundColor, isDark, isGreenTheme });
+                
                 return {
                     // Primary colors
                     primaryColor: styles.getPropertyValue('--primary-color').trim() || '#03a9f4',
@@ -26,7 +31,7 @@
                     boxShadow: styles.getPropertyValue('--ha-card-box-shadow') || '0 2px 4px rgba(0, 0, 0, 0.1)',
                     
                     // Is this a dark theme?
-                    isDark: detectDarkTheme(backgroundColor),
+                    isDark: isDark,
                     isGreenTheme: isGreenTheme
                 };
             }
@@ -61,6 +66,7 @@
             
             // Calculate perceived brightness (ITU-R BT.709)
             const brightness = (0.2126 * r + 0.7152 * g + 0.0722 * b);
+            console.log('Brightness calculation:', brightness, backgroundColor);
             return brightness < 128;
         }
         
@@ -93,19 +99,20 @@
     // Apply theme to document
     function applyTheme() {
         const theme = getHAThemeVariables();
-        const root = document.documentElement;
+        
+        // Remove any existing theme classes first
+        document.body.classList.remove('ha-dark-theme', 'ha-light-theme', 'ha-theme-green', 'custom-theme');
         
         // Apply appropriate theme class
         if (theme.isGreenTheme) {
             document.body.classList.add('ha-theme-green');
-            document.body.classList.remove('ha-dark-theme', 'ha-light-theme');
         } else if (theme.isDark) {
             document.body.classList.add('ha-dark-theme');
-            document.body.classList.remove('ha-light-theme', 'ha-theme-green');
         } else {
             document.body.classList.add('ha-light-theme');
-            document.body.classList.remove('ha-dark-theme', 'ha-theme-green');
         }
+        
+        console.log('Theme applied:', theme.isDark ? 'dark' : 'light');
     }
     
     // Check for theme changes periodically
@@ -114,7 +121,7 @@
         applyTheme();
         
         // Then check periodically for changes
-        setInterval(applyTheme, 2000);
+        setInterval(applyTheme, 3000);
         
         // Also check when window gets focus
         window.addEventListener('focus', applyTheme);
