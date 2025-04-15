@@ -73,6 +73,43 @@ window.choreUtils.getAuthToken = function() {
     return null;
 };
 
+// NEW: Set up periodic token refresh to prevent auth failures
+window.choreUtils.setupPeriodicTokenRefresh = function(interval = 300000) { // 5 minutes default
+    // Clear any existing refresh interval
+    if (window.tokenRefreshInterval) {
+        clearInterval(window.tokenRefreshInterval);
+    }
+    
+    // Set up a new refresh interval
+    window.tokenRefreshInterval = setInterval(async function() {
+        try {
+            // Only refresh if we have a token already
+            if (localStorage.getItem('chores_auth_token')) {
+                console.log('Performing background token refresh check...');
+                const newToken = await window.choreUtils.refreshToken();
+                if (newToken) {
+                    console.log('Background token refresh successful');
+                }
+            }
+        } catch (e) {
+            console.warn('Background token refresh failed:', e);
+        }
+    }, interval);
+    
+    // Also refresh on window focus - critical for devices that were inactive
+    window.addEventListener('focus', async function() {
+        try {
+            if (localStorage.getItem('chores_auth_token')) {
+                await window.choreUtils.refreshToken();
+            }
+        } catch (e) {
+            console.warn('Focus token refresh failed:', e);
+        }
+    });
+    
+    return window.tokenRefreshInterval;
+};
+
 // Improved fetch with auth and exponential backoff
 window.choreUtils.fetchWithAuth = async function(url, options = {}) {
     // Get auth token
