@@ -1,28 +1,57 @@
-/* Fix task card width to match buttons */
-.task-card, .border-dashed, button.w-full {
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
+/* Enhanced task width and alignment fixes */
+.task-card, div.border-dashed, button.w-full {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
 }
 
-/* Fix inconsistent button widths */
-.w-full, div[class*="border-dashed"], button[class*="w-full"] {
-    width: 100% !important;
+/* Fix alignment of all content */
+#root > div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 100%;
+}
+
+#root > div > * {
+    width: 100%;
+    max-width: 100%;
 }
 
 /* Make new task button match undo task style (white/grey instead of orange) */
-.border-dashed {
+div.border-dashed, div[class*="border-dashed"] {
     border: 2px dashed #d1d5db !important;
     background-color: rgba(243, 244, 246, 0.5) !important;
+    border-color: #d1d5db !important;
 }
 
-.border-dashed:hover {
+div.border-dashed:hover, div[class*="border-dashed"]:hover {
     background-color: rgba(229, 231, 235, 0.7) !important;
 }
 
-.border-dashed span {
+div.border-dashed span, div[class*="border-dashed"] span {
     color: #4b5563 !important;
-    font-weight: 500;
+    font-weight: 500 !important;
+}
+
+/* Fix achterstallig text to be red */
+.text-red-600,
+span.text-gray-600[innerHTML="Achterstallig"],
+.text-gray-600:contains("Achterstallig"),
+span:contains("Achterstallig") {
+    color: #ef4444 !important;
+    font-weight: bold !important;
+}
+
+/* Fix stats card grid layout */
+.grid.grid-cols-1, .grid.grid-cols-2, .grid.grid-cols-3 {
+    display: grid;
+    width: 100%;
+    gap: 1rem;
+    margin-bottom: 1rem;
 }
 
 /* Ensure task headings use theme variables */
@@ -48,13 +77,6 @@ body {
 h1, h2, h3, h4, h5, h6, p, div, span, label, button {
     color: var(--theme-primary-text, #000000) !important;
     text-shadow: none !important;
-}
-
-/* Achterstallig text in red */
-.text-gray-600:contains("Achterstallig"), 
-span:contains("Achterstallig") {
-    color: #ef4444 !important;
-    font-weight: bold !important;
 }
 
 /* Card styling */
@@ -115,21 +137,6 @@ div > h2.text-xl.font-semibold.mb-4 {
 
 .due-today {
     border-left: 4px solid #f59e0b;
-}
-
-/* New task button - updated to match undo button */
-.border-dashed {
-    border: 2px dashed #f97316 !important;
-    background-color: rgba(249, 115, 22, 0.1) !important;
-}
-
-.border-dashed:hover {
-    background-color: rgba(249, 115, 22, 0.2) !important;
-}
-
-.border-dashed span {
-    color: #c2410c !important;
-    font-weight: 500;
 }
 
 /* Modal styling */
