@@ -143,11 +143,17 @@
                         }
                     };
                     
-                    // ADDED: Handle auth refresh button click
+                    // Handle auth refresh button click - UPDATED
                     const handleAuthRefresh = async () => {
                         setLoading(true);
                         try {
-                            // Clear current tokens
+                            console.log('Performing manual token refresh...');
+                            
+                            // Clear all tokens for this device/user
+                            const tokenKey = window.choreUtils.getTokenKey();
+                            localStorage.removeItem(tokenKey);
+                            
+                            // Also clear any legacy tokens
                             localStorage.removeItem('chores_auth_token');
                             sessionStorage.removeItem('chores_auth_token');
                             
@@ -156,14 +162,15 @@
                             
                             if (newToken) {
                                 setAuthError(false);
+                                console.log('Manual token refresh successful');
                                 await fetchChores();
                             } else {
-                                // If still no token, reload the page
+                                console.error('Manual token refresh failed - reloading page');
                                 window.location.reload(true);
                             }
                         } catch (e) {
-                            console.error('Error refreshing auth:', e);
-                            // Last resort, reload the page
+                            console.error('Error during manual token refresh:', e);
+                            // Last resort - reload the page completely
                             window.location.reload(true);
                         } finally {
                             setLoading(false);
@@ -200,35 +207,60 @@
                         loadConfig();
                     }, []);
 
-                    // Set up token refresh and auth error handling
+                    // Set up token refresh and auth error handling with user isolation - NEW
                     React.useEffect(() => {
-                        // Set up periodic token refresh
-                        window.choreUtils.setupPeriodicTokenRefresh();
-
-                        // Clean up on unmount
-                        return () => {
-                            if (window.tokenRefreshInterval) {
-                                clearInterval(window.tokenRefreshInterval);
-                            }
-                        };
-                    }, []);
-
-                    React.useEffect(() => {
-                        // Set up periodic token refresh
-                        window.choreUtils.setupPeriodicTokenRefresh();
-
+                        // Set up periodic token refresh with more frequent checks
+                        window.choreUtils.setupPeriodicTokenRefresh(180000); // 3 minutes
+                        
                         // Listen for auth errors
-                        const handleAuthError = () => {
+                        const handleAuthError = (event) => {
+                            console.warn('Authentication error detected:', event.detail?.message || 'Unknown error');
                             setAuthError(true);
                         };
-
+                        
+                        // Listen for auth ready events
+                        const handleAuthReady = (event) => {
+                            // Clear any previous auth errors
+                            setAuthError(false);
+                            console.log('Authentication ready with token from:', event.detail?.tokenKey || 'unknown source');
+                        };
+                        
                         window.addEventListener('chores-auth-error', handleAuthError);
-
-                        return () => {
-                            if (window.tokenRefreshInterval) {
-                                clearInterval(window.tokenRefreshInterval);
+                        window.addEventListener('chores-auth-ready', handleAuthReady);
+                        
+                        // Setup event listener for visibility changes to refresh when tab becomes visible
+                        document.addEventListener('visibilitychange', async () => {
+                            if (document.visibilityState === 'visible') {
+                                // Page is now visible, check token
+                                const token = window.choreUtils.getAuthToken();
+                                if (token) {
+                                    try {
+                                        const response = await fetch('/api/config', {
+                                            headers: { 'Authorization': `Bearer ${token}` }
+                                        });
+                                        
+                                        if (!response.ok) {
+                                            // Invalid token, refresh
+                                            await window.choreUtils.refreshToken();
+                                        }
+                                    } catch (e) {
+                                        console.warn('Error checking token on visibility change:', e);
+                                    }
+                                }
                             }
+                        });
+                        
+                        // Clean up on unmount
+                        return () => {
+                            // Clear all intervals
+                            if (window.choreUtils.intervals) {
+                                clearInterval(window.choreUtils.intervals.tokenRefresh);
+                                clearInterval(window.choreUtils.intervals.validityCheck);
+                            }
+                            
+                            // Remove event listeners
                             window.removeEventListener('chores-auth-error', handleAuthError);
+                            window.removeEventListener('chores-auth-ready', handleAuthReady);
                         };
                     }, []);
 
