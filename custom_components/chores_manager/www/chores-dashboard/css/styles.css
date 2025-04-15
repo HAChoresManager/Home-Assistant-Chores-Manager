@@ -1,3 +1,5 @@
+/* custom_components/chores_manager/www/chores-dashboard/css/styles.css */
+
 /* GLOBAL LAYOUT CONSISTENCY - Ensure all elements align properly */
 #root > div {
     display: flex !important;
@@ -36,13 +38,22 @@ div.bg-green-100,
     border-radius: 8px !important;
 }
 
-/* Fix task description to match parent width */
+/* FIX TASK DESCRIPTION TO MATCH TASK CARD WIDTH EXACTLY */
 .task-description {
-    margin-left: 0 !important;
-    margin-right: 0 !important;
     width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
     box-sizing: border-box !important;
     border-radius: 0 0 8px 8px !important;
+}
+
+/* Task description content should also be full width */
+.task-description > div {
+    width: 100% !important;
+    margin: 0 !important;
+    border-top: none !important;
+    border-top-left-radius: 0 !important;
+    border-top-right-radius: 0 !important;
 }
 
 /* CRITICAL: Fix Achterstallig text color - with highest priority override */
@@ -130,32 +141,9 @@ body {
 /* Force high contrast text throughout the application */
 h1, h2, h3, h4, h5, h6, p, div, span, label, button {
     color: var(--theme-primary-text, #000000) !important;
-/* Ensure task headings use theme variables */
-.task-card h3.text-xl, .task-card h3 {
-    color: var(--theme-primary-text, #000000) !important;
-}
-
-/* Reset and base styles */
-body {
-    margin: 0;
-    padding: 0;
-    background-color: #ffffff;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-
-#root {
-    min-height: 100vh;
-    padding: 1rem;
-    background-color: #ffffff;
-}
-
-/* Force high contrast text throughout the application */
-h1, h2, h3, h4, h5, h6, p, div, span, label, button {
-    color: var(--theme-primary-text, #000000) !important;
     text-shadow: none !important;
 }
 
-/* Card styling */
 /* Card styling */
 .task-card {
     transition: all 0.2s ease;
@@ -238,7 +226,6 @@ div > h2.text-xl.font-semibold.mb-4 {
     border-radius: 8px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     max-width: 90%;
-    width: 550px;
     width: 550px;
     margin: 0 auto;
     padding: 1.5rem;
@@ -425,24 +412,7 @@ h1, h2, h3, h4, h5, h6, p, div:not(.progress-bar):not(.bg-blue-500):not(.bg-gree
     color: var(--theme-secondary-text, #555555) !important;
 }
 
-/* Custom theme styling */
-#root {
-    background-color: var(--theme-background, #ffffff) !important;
-}
-
-.task-card, .modal-content, .bg-white {
-    background-color: var(--theme-card-color, #f8f8f8) !important;
-}
-
-h1, h2, h3, h4, h5, h6, p, div:not(.progress-bar):not(.bg-blue-500):not(.bg-green-500):not(.bg-red-500) {
-    color: var(--theme-primary-text, #000000) !important;
-}
-
-.text-gray-400, .text-gray-500, .text-gray-600 {
-    color: var(--theme-secondary-text, #555555) !important;
-}
-
-/* Fix task description toggle */
+/* Fix task description toggle - UPDATED TO MATCH EXACT TASK CARD WIDTH */
 .task-description {
     max-height: 0;
     overflow: hidden;
@@ -450,12 +420,27 @@ h1, h2, h3, h4, h5, h6, p, div:not(.progress-bar):not(.bg-blue-500):not(.bg-gree
     width: 100% !important;
     box-sizing: border-box !important;
     margin: 0 !important;
-    padding: 0 1rem !important;
+    padding: 0 !important;
+    border-top: none !important;
+    border-top-left-radius: 0 !important;
+    border-top-right-radius: 0 !important;
 }
 
 .task-description.expanded {
     max-height: 500px;
     transition: max-height 0.5s ease-in;
+}
+
+/* Fix task description content container */
+.task-description > div {
+    width: 100% !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    border-top-left-radius: 0 !important;
+    border-top-right-radius: 0 !important;
+    border-bottom-left-radius: 8px !important;
+    border-bottom-right-radius: 8px !important;
+    border-top: none !important;
 }
 
 /* Fix icon grid in task form */
@@ -482,12 +467,6 @@ h1, h2, h3, h4, h5, h6, p, div:not(.progress-bar):not(.bg-blue-500):not(.bg-gree
     background-color: #3b82f6;
     color: white;
     border-color: #2563eb;
-}
-
-/* Ensure the "Achterstallig" text is ALWAYS red regardless of theme */
-.task-card span:contains("Achterstallig") {
-    color: #ef4444 !important;
-    font-weight: bold !important;
 }
 
 /* Ensure the "Achterstallig" text is ALWAYS red regardless of theme */
