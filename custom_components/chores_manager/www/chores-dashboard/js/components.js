@@ -1207,7 +1207,7 @@
           );
       };
 
-      // Updated TaskCard component with subtask completion handling
+      // Updated TaskCard component with subtask toggle fix
       const TaskCard = function({
         chore,
         onMarkDone,
@@ -1235,7 +1235,7 @@
               backgroundColor: `${assigneeObj.color}20`,
               borderColor: assigneeObj.color
           } : {};
-      
+        
           // Filter available assignees for completion
           const availableAssignees = assignees.length > 0
               ? assignees.filter(a => a.name !== "Wie kan")
@@ -1243,19 +1243,19 @@
                   { id: "laura", name: "Laura" },
                   { id: "martijn", name: "Martijn" }
               ];
-      
+            
           // State for description toggle and completion animation
           const [showDescription, setShowDescription] = React.useState(false);
           const [isCompleting, setIsCompleting] = React.useState(false);
           const [showConfirm, setShowConfirm] = React.useState(false);
           const [showSubtaskConfirm, setShowSubtaskConfirm] = React.useState(false);
-      
+            
           // State to track expanded subtasks
           const [expandedSubtasks, setExpandedSubtasks] = React.useState({});
-          
+            
           // UPDATED: New state to track selected subtasks
           const [selectedSubtasks, setSelectedSubtasks] = React.useState({});
-      
+            
           // Function to toggle subtask expansion
           const toggleSubtasks = (choreId) => {
             setExpandedSubtasks(prev => ({
@@ -1263,7 +1263,7 @@
               [choreId]: !prev[choreId]
             }));
           };
-      
+        
           // Function to handle subtask completion
           const handleSubtaskCompletion = (choreId, subtaskIds, person) => {
             // Hide subtask confirmation dialog
@@ -1290,21 +1290,21 @@
                   setShowConfirm(true);
               }
           };
-      
+        
           const handleConfirmComplete = (selectedUser) => {
               setShowConfirm(false);
               // Show immediate feedback animation
               setIsCompleting(true);
-      
+          
               // Call the actual mark done function with the selected user
               onMarkDone(id, selectedUser);
-      
+          
               // Reset animation state after a delay
               setTimeout(() => {
                   setIsCompleting(false);
               }, 600);
           };
-      
+        
           const toggleDescription = () => {
               // Toggle state
               setShowDescription(!showDescription);
@@ -1321,7 +1321,7 @@
                   }
               }, 10);
           };
-      
+        
           return React.createElement('div',
               { className: "mb-4" }, // Wrapper div for card + description
               React.createElement('div', {
@@ -1386,7 +1386,7 @@
                               className: "text-gray-500 hover:text-gray-700",
                               title: showDescription ? "Verberg beschrijving" : "Bekijk beschrijving"
                           }, showDescription ? "🔼" : "📝"),
-      
+                        
                           // Edit button
                           React.createElement('button', {
                               onClick: (e) => {
@@ -1396,7 +1396,7 @@
                               className: "text-gray-500 hover:text-gray-700",
                               title: "Bewerk taak"
                           }, "✏️"),
-      
+                        
                           // Completed check (only shown if completed today)
                           isCompletedToday && React.createElement('span', {
                               className: "text-green-600 text-xl",
@@ -1404,8 +1404,8 @@
                           }, "✓")
                       )
                   ),
-      
-                  // Add subtask display with improved styling
+                
+                  // FIXED: Subtask display with improved rendering
                   hasSubtasks && React.createElement('div', { className: "mt-2" },
                     // Show a progress bar for subtasks
                     React.createElement('div', { className: "flex items-center justify-between text-xs text-gray-600 mb-1" },
@@ -1422,8 +1422,8 @@
                         }
                       })
                     ),
-      
-                    // Collapsible list of subtasks
+                  
+                    // Subtask toggle button 
                     React.createElement('div', { className: "mt-2" },
                       React.createElement('button', {
                         onClick: (e) => {
@@ -1431,7 +1431,8 @@
                           toggleSubtasks(chore.chore_id);
                         },
                         className: "text-xs text-blue-600 flex items-center",
-                        type: "button"
+                        type: "button",
+                        "data-chore-id": chore.chore_id  // Add data attribute for better targeting
                       },
                         expandedSubtasks[chore.chore_id] ? "Verberg subtaken" : "Toon subtaken",
                         React.createElement('span', { className: "ml-1" },
@@ -1439,10 +1440,11 @@
                         )
                       )
                     ),
-      
-                    // Expanded subtasks list
-                    expandedSubtasks[chore.chore_id] && React.createElement('div', {
-                      className: "mt-2 pl-2 border-l-2 border-gray-200 subtask-list"
+                  
+                    // Always render the subtask list, but control visibility with style
+                    React.createElement('div', {
+                      className: "mt-2 pl-2 border-l-2 border-gray-200 subtask-list",
+                      style: { display: expandedSubtasks[chore.chore_id] ? 'block' : 'none' }
                     },
                       chore.subtasks.map((subtask, index) =>
                         React.createElement('div', {
@@ -1463,7 +1465,7 @@
                     )
                   )
               ),
-      
+            
               // Description section - now directly below the task card
               hasDescription && React.createElement('div', {
                   className: `task-description ${showDescription ? 'expanded' : ''}`,
@@ -1481,7 +1483,7 @@
                       inTaskCard: true
                   })
               ),
-      
+            
               // User Selection Completion Dialog
               React.createElement(CompletionConfirmDialog, {
                   isOpen: showConfirm,
