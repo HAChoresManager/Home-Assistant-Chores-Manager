@@ -1336,6 +1336,56 @@
                     );
                 };
 
+                // Fix subtask toggle visibility in TaskCard component
+                window.addEventListener('DOMContentLoaded', function() {
+                    const initInterval = setInterval(function() {
+                      if (window.ReactDOM && window.React) {
+                        clearInterval(initInterval);
+
+                        // Directly add helper script to fix subtask toggling
+                        const script = document.createElement('script');
+                        script.textContent = `
+                          // Fix subtask toggle functionality
+                          (function() {
+                            // Listen for DOM changes to catch newly added subtask buttons
+                            const observer = new MutationObserver(mutations => {
+                              mutations.forEach(mutation => {
+                                if (mutation.type === 'childList') {
+                                  // Find all subtask toggle buttons
+                                  document.querySelectorAll('button:contains("Toon subtaken"), button:contains("Verberg subtaken")').forEach(btn => {
+                                    if (!btn.hasAttribute('data-fixed')) {
+                                      btn.setAttribute('data-fixed', 'true');
+                                      // Replace click handler
+                                      btn.addEventListener('click', function(e) {
+                                        e.stopPropagation();
+                                        const taskCard = this.closest('.task-card');
+                                        if (!taskCard) return;
+
+                                        const subtaskList = taskCard.nextElementSibling;
+                                        if (subtaskList && subtaskList.classList.contains('subtask-list')) {
+                                          if (this.textContent.includes('Toon')) {
+                                            subtaskList.style.display = 'block';
+                                            this.textContent = 'Verberg subtaken ▲';
+                                          } else {
+                                            subtaskList.style.display = 'none';
+                                            this.textContent = 'Toon subtaken ▼';
+                                          }
+                                        }
+                                      });
+                                    }
+                                  });
+                                }
+                              });
+                            });
+
+                            observer.observe(document.body, { childList: true, subtree: true });
+                          })();
+                        `;
+                        document.head.appendChild(script);
+                      }
+                    }, 100);
+                  });
+
                 // Render when DOM is ready
                 ReactDOM.render(
                     React.createElement(App),
