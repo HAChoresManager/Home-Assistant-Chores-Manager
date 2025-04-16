@@ -11,6 +11,11 @@
     box-sizing: border-box !important;
 }
 
+/* Fix ENTIRE BACKGROUND with theme color - solves the white bars on sides */
+html, body, #root, .modal-container {
+    background-color: var(--theme-background, #ffffff) !important;
+}
+
 /* All direct children take FULL WIDTH to ensure consistent alignment */
 #root > div > * {
     width: 100% !important;
@@ -67,6 +72,16 @@ div.bg-green-100 {
     display: flex !important;
     flex-direction: column !important;
     align-items: stretch !important;
+}
+
+/* SUBTASKS STYLING - UPDATED TO MATCH DESCRIPTION STYLE */
+.task-card .subtask-list {
+    margin: 0 8px !important;
+    margin-top: 0.5rem !important;
+    padding-left: 0.75rem !important;
+    width: calc(100% - 16px) !important;
+    box-sizing: border-box !important;
+    border-left: 2px solid #e5e7eb !important;
 }
 
 /* CRITICAL: Fix Achterstallig text color - with highest priority override */
@@ -141,14 +156,14 @@ button[class*="bg-orange"]:hover {
 body {
     margin: 0;
     padding: 0;
-    background-color: #ffffff;
+    background-color: var(--theme-background, #ffffff) !important;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 #root {
     min-height: 100vh;
     padding: 1rem;
-    background-color: #ffffff;
+    background-color: var(--theme-background, #ffffff) !important;
 }
 
 /* Force high contrast text throughout the application */
@@ -278,6 +293,23 @@ button.bg-red-500, button.bg-red-600 {
 button.bg-gray-100, button.bg-gray-200 {
     background-color: #f3f4f6 !important;
     color: #000000 !important;
+}
+
+/* Theme reset button */
+.theme-reset-button {
+    background-color: #f3f4f6 !important;
+    border: 1px solid #d1d5db !important;
+    color: #374151 !important;
+    padding: 0.5rem 1rem !important;
+    border-radius: 0.25rem !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+}
+
+.theme-reset-button:hover {
+    background-color: #e5e7eb !important;
 }
 
 /* IMPROVED CONTRAST for day/date selection */
@@ -489,37 +521,14 @@ h1, h2, h3, h4, h5, h6, p, div:not(.progress-bar):not(.bg-blue-500):not(.bg-gree
     font-weight: bold !important;
 }
 
-/* Subtask styling improvements */
+/* Subtask styling improvements - UPDATED TO ENSURE VISIBILITY */
 .task-card .subtask-list {
     margin-top: 0.5rem;
     border-left: 2px solid #e5e7eb;
     padding-left: 0.75rem;
-    width: 100% !important;
-}
-
-.task-card .subtask-item {
-    display: flex;
-    align-items: center;
-    padding: 0.375rem 0;
-    transition: background-color 0.2s;
-    width: 100% !important;
-}
-
-.task-card .subtask-item:hover {
-    background-color: rgba(0, 0, 0, 0.05);
-}
-
-.task-card .subtask-checkbox {
-    margin-right: 0.5rem;
-}
-
-.task-card .subtask-name {
-    flex: 1;
-}
-
-.task-card .subtask-name.completed {
-    text-decoration: line-through;
-    opacity: 0.7;
+    width: calc(100% - 16px) !important;
+    margin: 0 8px 12px 8px !important;
+    box-sizing: border-box !important;
 }
 
 /* Auth error banner styling */
