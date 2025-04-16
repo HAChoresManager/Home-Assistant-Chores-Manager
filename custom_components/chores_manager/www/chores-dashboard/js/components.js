@@ -1519,7 +1519,7 @@
           );
       };
 
-      // Theme Settings Component
+      // ThemeSettings component
       const ThemeSettings = function({ onSave, currentTheme = {} }) {
         // Default theme values
         const defaultTheme = {
@@ -1528,7 +1528,7 @@
           primaryTextColor: '#000000',
           secondaryTextColor: '#333333'
         };
-        
+
         // Use React hooks
         const [theme, setTheme] = React.useState({
           backgroundColor: currentTheme?.backgroundColor || defaultTheme.backgroundColor,
@@ -1537,7 +1537,7 @@
           secondaryTextColor: currentTheme?.secondaryTextColor || defaultTheme.secondaryTextColor,
           ...currentTheme
         });
-        
+
         const handleChange = (e) => {
           const { name, value } = e.target;
           setTheme({
@@ -1545,17 +1545,17 @@
             [name]: value
           });
         };
-        
+
         const handleSave = () => {
           onSave(theme);
         };
-        
+
         const handleReset = () => {
           setTheme(defaultTheme);
-          // Immediately save the default theme
+          // Save immediately when reset
           onSave(defaultTheme);
         };
-        
+
         const applyPreview = () => {
           // Apply colors to the preview container
           const previewStyle = {
@@ -1564,7 +1564,7 @@
             borderRadius: '0.5rem',
             marginTop: '1rem'
           };
-          
+
           const cardStyle = {
             backgroundColor: theme.cardColor,
             color: theme.primaryTextColor,
@@ -1572,12 +1572,12 @@
             borderRadius: '0.5rem',
             border: '1px solid #e0e0e0'
           };
-          
+
           const secondaryTextStyle = {
             color: theme.secondaryTextColor,
             marginTop: '0.5rem'
           };
-          
+
           return React.createElement('div', { style: previewStyle, className: 'theme-preview' },
             React.createElement('h3', { style: { color: theme.primaryTextColor, marginBottom: '1rem' } }, "Thema Voorbeeld"),
             React.createElement('div', { style: cardStyle },
@@ -1586,10 +1586,10 @@
             )
           );
         };
-        
+
         return React.createElement('div', null,
           React.createElement('h3', { className: "text-lg font-medium mb-4" }, "Thema Instellingen"),
-          
+
           // Background color picker
           React.createElement('div', { className: "mb-4" },
             React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Achtergrondkleur"),
@@ -1610,7 +1610,7 @@
               })
             )
           ),
-          
+
           // Card color picker
           React.createElement('div', { className: "mb-4" },
             React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Kaartkleur"),
@@ -1631,7 +1631,7 @@
               })
             )
           ),
-          
+
           // Primary text color picker
           React.createElement('div', { className: "mb-4" },
             React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Hoofdtekstkleur"),
@@ -1652,7 +1652,7 @@
               })
             )
           ),
-          
+
           // Secondary text color picker
           React.createElement('div', { className: "mb-4" },
             React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Secundaire tekstkleur"),
@@ -1673,10 +1673,10 @@
               })
             )
           ),
-          
+
           // Preview section
           applyPreview(),
-          
+
           // Buttons - Save and Reset
           React.createElement('div', { className: "mt-6 flex justify-between" },
             React.createElement('button', {
@@ -1691,7 +1691,7 @@
             }, "Thema Opslaan")
           )
         );
-      };;
+      };
 
       const UserStatsCard = function({ assignee, stats, assignees = [] }) {
           const bgColorClass = window.choreUtils.getBackgroundColor(assignee, assignees);
