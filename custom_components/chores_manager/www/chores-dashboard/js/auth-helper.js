@@ -1,49 +1,52 @@
-// More reliable auth token extraction with user-specific isolation
+// Simplified authentication helper with better mobile app support
 (function() {
-    // Extract user ID from current session if possible
-    function getUserIdentifier() {
+    // Simplified token storage - single key for all users/devices
+    const TOKEN_KEY = 'chores_auth_token';
+    const TOKEN_VALIDATION_INTERVAL = 30000; // 30 seconds
+    
+    // Get Home Assistant token from parent window (works in mobile app and web)
+    function getHassToken() {
         try {
-            // Try to get user info from parent window
+            // Method 1: Direct access to hass object in parent window
             if (window.parent && window.parent.hassConnection && 
-                window.parent.hassConnection.connection && 
-                window.parent.hassConnection.connection.options &&
-                window.parent.hassConnection.connection.options.userID) {
-                return window.parent.hassConnection.connection.options.userID;
+                window.parent.hassConnection.auth && 
+                window.parent.hassConnection.auth.data && 
+                window.parent.hassConnection.auth.data.access_token) {
+                return window.parent.hassConnection.auth.data.access_token;
             }
             
-            // Fallback to getting from localStorage
-            const hassTokens = localStorage.getItem('hassTokens');
-            if (hassTokens) {
-                try {
-                    const parsed = JSON.parse(hassTokens);
-                    if (parsed && parsed.user && parsed.user.id) {
-                        return parsed.user.id;
-                    }
-                } catch (e) {}
+            // Method 2: Check for hass in current window (if not in iframe)
+            if (window.hassConnection && 
+                window.hassConnection.auth && 
+                window.hassConnection.auth.data && 
+                window.hassConnection.auth.data.access_token) {
+                return window.hassConnection.auth.data.access_token;
             }
             
-            // Final fallback - generate a device-specific ID that persists
-            let deviceId = localStorage.getItem('choresDeviceId');
-            if (!deviceId) {
-                deviceId = 'device_' + Math.random().toString(36).substring(2, 10) + 
-                           '_' + Date.now().toString(36);
-                localStorage.setItem('choresDeviceId', deviceId);
+            // Method 3: Try to access through document.querySelector (for HA web)
+            if (window.parent && window.parent.document) {
+                const haElement = window.parent.document.querySelector('home-assistant');
+                if (haElement && haElement.hass && haElement.hass.auth && 
+                    haElement.hass.auth.data && haElement.hass.auth.data.access_token) {
+                    return haElement.hass.auth.data.access_token;
+                }
             }
-            return deviceId;
+            
+            // Method 4: Check URL parameters (passed from HA)
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlToken = urlParams.get('auth');
+            if (urlToken) {
+                return urlToken;
+            }
+            
+            return null;
         } catch (e) {
-            console.warn('Error getting user identifier:', e);
-            // Generate a random ID as last resort
-            return 'unknown_' + Math.random().toString(36).substring(2, 10);
+            console.warn('Error getting HA token:', e);
+            return null;
         }
     }
     
-    // Get user-specific token key
-    function getTokenKey() {
-        const userId = getUserIdentifier();
-        return `chores_auth_token_${userId}`;
-    }
-    
-    // First try config.json to get the token
+    // Get token from config.json as fallback
     async function getConfigToken() {
         try {
             const response = await fetch('/local/chores-dashboard/config.json?nocache=' + Date.now(), {
@@ -52,152 +55,173 @@
             if (!response.ok) return null;
             
             const config = await response.json();
-            if (config && config.api_token) {
-                console.log('Using auth token from config.json');
-                return config.api_token;
-            }
-            return null;
+            return config?.api_token || null;
         } catch (e) {
-            console.warn('Cannot extract token from config.json:', e);
+            console.warn('Error getting config token:', e);
             return null;
         }
     }
     
-    // Fallback methods to get token if config.json fails
-    function extractHassToken() {
-        // Try all possible methods to get the token
+    // Validate token with HA API
+    async function validateToken(token) {
+        if (!token) return false;
         
-        // Method 1: Get from URL hash if present
         try {
-            const urlParams = new URLSearchParams(window.location.search);
-            const token = urlParams.get('auth');
-            if (token) {
-                return token;
-            }
+            const response = await fetch('/api/config', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache'
+                },
+                timeout: 5000
+            });
+            return response.ok;
         } catch (e) {
-            console.warn('Cannot extract token from URL:', e);
+            console.warn('Token validation failed:', e);
+            return false;
+        }
+    }
+    
+    // Get best available token
+    async function getBestToken() {
+        // 1. Try Home Assistant native token first
+        const hassToken = getHassToken();
+        if (hassToken) {
+            const isValid = await validateToken(hassToken);
+            if (isValid) {
+                console.log('Using Home Assistant native token');
+                localStorage.setItem(TOKEN_KEY, hassToken);
+                return hassToken;
+            }
         }
         
-        // Method 2: Try to access hass object directly
-        try {
-            if (window.hassConnection) {
-                const auth = window.hassConnection.auth;
-                if (auth && auth.data && auth.data.access_token) {
-                    return auth.data.access_token;
-                }
+        // 2. Try stored token
+        const storedToken = localStorage.getItem(TOKEN_KEY);
+        if (storedToken) {
+            const isValid = await validateToken(storedToken);
+            if (isValid) {
+                console.log('Using stored token');
+                return storedToken;
+            } else {
+                // Clear invalid stored token
+                localStorage.removeItem(TOKEN_KEY);
             }
-        } catch (e) {
-            console.warn('Cannot access window.hassConnection:', e);
         }
         
-        // Method 3: Access through parent window
-        try {
-            if (window.parent && window.parent.hassConnection) {
-                const auth = window.parent.hassConnection.auth;
-                if (auth && auth.data && auth.data.access_token) {
-                    return auth.data.access_token;
-                }
+        // 3. Try config.json token
+        const configToken = await getConfigToken();
+        if (configToken) {
+            const isValid = await validateToken(configToken);
+            if (isValid) {
+                console.log('Using config.json token');
+                localStorage.setItem(TOKEN_KEY, configToken);
+                return configToken;
             }
-        } catch (e) {
-            console.warn('Cannot access parent window auth:', e);
         }
-
-        // Method 4: Look for auth data in localStorage
-        try {
-            const authData = localStorage.getItem('hassTokens');
-            if (authData) {
-                const tokens = JSON.parse(authData);
-                if (tokens && tokens.access_token) {
-                    return tokens.access_token;
-                }
-            }
-        } catch (e) {
-            console.warn('Cannot access localStorage tokens:', e);
-        }
-
+        
+        console.warn('No valid token found');
         return null;
     }
-
-    // Initialize tokens asynchronously
+    
+    // Initialize authentication
     const initAuth = async () => {
-        // Get user-specific token key
-        const tokenKey = getTokenKey();
-        
-        // Try to get existing token first
-        const existingToken = localStorage.getItem(tokenKey);
-        if (existingToken) {
-            // Validate token with a simple API call
-            try {
-                const response = await fetch('/api/config', {
-                    headers: {
-                        'Authorization': `Bearer ${existingToken}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-                
-                if (response.ok) {
-                    // Token is valid, use it
-                    console.log(`Using existing valid token for ${tokenKey}`);
-                    
-                    // Create a global event that other scripts can listen for
-                    const event = new CustomEvent('chores-auth-ready', { 
-                        detail: { token: existingToken, tokenKey: tokenKey } 
-                    });
-                    window.dispatchEvent(event);
-                    return;
-                } else {
-                    // Token is invalid, remove it
-                    console.log(`Existing token for ${tokenKey} is invalid, removing`);
-                    localStorage.removeItem(tokenKey);
-                }
-            } catch (e) {
-                console.warn('Error validating existing token:', e);
-            }
-        }
-        
-        // If no valid token, try to get a new one
-        // First try config.json
-        const configToken = await getConfigToken();
-        
-        if (configToken) {
-            localStorage.setItem(tokenKey, configToken);
+        try {
+            const token = await getBestToken();
             
-            // Create a global event that other scripts can listen for
-            const event = new CustomEvent('chores-auth-ready', { 
-                detail: { token: configToken, tokenKey: tokenKey } 
-            });
-            window.dispatchEvent(event);
-        } else {
-            // If config token fails, try other methods
-            const token = extractHassToken();
             if (token) {
-                localStorage.setItem(tokenKey, token);
-                console.log(`Successfully retrieved Home Assistant auth token for ${tokenKey}`);
-                
-                // Create a global event
+                // Dispatch success event
                 const event = new CustomEvent('chores-auth-ready', { 
-                    detail: { token, tokenKey: tokenKey } 
+                    detail: { token: token } 
                 });
                 window.dispatchEvent(event);
-            } else {
-                console.warn('Could not retrieve Home Assistant auth token');
                 
-                // Dispatch auth error event
+                // Set up token validation interval
+                setupTokenValidation(token);
+            } else {
+                // Dispatch error event
                 const errorEvent = new CustomEvent('chores-auth-error', {
-                    detail: { message: 'Failed to retrieve authentication token' }
+                    detail: { message: 'No valid authentication token found' }
                 });
                 window.dispatchEvent(errorEvent);
             }
+        } catch (e) {
+            console.error('Auth initialization failed:', e);
+            const errorEvent = new CustomEvent('chores-auth-error', {
+                detail: { message: 'Authentication initialization failed: ' + e.message }
+            });
+            window.dispatchEvent(errorEvent);
         }
     };
     
+    // Set up periodic token validation
+    function setupTokenValidation(initialToken) {
+        let currentToken = initialToken;
+        
+        const validatePeriodically = async () => {
+            try {
+                // Always try to get the latest HA token first
+                const hassToken = getHassToken();
+                if (hassToken && hassToken !== currentToken) {
+                    const isValid = await validateToken(hassToken);
+                    if (isValid) {
+                        currentToken = hassToken;
+                        localStorage.setItem(TOKEN_KEY, hassToken);
+                        console.log('Updated to newer HA token');
+                        return;
+                    }
+                }
+                
+                // Validate current token
+                const isValid = await validateToken(currentToken);
+                if (!isValid) {
+                    console.log('Current token invalid, refreshing...');
+                    const newToken = await getBestToken();
+                    if (newToken) {
+                        currentToken = newToken;
+                        console.log('Token refreshed successfully');
+                    } else {
+                        console.error('Failed to refresh token');
+                        const errorEvent = new CustomEvent('chores-auth-error', {
+                            detail: { message: 'Token expired and refresh failed' }
+                        });
+                        window.dispatchEvent(errorEvent);
+                    }
+                }
+            } catch (e) {
+                console.warn('Token validation error:', e);
+            }
+        };
+        
+        // Validate immediately and then every 30 seconds
+        validatePeriodically();
+        const interval = setInterval(validatePeriodically, TOKEN_VALIDATION_INTERVAL);
+        
+        // Also validate when window regains focus
+        window.addEventListener('focus', validatePeriodically);
+        
+        // Store interval for cleanup
+        window.choreAuthInterval = interval;
+    }
+    
     // Expose methods globally
     window.choreAuth = {
-        getUserIdentifier: getUserIdentifier,
-        getTokenKey: getTokenKey,
-        initAuth: initAuth
+        getBestToken: getBestToken,
+        validateToken: validateToken,
+        initAuth: initAuth,
+        getStoredToken: () => localStorage.getItem(TOKEN_KEY),
+        clearToken: () => localStorage.removeItem(TOKEN_KEY)
     };
     
-    // Start auth initialization
-    initAuth();
+    // Start auth initialization when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAuth);
+    } else {
+        initAuth();
+    }
+    
+    // Clean up on page unload
+    window.addEventListener('beforeunload', () => {
+        if (window.choreAuthInterval) {
+            clearInterval(window.choreAuthInterval);
+        }
+    });
 })();

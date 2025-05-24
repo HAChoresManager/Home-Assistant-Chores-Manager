@@ -23,344 +23,125 @@ window.choreUtils.availableIcons = {
     'general': '📋'
 };
 
-// Get the token key for the current user/device
-window.choreUtils.getTokenKey = function() {
-    // Use the auth helper if available
-    if (window.choreAuth && window.choreAuth.getTokenKey) {
-        return window.choreAuth.getTokenKey();
-    }
-    
-    // Fallback implementation
-    try {
-        // Try to get a unique identifier for this user/device
-        let userId = null;
-        
-        // Try to get user ID from parent window
-        if (window.parent && window.parent.hassConnection && 
-            window.parent.hassConnection.connection && 
-            window.parent.hassConnection.connection.options) {
-            userId = window.parent.hassConnection.connection.options.userID;
-        }
-        
-        // If no user ID, try to get a device ID
-        if (!userId) {
-            let deviceId = localStorage.getItem('choresDeviceId');
-            if (!deviceId) {
-                deviceId = 'device_' + Math.random().toString(36).substring(2, 10);
-                localStorage.setItem('choresDeviceId', deviceId);
-            }
-            userId = deviceId;
-        }
-        
-        return `chores_auth_token_${userId}`;
-    } catch (e) {
-        console.warn('Error getting token key:', e);
-        return 'chores_auth_token_default';
-    }
-};
+// Simplified token key - single for all users
+const TOKEN_KEY = 'chores_auth_token';
 
-// User-specific improved token retrieval
+// Get authentication token - simplified approach
 window.choreUtils.getAuthToken = function() {
-    // Get the token key for this user/device
-    const tokenKey = window.choreUtils.getTokenKey();
-    
-    // Try to get the token from localStorage
-    const token = localStorage.getItem(tokenKey);
-    if (token) {
-        return token;
+    // Get from localStorage first
+    const storedToken = localStorage.getItem(TOKEN_KEY);
+    if (storedToken) {
+        return storedToken;
     }
     
-    // If no token in storage, try to load from config.json synchronously
-    try {
-        const xhr = new XMLHttpRequest();
-        xhr.open('GET', '/local/chores-dashboard/config.json?nocache=' + Date.now(), false);  // false = synchronous
-        xhr.send(null);
-        
-        if (xhr.status === 200) {
-            const config = JSON.parse(xhr.responseText);
-            if (config && config.api_token) {
-                // Store in user-specific localStorage
-                localStorage.setItem(tokenKey, config.api_token);
-                return config.api_token;
-            }
-        }
-    } catch (e) {
-        console.warn('Error loading config synchronously:', e);
-    }
-    
-    // If that fails, try other methods as fallback
-    try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlToken = urlParams.get('auth');
-        if (urlToken) {
-            localStorage.setItem(tokenKey, urlToken);
-            return urlToken;
-        }
-    } catch (e) {
-        console.warn('Error extracting token from URL:', e);
-    }
-    
-    // Last resort - check for a default token
-    const defaultToken = localStorage.getItem('chores_auth_token');
-    if (defaultToken) {
-        // Migrate to user-specific storage
-        localStorage.setItem(tokenKey, defaultToken);
-        return defaultToken;
+    // If no stored token, try to get from choreAuth helper
+    if (window.choreAuth && window.choreAuth.getStoredToken) {
+        return window.choreAuth.getStoredToken();
     }
     
     return null;
 };
 
-// Set up periodic token refresh to prevent auth failures
-window.choreUtils.setupPeriodicTokenRefresh = function(interval = 180000) { // 3 minutes default
-    // Clear any existing refresh interval
-    if (window.tokenRefreshInterval) {
-        clearInterval(window.tokenRefreshInterval);
-    }
-    
-    // Get the token key for this user/device
-    const tokenKey = window.choreUtils.getTokenKey();
-    
-    // Set up a new refresh interval
-    window.tokenRefreshInterval = setInterval(async function() {
-        try {
-            // Only refresh if we have a token already
-            if (localStorage.getItem(tokenKey)) {
-                console.log(`Performing background token refresh check for ${tokenKey}...`);
-                const newToken = await window.choreUtils.refreshToken();
-                if (newToken) {
-                    console.log('Background token refresh successful');
-                }
-            }
-        } catch (e) {
-            console.warn('Background token refresh failed:', e);
-        }
-    }, interval);
-    
-    // Also refresh on window focus - critical for devices that were inactive
-    window.addEventListener('focus', async function() {
-        try {
-            if (localStorage.getItem(tokenKey)) {
-                await window.choreUtils.refreshToken();
-            }
-        } catch (e) {
-            console.warn('Focus token refresh failed:', e);
-        }
-    });
-    
-    // Check token validity every minute with a lightweight request
-    const validityCheckInterval = setInterval(async function() {
-        try {
-            const token = localStorage.getItem(tokenKey);
-            if (!token) return;
-            
-            const response = await fetch('/api/config', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Cache-Control': 'no-cache'
-                }
-            });
-            
-            if (!response.ok) {
-                console.warn(`Token validity check failed with status ${response.status}, refreshing token...`);
-                await window.choreUtils.refreshToken();
-            }
-        } catch (e) {
-            console.warn('Token validity check failed:', e);
-        }
-    }, 60000); // Check every minute
-    
-    // Store both intervals for cleanup
-    window.choreUtils.intervals = {
-        tokenRefresh: window.tokenRefreshInterval,
-        validityCheck: validityCheckInterval
-    };
-    
-    return window.tokenRefreshInterval;
-};
-
-// Improved fetch with auth and exponential backoff
+// Simplified fetch with authentication and retry logic
 window.choreUtils.fetchWithAuth = async function(url, options = {}) {
-    // Get auth token
-    const token = window.choreUtils.getAuthToken();
-    const tokenKey = window.choreUtils.getTokenKey();
-    
-    // Create fetch options with authentication
-    const fetchOptions = { 
-        ...options,
-        headers: {
-            ...options.headers,
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-        }
-    };
-    
-    // Add auth token if available
-    if (token) {
-        fetchOptions.headers = {
-            ...fetchOptions.headers,
-            'Authorization': `Bearer ${token}`
-        };
-    } else {
-        console.warn('No auth token available for API request');
-        
-        // Dispatch auth error event
-        window.dispatchEvent(new CustomEvent('chores-auth-error', {
-            detail: { message: 'No authentication token available' }
-        }));
-    }
-    
-    // Retry mechanism with exponential backoff
-    let retries = 0;
     const maxRetries = 3;
-    const baseDelay = 1000; // 1 second initial delay
+    const baseDelay = 1000;
     
-    while (retries <= maxRetries) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            // Use credentials to maintain session cookies too
-            fetchOptions.credentials = 'same-origin';
-            const response = await fetch(url, fetchOptions);
+            // Get the current best token
+            let token = window.choreUtils.getAuthToken();
             
-            if (response.status === 401) {
-                console.warn(`Authentication failed (attempt ${retries+1}/${maxRetries+1}), attempting to refresh token...`);
+            // If no token and we have choreAuth helper, try to get one
+            if (!token && window.choreAuth && window.choreAuth.getBestToken) {
+                try {
+                    token = await window.choreAuth.getBestToken();
+                } catch (e) {
+                    console.warn('Failed to get token from choreAuth:', e);
+                }
+            }
+            
+            const fetchOptions = {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                    ...options.headers
+                },
+                credentials: 'same-origin'
+            };
+            
+            // Add auth token if available
+            if (token) {
+                fetchOptions.headers['Authorization'] = `Bearer ${token}`;
+            } else {
+                console.warn('No authentication token available for request to:', url);
                 
-                // Try to get a fresh token
-                const newToken = await window.choreUtils.refreshToken();
-                
-                if (newToken && newToken !== token) {
-                    // Retry with new token
-                    const retryOptions = {
-                        ...fetchOptions,
-                        headers: {
-                            ...fetchOptions.headers,
-                            'Authorization': `Bearer ${newToken}`
-                        }
-                    };
-                    
-                    retries++;
-                    
-                    if (retries > maxRetries) {
-                        // We've tried enough, dispatch auth error
-                        window.dispatchEvent(new CustomEvent('chores-auth-error', {
-                            detail: { message: 'Authentication failed after multiple attempts' }
-                        }));
-                        
-                        return response; // Return the 401 response
-                    }
-                    
-                    // Exponential backoff
-                    const delay = baseDelay * Math.pow(2, retries - 1);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    continue; // Try again with new token
-                } else {
-                    // Failed to get a new token
+                // Dispatch auth error on first attempt
+                if (attempt === 0) {
                     window.dispatchEvent(new CustomEvent('chores-auth-error', {
-                        detail: { message: 'Failed to refresh authentication token' }
+                        detail: { message: 'No authentication token available' }
                     }));
                 }
             }
             
-            return response;
-        } catch (e) {
-            console.error(`Fetch error (attempt ${retries+1}/${maxRetries+1}):`, e);
+            const response = await fetch(url, fetchOptions);
             
-            if (retries === maxRetries) {
-                throw e; // Give up after max retries
+            // Handle 401 errors
+            if (response.status === 401) {
+                console.warn(`Authentication failed for ${url} (attempt ${attempt + 1}/${maxRetries + 1})`);
+                
+                // Clear stored token on 401
+                localStorage.removeItem(TOKEN_KEY);
+                
+                // Try to get a fresh token if we have the helper
+                if (window.choreAuth && window.choreAuth.getBestToken && attempt < maxRetries) {
+                    console.log('Attempting to refresh authentication...');
+                    try {
+                        const newToken = await window.choreAuth.getBestToken();
+                        if (newToken && newToken !== token) {
+                            console.log('Got fresh token, retrying request...');
+                            // Exponential backoff before retry
+                            const delay = baseDelay * Math.pow(2, attempt);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            continue; // Retry with new token
+                        }
+                    } catch (e) {
+                        console.error('Failed to refresh token:', e);
+                    }
+                }
+                
+                // On final attempt or if refresh failed, dispatch error
+                if (attempt === maxRetries) {
+                    window.dispatchEvent(new CustomEvent('chores-auth-error', {
+                        detail: { message: 'Authentication failed after multiple attempts' }
+                    }));
+                }
             }
             
-            retries++;
-            // Exponential backoff
-            const delay = baseDelay * Math.pow(2, retries - 1);
+            // Return response (even if it's an error, let calling code handle it)
+            return response;
+            
+        } catch (error) {
+            console.error(`Fetch error for ${url} (attempt ${attempt + 1}/${maxRetries + 1}):`, error);
+            
+            // If this is the last attempt, throw the error
+            if (attempt === maxRetries) {
+                throw error;
+            }
+            
+            // Exponential backoff before retry
+            const delay = baseDelay * Math.pow(2, attempt);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
 };
 
-// Token refresh function with user isolation
-window.choreUtils.refreshToken = async function() {
-    // Get the user-specific token key
-    const tokenKey = window.choreUtils.getTokenKey();
-    
-    // Clear current token
-    const currentToken = localStorage.getItem(tokenKey);
-    localStorage.removeItem(tokenKey);
-    
-    // First try config.json
-    try {
-        const response = await fetch('/local/chores-dashboard/config.json?nocache=' + Date.now(), {
-            cache: 'no-store'
-        });
-        
-        if (response.ok) {
-            const config = await response.json();
-            if (config && config.api_token) {
-                const token = config.api_token;
-                localStorage.setItem(tokenKey, token);
-                console.log(`Refreshed token from config.json for ${tokenKey}`);
-                return token;
-            }
-        }
-    } catch (e) {
-        console.warn('Error refreshing token from config:', e);
-    }
-    
-    // If that fails, try extracting from parent window
-    try {
-        if (window.parent && window.parent.hassConnection) {
-            const auth = window.parent.hassConnection.auth;
-            if (auth && auth.data && auth.data.access_token) {
-                const token = auth.data.access_token;
-                localStorage.setItem(tokenKey, token);
-                console.log(`Refreshed token from parent window for ${tokenKey}`);
-                return token;
-            }
-        }
-    } catch (e) {
-        console.warn('Cannot refresh token from parent window:', e);
-    }
-    
-    // Try the URL token
-    try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlToken = urlParams.get('auth');
-        if (urlToken) {
-            localStorage.setItem(tokenKey, urlToken);
-            console.log(`Refreshed token from URL for ${tokenKey}`);
-            return urlToken;
-        }
-    } catch (e) {
-        console.warn('Error extracting token from URL:', e);
-    }
-    
-    // Last resort, return the original token
-    if (currentToken) {
-        localStorage.setItem(tokenKey, currentToken);
-    }
-    return currentToken;
-};
+// Remove the complex token refresh and management functions - now handled by auth-helper
+// Keep only the essential utility functions
 
-// ADDED: Force token refresh for all users - admin function
-window.choreUtils.forceTokenRefreshForAllUsers = function() {
-    // Find all token keys in localStorage
-    const tokenKeys = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('chores_auth_token_')) {
-            tokenKeys.push(key);
-        }
-    }
-    
-    console.log(`Found ${tokenKeys.length} user tokens to refresh`);
-    
-    // Clear all tokens
-    tokenKeys.forEach(key => localStorage.removeItem(key));
-    
-    // Refresh current user's token
-    return window.choreUtils.refreshToken();
-};
-
-// Rest of the utility functions remain the same
 window.choreUtils.isToday = function(dateString) {
     if (!dateString) return false;
     const today = new Date();
@@ -572,35 +353,19 @@ window.choreUtils.forceRefresh = function() {
     window.location.reload(true);
 };
 
-// IMPROVED: Debug function to check token status
+// Debug function to check token status
 window.choreUtils.checkTokenStatus = async function() {
-    const tokenKey = window.choreUtils.getTokenKey();
     const token = window.choreUtils.getAuthToken();
     const tokenStatus = {
-        tokenKey: tokenKey,
         hasToken: !!token,
         tokenLength: token ? token.length : 0,
         tokenFirstChars: token ? token.substring(0, 8) + '...' : 'none'
     };
     
-    // List all tokens in localStorage
-    const allTokens = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('chores_auth_token_')) {
-            allTokens.push({
-                key: key,
-                length: localStorage.getItem(key).length,
-                firstChars: localStorage.getItem(key).substring(0, 8) + '...'
-            });
-        }
-    }
-    tokenStatus.allTokens = allTokens;
-    
     // Test the token
     if (token) {
         try {
-            const response = await fetch('/api/states', {
+            const response = await fetch('/api/config', {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -616,10 +381,7 @@ window.choreUtils.checkTokenStatus = async function() {
     }
     
     console.table(tokenStatus);
-    if (allTokens.length > 0) {
-        console.table(allTokens);
-    }
     return tokenStatus;
 };
 
-console.log('ChoreUtils initialized with user-specific authentication');
+console.log('ChoreUtils initialized with simplified authentication');
