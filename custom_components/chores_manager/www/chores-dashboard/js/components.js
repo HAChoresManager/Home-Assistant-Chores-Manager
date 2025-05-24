@@ -151,23 +151,27 @@
 
       // Subtask Completion Dialog Component
       const SubtaskCompletionDialog = function({ chore, onComplete, onCancel, isOpen, assignees = [], defaultUser }) {
-          if (!isOpen || !chore || !chore.subtasks) return null;
+          if (!isOpen || !chore || !chore.subtasks || !Array.isArray(chore.subtasks)) return null;
           
           const [selectedUser, setSelectedUser] = React.useState(defaultUser || '');
           const [subtaskStates, setSubtaskStates] = React.useState({});
           
           // Initialize subtask states on dialog open
           React.useEffect(() => {
-              if (isOpen && chore.subtasks) {
+              if (isOpen && chore.subtasks && Array.isArray(chore.subtasks)) {
                   const initialStates = {};
                   chore.subtasks.forEach(subtask => {
-                      initialStates[subtask.id] = subtask.completed || false;
+                      // Ensure subtask has required fields
+                      if (subtask && typeof subtask.id !== 'undefined') {
+                          initialStates[subtask.id] = subtask.completed || false;
+                      }
                   });
                   setSubtaskStates(initialStates);
               }
           }, [isOpen, chore]);
           
           const handleSubtaskToggle = (subtaskId) => {
+              if (typeof subtaskId === 'undefined') return;
               setSubtaskStates(prev => ({
                   ...prev,
                   [subtaskId]: !prev[subtaskId]
@@ -175,21 +179,42 @@
           };
           
           const handleComplete = () => {
-              if (!selectedUser) return;
+              if (!selectedUser) {
+                  console.warn('No user selected for subtask completion');
+                  return;
+              }
               
-              // Filter selected subtasks
+              // Filter selected subtasks and ensure they're valid
               const completedSubtasks = Object.entries(subtaskStates)
                   .filter(([_, isCompleted]) => isCompleted)
-                  .map(([id]) => parseInt(id));
+                  .map(([id]) => {
+                      const numId = parseInt(id, 10);
+                      if (isNaN(numId)) {
+                          console.warn('Invalid subtask ID:', id);
+                          return null;
+                      }
+                      return numId;
+                  })
+                  .filter(id => id !== null);
               
+              if (completedSubtasks.length === 0) {
+                  console.warn('No valid subtasks selected for completion');
+                  return;
+              }
+              
+              console.log('Completing subtasks:', { choreId: chore.chore_id, subtaskIds: completedSubtasks, user: selectedUser });
               onComplete(chore.chore_id, completedSubtasks, selectedUser);
           };
           
           // Filter out "Wie kan" from completion assignees
           const filteredAssignees = assignees.filter(user => user.name !== "Wie kan");
           
+          // Check if all subtasks are completed
           const allCompleted = chore.subtasks.every(subtask => 
               subtaskStates[subtask.id] || subtask.completed);
+          
+          // Count selected subtasks
+          const selectedCount = Object.values(subtaskStates).filter(Boolean).length;
           
           return React.createElement('div',
               { className: "modal-container" },
@@ -203,8 +228,13 @@
                           "Selecteer de subtaken die je hebt voltooid:"
                       ),
                       React.createElement('div', { className: "max-h-60 overflow-auto border rounded p-2" },
-                          chore.subtasks.map(subtask => 
-                              React.createElement('div', {
+                          chore.subtasks.map(subtask => {
+                              if (!subtask || typeof subtask.id === 'undefined') {
+                                  console.warn('Invalid subtask:', subtask);
+                                  return null;
+                              }
+                              
+                              return React.createElement('div', {
                                   key: subtask.id,
                                   className: "flex items-center py-2 border-b last:border-b-0"
                               },
@@ -219,9 +249,9 @@
                                   React.createElement('label', {
                                       htmlFor: `subtask-${subtask.id}`,
                                       className: `flex-1 ${subtask.completed ? "line-through text-gray-500" : ""}`
-                                  }, subtask.name)
-                              )
-                          )
+                                  }, subtask.name || 'Unnamed subtask')
+                              );
+                          }).filter(Boolean) // Remove null entries
                       )
                   ),
                   React.createElement('div', { className: "mb-4" },
@@ -248,10 +278,10 @@
                       React.createElement('button', {
                           onClick: handleComplete,
                           className: "px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700",
-                          disabled: !selectedUser || Object.values(subtaskStates).every(v => !v),
+                          disabled: !selectedUser || selectedCount === 0,
                           title: !selectedUser ? "Selecteer een gebruiker" : 
-                                 Object.values(subtaskStates).every(v => !v) ? "Selecteer minstens één subtaak" : ""
-                      }, allCompleted ? "Alle subtaken voltooid!" : "Voltooien")
+                                 selectedCount === 0 ? "Selecteer minstens één subtaak" : ""
+                      }, allCompleted ? "Alle subtaken voltooid!" : `${selectedCount} subtaken voltooien`)
                   )
               )
           );
@@ -647,6 +677,24 @@
               processedData.weekday = Number(processedData.weekday || -1);
               processedData.monthday = Number(processedData.monthday || -1);
 
+              // Handle subtasks - filter out empty ones
+              if (processedData.has_subtasks && processedData.subtasks) {
+                  processedData.subtasks = processedData.subtasks
+                      .filter(subtask => subtask && subtask.name && subtask.name.trim() !== '')
+                      .map(subtask => ({
+                          name: subtask.name.trim(),
+                          completed: false
+                      }));
+                  
+                  // If no valid subtasks remain, disable has_subtasks
+                  if (processedData.subtasks.length === 0) {
+                      processedData.has_subtasks = false;
+                  }
+              } else {
+                  // Ensure subtasks is empty array if not enabled
+                  processedData.subtasks = [];
+              }
+
               // Handle specific frequency types
               if (processedData.frequency_type === "Meerdere keren per week") {
                   // Ensure frequency_times is valid (1-7)
@@ -992,10 +1040,13 @@
                               React.createElement('div', { key: index, className: "flex items-center" },
                                 React.createElement('input', {
                                   type: "text",
-                                  value: subtask.name,
+                                  value: (subtask && subtask.name) || '',
                                   placeholder: "Naam van subtaak",
                                   onChange: e => {
-                                    const newSubtasks = [...formData.subtasks];
+                                    const newSubtasks = [...(formData.subtasks || [])];
+                                    if (!newSubtasks[index]) {
+                                      newSubtasks[index] = { name: '', completed: false };
+                                    }
                                     newSubtasks[index].name = e.target.value;
                                     setFormData({
                                       ...formData,
@@ -1007,7 +1058,7 @@
                                 index > 0 && React.createElement('button', {
                                   type: "button",
                                   onClick: () => {
-                                    const newSubtasks = [...formData.subtasks];
+                                    const newSubtasks = [...(formData.subtasks || [])];
                                     newSubtasks.splice(index, 1);
                                     setFormData({
                                       ...formData,
@@ -1227,7 +1278,7 @@
           const isDueTodayValue = !isPastDue && window.choreUtils.isDueToday(chore);
           const dueStatusClass = isPastDue ? 'past-due' : (isDueTodayValue ? 'due-today' : '');
           const hasDescription = chore.description && chore.description.trim() !== '';
-          const hasSubtasks = chore.has_subtasks && chore.subtasks && chore.subtasks.length > 0;
+          const hasSubtasks = chore.has_subtasks && chore.subtasks && Array.isArray(chore.subtasks) && chore.subtasks.length > 0;
       
           // Get custom style for this assignee
           const assigneeObj = assignees.find(a => a.name === chore.assigned_to);
@@ -1266,15 +1317,21 @@
         
           // Function to handle subtask completion
           const handleSubtaskCompletion = (choreId, subtaskIds, person) => {
-            // Hide subtask confirmation dialog
-            setShowSubtaskConfirm(false);
-            
-            // Process each selected subtask
-            subtaskIds.forEach(subtaskId => {
-              if (typeof onMarkSubtaskDone === 'function') {
-                onMarkSubtaskDone(choreId, subtaskId, person);
+              // Hide subtask confirmation dialog
+              setShowSubtaskConfirm(false);
+              
+              // Validate inputs
+              if (!choreId || !subtaskIds || !Array.isArray(subtaskIds) || subtaskIds.length === 0) {
+                  console.error('Invalid subtask completion data:', { choreId, subtaskIds, person });
+                  return;
               }
-            });
+              
+              // Call the completion function with the array of subtask IDs
+              if (typeof onMarkSubtaskDone === 'function') {
+                  onMarkSubtaskDone(choreId, subtaskIds, person);
+              } else {
+                  console.error('onMarkSubtaskDone is not a function');
+              }
           };
           
           // UPDATED: New handler for task card click
@@ -1411,14 +1468,14 @@
                     React.createElement('div', { className: "flex items-center justify-between text-xs text-gray-600 mb-1" },
                       React.createElement('span', null, "Subtaken:"),
                       React.createElement('span', null,
-                        `${chore.subtasks.filter(s => s.completed).length}/${chore.subtasks.length}`
+                        `${chore.subtasks.filter(s => s && s.completed).length}/${chore.subtasks.length}`
                       )
                     ),
                     React.createElement('div', { className: "h-1.5 bg-gray-200 rounded-full overflow-hidden" },
                       React.createElement('div', {
                         className: "h-full bg-green-500 transition-all duration-300",
                         style: {
-                          width: `${(chore.subtasks.filter(s => s.completed).length / chore.subtasks.length) * 100}%`
+                          width: `${(chore.subtasks.filter(s => s && s.completed).length / chore.subtasks.length) * 100}%`
                         }
                       })
                     ),
@@ -1446,22 +1503,24 @@
                       className: "mt-2 pl-2 border-l-2 border-gray-200 subtask-list",
                       style: { display: expandedSubtasks[chore.chore_id] ? 'block' : 'none' }
                     },
-                      chore.subtasks.map((subtask, index) =>
-                        React.createElement('div', {
-                          key: index,
-                          className: "flex items-center py-1 text-sm subtask-item"
-                        },
-                          React.createElement('input', {
-                            type: "checkbox",
-                            checked: subtask.completed,
-                            readOnly: true,
-                            className: "mr-2 subtask-checkbox"
-                          }),
-                          React.createElement('span', {
-                            className: `subtask-name ${subtask.completed ? "completed" : ""}`
-                          }, subtask.name)
+                      chore.subtasks
+                        .filter(subtask => subtask && typeof subtask.name === 'string') // Filter out invalid subtasks
+                        .map((subtask, index) =>
+                          React.createElement('div', {
+                            key: subtask.id || index,
+                            className: "flex items-center py-1 text-sm subtask-item"
+                          },
+                            React.createElement('input', {
+                              type: "checkbox",
+                              checked: subtask.completed || false,
+                              readOnly: true,
+                              className: "mr-2 subtask-checkbox"
+                            }),
+                            React.createElement('span', {
+                              className: `subtask-name ${subtask.completed ? "completed line-through text-gray-500" : ""}`
+                            }, subtask.name)
+                          )
                         )
-                      )
                     )
                   )
               ),
