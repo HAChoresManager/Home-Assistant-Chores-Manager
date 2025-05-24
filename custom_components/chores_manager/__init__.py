@@ -18,7 +18,8 @@ DOMAIN = "chores_manager"
 DEFAULT_DB = "chores_manager.db"
 DEFAULT_NOTIFICATION_TIME = "08:00"
 PLATFORMS = [Platform.SENSOR]
-TOKEN_REFRESH_INTERVAL = timedelta(days=7)  # Refresh token weekly
+# Reduced refresh interval to 2 hours for better mobile app compatibility
+TOKEN_REFRESH_INTERVAL = timedelta(hours=2)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "database_path": str(database_path),
     }
 
-    # Generate authentication token for dashboard
+    # Generate authentication token for dashboard with more frequent refresh
     try:
         _LOGGER.info("Generating authentication token for chores dashboard")
         token = await _generate_dashboard_token(hass)
@@ -62,7 +63,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:
         _LOGGER.error("Failed to generate/update authentication token: %s", err)
 
-    # Set up token refresh
+    # Set up more frequent token refresh for better mobile compatibility
     async def refresh_token_periodically(now=None):
         """Refresh the token periodically."""
         try:
@@ -82,7 +83,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as err:
             _LOGGER.error("Failed to refresh token: %s", err)
 
-    # Schedule token refresh
+    # Schedule more frequent token refresh
     hass.data[DOMAIN][entry.entry_id]["token_refresh_unsub"] = async_track_time_interval(
         hass, refresh_token_periodically, TOKEN_REFRESH_INTERVAL
     )
@@ -118,22 +119,48 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _generate_dashboard_token(hass: HomeAssistant) -> str:
-    """Generate a long-lived access token for the dashboard."""
+    """Generate a long-lived access token for the dashboard with improved mobile compatibility."""
     # Add a random component to the client name to create unique tokens each time
     random_id = secrets.token_hex(4)
     client_name = f"Chores Manager Dashboard {random_id}"
 
+    # Try to find an admin user, preferring non-system users
+    admin_users = []
     for user in await hass.auth.async_get_users():
         if not user.is_active:
             continue
         for group in user.groups:
             if group.id == GROUP_ID_ADMIN:
-                refresh_token = await hass.auth.async_create_refresh_token(
-                    user, client_name=client_name
-                )
-                access_token = hass.auth.async_create_access_token(refresh_token)
-                return access_token
-    raise ValueError("No admin user found to create token")
+                admin_users.append(user)
+                break
+
+    if not admin_users:
+        raise ValueError("No admin user found to create token")
+
+    # Prefer non-system generated users for better mobile app compatibility
+    preferred_user = None
+    for user in admin_users:
+        if not user.system_generated:
+            preferred_user = user
+            break
+
+    if not preferred_user:
+        preferred_user = admin_users[0]  # Fallback to first admin user
+
+    _LOGGER.info(f"Creating token for user: {preferred_user.name} (system_generated: {preferred_user.system_generated})")
+
+    try:
+        refresh_token = await hass.auth.async_create_refresh_token(
+            preferred_user, 
+            client_name=client_name,
+            # Set longer expiration for better mobile compatibility
+            token_type="long_lived_access_token"
+        )
+        access_token = hass.auth.async_create_access_token(refresh_token)
+        return access_token
+    except Exception as err:
+        _LOGGER.error(f"Failed to create token for user {preferred_user.name}: {err}")
+        raise
 
 
 async def _update_dashboard_config(hass: HomeAssistant, token: str) -> None:
@@ -164,15 +191,16 @@ async def _update_dashboard_config(hass: HomeAssistant, token: str) -> None:
 
         # Update config values
         config["api_token"] = token
-        config.setdefault("refresh_interval", 30000)
+        config.setdefault("refresh_interval", 30000)  # 30 seconds for mobile compatibility
         config.setdefault("debug", False)
         # Add timestamp to help debug token changes
         config["token_updated"] = hass.loop.time()
+        config["mobile_optimized"] = True  # Flag to indicate mobile optimization
 
         # Write updated config in executor
         await hass.async_add_executor_job(lambda: write_config(config))
 
-        _LOGGER.info("Updated dashboard config with new authentication token")
+        _LOGGER.info("Updated dashboard config with new authentication token (mobile optimized)")
     except Exception as err:
         _LOGGER.error("Failed to update dashboard config: %s", err)
 
