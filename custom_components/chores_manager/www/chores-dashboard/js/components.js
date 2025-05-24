@@ -15,9 +15,8 @@
   checkUtilsReady();
 
   function initComponents() {
-      // WeekDayPicker Component
+      // WeekDayPicker Component - IMPROVED with better visual feedback
       const WeekDayPicker = function({ selectedDays, onChange }) {
-        // Days of the week
         const weekDays = [
           { day: "Maandag", short: "Ma", value: "mon" },
           { day: "Dinsdag", short: "Di", value: "tue" },
@@ -29,12 +28,14 @@
         ];
 
         return React.createElement('div', { className: "week-day-picker" },
-          React.createElement('div', { className: "grid grid-cols-7 gap-1" },
+          React.createElement('div', { className: "grid grid-cols-7 gap-2" },
             weekDays.map(({ day, short, value }) =>
               React.createElement('div', {
                 key: value,
-                className: `text-center cursor-pointer p-2 rounded-md select-none ${
-                  selectedDays[value] ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'
+                className: `text-center cursor-pointer p-3 rounded-lg select-none font-medium transition-all duration-200 ${
+                  selectedDays[value] 
+                    ? 'bg-blue-500 text-white shadow-md transform scale-105' 
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                 }`,
                 title: day,
                 onClick: () => {
@@ -49,9 +50,8 @@
         );
       };
 
-      // MonthDayPicker Component
+      // MonthDayPicker Component - IMPROVED with better visual feedback
       const MonthDayPicker = function({ selectedDays, onChange }) {
-        // Create a grid of days 1-31
         const days = Array.from({ length: 31 }, (_, i) => i + 1);
 
         return React.createElement('div', { className: "month-day-picker" },
@@ -59,8 +59,10 @@
             days.map(day =>
               React.createElement('div', {
                 key: day,
-                className: `text-center cursor-pointer p-2 rounded-md select-none ${
-                  selectedDays[day] ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'
+                className: `text-center cursor-pointer p-2 rounded-md select-none text-sm font-medium transition-all duration-200 ${
+                  selectedDays[day] 
+                    ? 'bg-blue-500 text-white shadow-md' 
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                 }`,
                 onClick: () => {
                   onChange({
@@ -621,7 +623,7 @@
           );
       };
 
-      // Updated TaskForm with simplified frequency options and better descriptions
+      // SIMPLIFIED AND IMPROVED TaskForm with better frequency selection
       const TaskForm = function({ onSubmit, onDelete, onCancel, onResetCompletion, initialData = null, assignees = [] }) {
           const isEditing = !!initialData;
 
@@ -638,46 +640,156 @@
           const [formData, setFormData] = React.useState({
               chore_id: '',
               name: '',
-              frequency_type: 'Wekelijks',
+              frequency_type: 'Weekly', // Simplified default
               frequency_days: 7,
               frequency_times: 1,
-              assigned_to: 'Laura', // Default to Laura instead of "Wie kan"
+              assigned_to: 'Laura',
               priority: 'Middel',
               duration: 15,
               icon: '📋',
               description: '',
               use_alternating: false,
-              alternate_with: 'Martijn', // Default to Martijn for alternating
-              weekday: -1,
-              monthday: -1,
-              startMonth: 0,
-              startDay: 1,
+              alternate_with: 'Martijn',
+              selected_weekdays: { mon: false, tue: false, wed: false, thu: false, fri: false, sat: false, sun: false },
+              selected_monthdays: {},
+              specific_date: { month: 0, day: 1 }, // For yearly/quarterly tasks
               ...(initialData || {})
           });
 
           const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
           const [showResetConfirm, setShowResetConfirm] = React.useState(false);
 
+          // Initialize selected days from existing data when editing
+          React.useEffect(() => {
+              if (isEditing && initialData) {
+                  const newFormData = { ...formData, ...initialData };
+                  
+                  // Convert old frequency types to new simplified system
+                  if (initialData.frequency_type === 'Wekelijks' && initialData.weekday >= 0) {
+                      const dayNames = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+                      newFormData.frequency_type = 'Weekly';
+                      newFormData.selected_weekdays = {};
+                      dayNames.forEach(day => newFormData.selected_weekdays[day] = false);
+                      newFormData.selected_weekdays[dayNames[initialData.weekday]] = true;
+                  } else if (initialData.frequency_type === 'Dagelijks') {
+                      newFormData.frequency_type = 'Daily';
+                      if (initialData.active_days) {
+                          newFormData.selected_weekdays = initialData.active_days;
+                      } else {
+                          // Default to all days for daily tasks
+                          newFormData.selected_weekdays = {
+                              mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true
+                          };
+                      }
+                  } else if (initialData.frequency_type === 'Maandelijks' && initialData.monthday > 0) {
+                      newFormData.frequency_type = 'Monthly';
+                      newFormData.selected_monthdays = { [initialData.monthday]: true };
+                  } else if (initialData.frequency_type === 'Meerdere keren per week') {
+                      newFormData.frequency_type = 'MultipleWeekly';
+                      newFormData.frequency_times = initialData.frequency_times || 2;
+                      newFormData.selected_weekdays = initialData.active_days || {
+                          mon: true, tue: true, wed: true, thu: true, fri: true, sat: false, sun: false
+                      };
+                  } else if (initialData.frequency_type === 'Meerdere keren per maand') {
+                      newFormData.frequency_type = 'MultipleMonthly';
+                      newFormData.frequency_times = initialData.frequency_times || 4;
+                      newFormData.selected_monthdays = initialData.active_monthdays || { 1: true, 15: true };
+                  }
+                  
+                  setFormData(newFormData);
+              }
+          }, [isEditing, initialData]);
+
           const handleSubmit = (e) => {
               e.preventDefault();
 
-              // Validate task name - prevent empty names
               if (!formData.name || formData.name.trim() === '') {
                   alert('Taak moet een naam hebben');
                   return;
               }
 
-              // Create a copy of data to manipulate
+              // Convert simplified form data back to backend format
               const processedData = { ...formData };
+
+              // Map simplified frequency types back to backend types
+              switch (formData.frequency_type) {
+                  case 'Daily':
+                      processedData.frequency_type = 'Dagelijks';
+                      processedData.frequency_days = 1;
+                      processedData.frequency_times = 1;
+                      processedData.active_days = formData.selected_weekdays;
+                      break;
+
+                  case 'Weekly':
+                      processedData.frequency_type = 'Wekelijks';
+                      processedData.frequency_days = 7;
+                      processedData.frequency_times = 1;
+                      // Find selected weekday
+                      const selectedWeekday = Object.entries(formData.selected_weekdays)
+                          .find(([day, selected]) => selected);
+                      if (selectedWeekday) {
+                          const dayMap = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
+                          processedData.weekday = dayMap[selectedWeekday[0]];
+                      }
+                      break;
+
+                  case 'MultipleWeekly':
+                      processedData.frequency_type = 'Meerdere keren per week';
+                      processedData.frequency_days = 7;
+                      processedData.frequency_times = Math.max(1, Math.min(7, formData.frequency_times));
+                      processedData.active_days = formData.selected_weekdays;
+                      break;
+
+                  case 'Monthly':
+                      processedData.frequency_type = 'Maandelijks';
+                      processedData.frequency_days = 30;
+                      processedData.frequency_times = 1;
+                      // Find selected day
+                      const selectedDay = Object.keys(formData.selected_monthdays)
+                          .find(day => formData.selected_monthdays[day]);
+                      if (selectedDay) {
+                          processedData.monthday = parseInt(selectedDay);
+                      }
+                      break;
+
+                  case 'MultipleMonthly':
+                      processedData.frequency_type = 'Meerdere keren per maand';
+                      processedData.frequency_days = 30;
+                      processedData.frequency_times = Math.max(1, Math.min(30, formData.frequency_times));
+                      processedData.active_monthdays = formData.selected_monthdays;
+                      break;
+
+                  case 'Quarterly':
+                      processedData.frequency_type = 'Per kwartaal';
+                      processedData.frequency_days = 90;
+                      processedData.frequency_times = 1;
+                      processedData.startMonth = formData.specific_date.month;
+                      processedData.startDay = formData.specific_date.day;
+                      break;
+
+                  case 'SemiAnnual':
+                      processedData.frequency_type = 'Halfjaarlijks';
+                      processedData.frequency_days = 180;
+                      processedData.frequency_times = 1;
+                      processedData.startMonth = formData.specific_date.month;
+                      processedData.startDay = formData.specific_date.day;
+                      break;
+
+                  case 'Yearly':
+                      processedData.frequency_type = 'Jaarlijks';
+                      processedData.frequency_days = 365;
+                      processedData.frequency_times = 1;
+                      processedData.startMonth = formData.specific_date.month;
+                      processedData.startDay = formData.specific_date.day;
+                      break;
+              }
 
               // Ensure numeric fields are numbers
               processedData.frequency_days = Number(processedData.frequency_days) || 7;
               processedData.frequency_times = Number(processedData.frequency_times) || 1;
               processedData.duration = Number(processedData.duration) || 15;
-              processedData.weekday = Number(processedData.weekday || -1);
-              processedData.monthday = Number(processedData.monthday || -1);
 
-              // Handle subtasks - filter out empty ones
+              // Handle subtasks
               if (processedData.has_subtasks && processedData.subtasks) {
                   processedData.subtasks = processedData.subtasks
                       .filter(subtask => subtask && subtask.name && subtask.name.trim() !== '')
@@ -686,36 +798,17 @@
                           completed: false
                       }));
                   
-                  // If no valid subtasks remain, disable has_subtasks
                   if (processedData.subtasks.length === 0) {
                       processedData.has_subtasks = false;
                   }
               } else {
-                  // Ensure subtasks is empty array if not enabled
                   processedData.subtasks = [];
               }
 
-              // Handle specific frequency types
-              if (processedData.frequency_type === "Meerdere keren per week") {
-                  // Ensure frequency_times is valid (1-7)
-                  processedData.frequency_times = Math.min(Math.max(1, processedData.frequency_times), 7);
-              } else if (processedData.frequency_type === "Meerdere keren per maand") {
-                  // Ensure frequency_times is valid (1-30)
-                  processedData.frequency_times = Math.min(Math.max(1, processedData.frequency_times), 30);
-              }
-
-              // Special handling for quarterly and semi-annual tasks
-              if (processedData.frequency_type === "Per kwartaal" || processedData.frequency_type === "Halfjaarlijks") {
-                  processedData.startMonth = Number(processedData.startMonth || 0);
-                  processedData.startDay = Number(processedData.startDay || 1);
-              }
-
-              // Remove any undefined fields
-              Object.keys(processedData).forEach(key => {
-                  if (processedData[key] === undefined) {
-                      delete processedData[key];
-                  }
-              });
+              // Remove simplified fields that backend doesn't need
+              delete processedData.selected_weekdays;
+              delete processedData.selected_monthdays;
+              delete processedData.specific_date;
 
               onSubmit(processedData);
           };
@@ -730,7 +823,6 @@
 
           const handleNameChange = (e) => {
               const name = e.target.value;
-              // Only update the chore_id if this is a new task
               if (!isEditing) {
                   setFormData({
                       ...formData,
@@ -763,6 +855,20 @@
               onResetCompletion(formData.chore_id);
           };
 
+          // Helper function to count selected days
+          const getSelectedDaysCount = (days) => {
+              return Object.values(days || {}).filter(Boolean).length;
+          };
+
+          // Helper function to get selected weekday names
+          const getSelectedWeekdayNames = (days) => {
+              const dayNames = { mon: 'Ma', tue: 'Di', wed: 'Wo', thu: 'Do', fri: 'Vr', sat: 'Za', sun: 'Zo' };
+              return Object.entries(days || {})
+                  .filter(([_, selected]) => selected)
+                  .map(([day, _]) => dayNames[day])
+                  .join(', ');
+          };
+
           return React.createElement('div',
               { className: "modal-container" },
               React.createElement('div',
@@ -772,6 +878,7 @@
                   ),
                   React.createElement('form',
                       { onSubmit: handleSubmit, className: "space-y-4" },
+                      
                       // Name input
                       React.createElement('div', null,
                           React.createElement('label', { className: "block text-sm font-medium" }, "Naam"),
@@ -803,321 +910,293 @@
                           })
                       ),
 
-                      // SIMPLIFIED Frequency Type with clearer options
+                      // SIMPLIFIED Frequency Type Selection
                       React.createElement('div', null,
-                          React.createElement('label', { className: "block text-sm font-medium" }, "Frequentie Type"),
+                          React.createElement('label', { className: "block text-sm font-medium mb-2" }, "Hoe vaak moet deze taak gedaan worden?"),
                           React.createElement('select', {
                               name: "frequency_type",
                               className: "mt-1 block w-full rounded-md border p-2",
                               value: formData.frequency_type,
                               onChange: handleChange
                           },
-                              React.createElement('option', { value: "Dagelijks" }, "Dagelijks"),
-                              React.createElement('option', { value: "Wekelijks" }, "Wekelijks"),
-                              React.createElement('option', { value: "Maandelijks" }, "Maandelijks"),
-                              React.createElement('option', { value: "Per kwartaal" }, "Per kwartaal (3 maanden)"),
-                              React.createElement('option', { value: "Halfjaarlijks" }, "Halfjaarlijks (6 maanden)"),
-                              React.createElement('option', { value: "Jaarlijks" }, "Jaarlijks"),
-                              React.createElement('option', { value: "Aangepast" }, "Aangepast (x keer per periode)")
+                              React.createElement('option', { value: "Daily" }, "Dagelijks"),
+                              React.createElement('option', { value: "Weekly" }, "Wekelijks"),
+                              React.createElement('option', { value: "MultipleWeekly" }, "Meerdere keren per week"),
+                              React.createElement('option', { value: "Monthly" }, "Maandelijks"),
+                              React.createElement('option', { value: "MultipleMonthly" }, "Meerdere keren per maand"),
+                              React.createElement('option', { value: "Quarterly" }, "Per kwartaal"),
+                              React.createElement('option', { value: "SemiAnnual" }, "Halfjaarlijks"),
+                              React.createElement('option', { value: "Yearly" }, "Jaarlijks")
                           )
                       ),
 
-                      // Frequency specific options based on type
-                      // For daily tasks
-                      formData.frequency_type === "Dagelijks" && React.createElement('div',
-                        { className: "p-3 mt-2 bg-gray-50 rounded-md border border-gray-200" },
-                        React.createElement('label', { className: "block text-sm font-medium mb-2" }, "Actief op deze dagen:"),
-                        React.createElement(WeekDayPicker, {
-                          selectedDays: formData.active_days || {
-                            mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true
-                          },
-                          onChange: (days) => {
-                            setFormData({
-                              ...formData,
-                              active_days: days
-                            });
-                          }
-                        }),
-                        React.createElement('p', { className: "text-xs text-gray-500 mt-2" },
-                          "Selecteer de dagen waarop deze taak actief is. Grijze dagen worden overgeslagen."
-                        )
-                      ),
-
-                      // For weekly tasks
-                      formData.frequency_type === "Wekelijks" && React.createElement('div',
-                        { className: "p-3 mt-2 bg-gray-50 rounded-md border border-gray-200" },
-                        React.createElement('label', { className: "block text-sm font-medium mb-2" }, "Dag van de week:"),
-                        React.createElement(WeekDayPicker, {
-                          selectedDays: {
-                            mon: formData.weekday === 0,
-                            tue: formData.weekday === 1,
-                            wed: formData.weekday === 2,
-                            thu: formData.weekday === 3,
-                            fri: formData.weekday === 4,
-                            sat: formData.weekday === 5,
-                            sun: formData.weekday === 6
-                          },
-                          onChange: (days) => {
-                            // Convert back to single weekday (latest selected)
-                            const weekdayMap = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
-                            const selectedDay = Object.entries(days)
-                              .filter(([_, selected]) => selected)
-                              .map(([day, _]) => weekdayMap[day])
-                              .pop();
-
-                            setFormData({
-                              ...formData,
-                              weekday: selectedDay !== undefined ? selectedDay : -1
-                            });
-                          }
-                        })
-                      ),
-
-                      // For monthly tasks
-                      formData.frequency_type === "Maandelijks" && React.createElement('div',
-                        { className: "p-3 mt-2 bg-gray-50 rounded-md border border-gray-200" },
-                        React.createElement('label', { className: "block text-sm font-medium mb-2" }, "Dag van de maand:"),
-                        React.createElement(MonthDayPicker, {
-                          selectedDays: { [formData.monthday || 1]: true },
-                          onChange: (days) => {
-                            // Convert back to single monthday (latest selected)
-                            const selectedDay = parseInt(
-                              Object.entries(days)
-                                .filter(([_, selected]) => selected)
-                                .map(([day, _]) => day)
-                                .pop() || "1",
-                              10
-                            );
-
-                            setFormData({
-                              ...formData,
-                              monthday: selectedDay
-                            });
-                          }
-                        })
-                      ),
-
-                      // IMPROVED Custom frequency option (replaced "Flexibel" and combined the options)
-                      formData.frequency_type === "Aangepast" && React.createElement('div',
-                        { className: "p-3 mt-2 bg-gray-50 rounded-md border border-gray-200" },
-                        React.createElement('div', { className: "mb-3 text-sm text-gray-600" },
-                          "Deze optie stelt je in staat om een aangepaste frequentie in te stellen, bijvoorbeeld 3x per week of 2x per maand."
-                        ),
-                        React.createElement('div', { className: "flex space-x-4" },
-                          React.createElement('div', { className: "w-1/3" },
-                            React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Aantal keer:"),
-                            React.createElement('input', {
-                              type: "number",
-                              name: "frequency_times",
-                              className: "w-full p-2 border rounded",
-                              value: formData.frequency_times || 1,
-                              min: 1,
-                              max: 31,
-                              onChange: handleChange
-                            })
-                          ),
-                          React.createElement('div', { className: "w-2/3" },
-                            React.createElement('label', { className: "block text-sm font-medium mb-1" }, "Per periode:"),
-                            React.createElement('select', {
-                              name: "subtasks_period",
-                              className: "w-full p-2 border rounded",
-                              value: formData.subtasks_period || "week",
-                              onChange: handleChange
-                            },
-                              React.createElement('option', { value: "week" }, "Week (maandag t/m zondag)"),
-                              React.createElement('option', { value: "month" }, "Maand (kalenderdagen)")
-                            )
-                          )
-                        ),
-                        React.createElement('div', { className: "mt-3" },
-                          React.createElement('h4', { className: "text-sm font-medium mb-1" }, "Actieve dagen:"),
-                          formData.subtasks_period === "week" ?
-                            React.createElement(WeekDayPicker, {
-                              selectedDays: formData.active_days || {
-                                mon: true, tue: true, wed: true, thu: true, fri: true, sat: false, sun: false
-                              },
-                              onChange: (days) => {
-                                setFormData({
-                                  ...formData,
-                                  active_days: days
-                                });
-                              }
-                            }) :
-                            React.createElement(MonthDayPicker, {
-                              selectedDays: formData.active_monthdays || { 1: true, 15: true },
-                              onChange: (days) => {
-                                setFormData({
-                                  ...formData,
-                                  active_monthdays: days
-                                });
-                              }
-                            })
-                        ),
-                        React.createElement('p', { className: "text-xs text-gray-500 mt-2" },
-                          `De taak moet ${formData.frequency_times || 1}x ${formData.subtasks_period === "week" ? "per week" : "per maand"} 
-                          worden voltooid op de geselecteerde dagen.`
-                        )
-                      ),
-
-                      // For yearly tasks and quarterly/semi-annual
-                      (formData.frequency_type === "Jaarlijks" ||
-                      formData.frequency_type === "Halfjaarlijks" ||
-                      formData.frequency_type === "Per kwartaal") && React.createElement('div',
-                        { className: "p-3 mt-2 bg-gray-50 rounded-md border border-gray-200" },
-                        React.createElement('label', { className: "block text-sm font-medium mb-2" },
-                          formData.frequency_type === "Jaarlijks" ? "Datum:" :
-                          formData.frequency_type === "Halfjaarlijks" ? "Startdatum (elke 6 maanden):" :
-                          "Startdatum (elk kwartaal):"
-                        ),
-                        // Simplified date picker
-                        React.createElement('div', { className: "flex space-x-4" },
-                          React.createElement('div', { className: "flex-1" },
-                            React.createElement('label', { className: "block text-sm" }, "Maand"),
-                            React.createElement('select', {
-                              name: "startMonth",
-                              className: "w-full p-2 border rounded",
-                              value: formData.startMonth || 0,
-                              onChange: handleChange
-                            },
-                              ["Januari", "Februari", "Maart", "April", "Mei", "Juni",
-                              "Juli", "Augustus", "September", "Oktober", "November", "December"]
-                              .map((month, index) =>
-                                React.createElement('option', { key: index, value: index }, month)
+                      // Frequency-specific controls with IMPROVED visual feedback
+                      React.createElement('div', { className: "p-4 bg-blue-50 rounded-lg border border-blue-200" },
+                          
+                          // Daily tasks
+                          formData.frequency_type === 'Daily' && React.createElement('div', null,
+                              React.createElement('h4', { className: "font-medium mb-3 text-blue-900" }, "🌅 Dagelijkse taak instellingen"),
+                              React.createElement('p', { className: "text-sm text-blue-700 mb-3" },
+                                  "Selecteer op welke dagen deze taak gedaan moet worden:"
+                              ),
+                              React.createElement(WeekDayPicker, {
+                                  selectedDays: formData.selected_weekdays,
+                                  onChange: (days) => setFormData({ ...formData, selected_weekdays: days })
+                              }),
+                              React.createElement('p', { className: "text-xs text-blue-600 mt-3 p-2 bg-blue-100 rounded" },
+                                  `✓ Actief op: ${getSelectedDaysCount(formData.selected_weekdays)} dagen (${getSelectedWeekdayNames(formData.selected_weekdays) || 'Geen dagen geselecteerd'})`
                               )
-                            )
                           ),
-                          React.createElement('div', { className: "flex-1" },
-                            React.createElement('label', { className: "block text-sm" }, "Dag"),
-                            React.createElement('select', {
-                              name: "startDay",
-                              className: "w-full p-2 border rounded",
-                              value: formData.startDay || 1,
-                              onChange: handleChange
-                            },
-                              Array.from({ length: 31 }, (_, i) => i + 1).map(day =>
-                                React.createElement('option', { key: day, value: day }, day)
+
+                          // Weekly tasks
+                          formData.frequency_type === 'Weekly' && React.createElement('div', null,
+                              React.createElement('h4', { className: "font-medium mb-3 text-blue-900" }, "📅 Wekelijkse taak instellingen"),
+                              React.createElement('p', { className: "text-sm text-blue-700 mb-3" },
+                                  "Selecteer op welke dag van de week deze taak gedaan moet worden:"
+                              ),
+                              React.createElement(WeekDayPicker, {
+                                  selectedDays: formData.selected_weekdays,
+                                  onChange: (days) => {
+                                      // For weekly tasks, only allow one day selection
+                                      const selectedDay = Object.keys(days).find(day => days[day]);
+                                      const newDays = {};
+                                      Object.keys(days).forEach(day => newDays[day] = false);
+                                      if (selectedDay) {
+                                          newDays[selectedDay] = true;
+                                      }
+                                      setFormData({ ...formData, selected_weekdays: newDays });
+                                  }
+                              }),
+                              React.createElement('p', { className: "text-xs text-blue-600 mt-3 p-2 bg-blue-100 rounded" },
+                                  getSelectedDaysCount(formData.selected_weekdays) > 0 
+                                      ? `✓ Elke week op: ${getSelectedWeekdayNames(formData.selected_weekdays)}`
+                                      : "⚠️ Selecteer een dag"
                               )
-                            )
+                          ),
+
+                          // Multiple times per week
+                          formData.frequency_type === 'MultipleWeekly' && React.createElement('div', null,
+                              React.createElement('h4', { className: "font-medium mb-3 text-blue-900" }, "🔄 Meerdere keren per week"),
+                              React.createElement('div', { className: "flex items-center space-x-4 mb-3" },
+                                  React.createElement('div', null,
+                                      React.createElement('label', { className: "block text-sm font-medium mb-1 text-blue-800" }, "Aantal keer per week:"),
+                                      React.createElement('input', {
+                                          type: "number",
+                                          name: "frequency_times",
+                                          className: "w-20 p-2 border rounded",
+                                          value: formData.frequency_times || 2,
+                                          min: 2,
+                                          max: 7,
+                                          onChange: handleChange
+                                      })
+                                  )
+                              ),
+                              React.createElement('p', { className: "text-sm text-blue-700 mb-3" },
+                                  "Selecteer op welke dagen deze taak gedaan kan worden:"
+                              ),
+                              React.createElement(WeekDayPicker, {
+                                  selectedDays: formData.selected_weekdays,
+                                  onChange: (days) => setFormData({ ...formData, selected_weekdays: days })
+                              }),
+                              React.createElement('p', { className: "text-xs text-blue-600 mt-3 p-2 bg-blue-100 rounded" },
+                                  `✓ ${formData.frequency_times}x per week op beschikbare dagen: ${getSelectedWeekdayNames(formData.selected_weekdays) || 'Geen dagen geselecteerd'}`
+                              )
+                          ),
+
+                          // Monthly tasks
+                          formData.frequency_type === 'Monthly' && React.createElement('div', null,
+                              React.createElement('h4', { className: "font-medium mb-3 text-blue-900" }, "📊 Maandelijkse taak instellingen"),
+                              React.createElement('p', { className: "text-sm text-blue-700 mb-3" },
+                                  "Selecteer op welke dag van de maand deze taak gedaan moet worden:"
+                              ),
+                              React.createElement(MonthDayPicker, {
+                                  selectedDays: formData.selected_monthdays,
+                                  onChange: (days) => {
+                                      // For monthly tasks, only allow one day selection
+                                      const selectedDay = Object.keys(days).find(day => days[day]);
+                                      const newDays = {};
+                                      if (selectedDay) {
+                                          newDays[selectedDay] = true;
+                                      }
+                                      setFormData({ ...formData, selected_monthdays: newDays });
+                                  }
+                              }),
+                              React.createElement('p', { className: "text-xs text-blue-600 mt-3 p-2 bg-blue-100 rounded" },
+                                  Object.keys(formData.selected_monthdays).length > 0
+                                      ? `✓ Elke maand op dag: ${Object.keys(formData.selected_monthdays).join(', ')}`
+                                      : "⚠️ Selecteer een dag"
+                              )
+                          ),
+
+                          // Multiple times per month
+                          formData.frequency_type === 'MultipleMonthly' && React.createElement('div', null,
+                              React.createElement('h4', { className: "font-medium mb-3 text-blue-900" }, "🔄 Meerdere keren per maand"),
+                              React.createElement('div', { className: "flex items-center space-x-4 mb-3" },
+                                  React.createElement('div', null,
+                                      React.createElement('label', { className: "block text-sm font-medium mb-1 text-blue-800" }, "Aantal keer per maand:"),
+                                      React.createElement('input', {
+                                          type: "number",
+                                          name: "frequency_times",
+                                          className: "w-20 p-2 border rounded",
+                                          value: formData.frequency_times || 4,
+                                          min: 2,
+                                          max: 15,
+                                          onChange: handleChange
+                                      })
+                                  )
+                              ),
+                              React.createElement('p', { className: "text-sm text-blue-700 mb-3" },
+                                  "Selecteer op welke dagen van de maand deze taak gedaan kan worden:"
+                              ),
+                              React.createElement(MonthDayPicker, {
+                                  selectedDays: formData.selected_monthdays,
+                                  onChange: (days) => setFormData({ ...formData, selected_monthdays: days })
+                              }),
+                              React.createElement('p', { className: "text-xs text-blue-600 mt-3 p-2 bg-blue-100 rounded" },
+                                  `✓ ${formData.frequency_times}x per maand op dagen: ${Object.keys(formData.selected_monthdays).join(', ') || 'Geen dagen geselecteerd'}`
+                              )
+                          ),
+
+                          // Fixed schedule tasks (Quarterly, Semi-annual, Yearly)
+                          (formData.frequency_type === 'Quarterly' || formData.frequency_type === 'SemiAnnual' || formData.frequency_type === 'Yearly') && React.createElement('div', null,
+                              React.createElement('h4', { className: "font-medium mb-3 text-blue-900" }, 
+                                  formData.frequency_type === 'Quarterly' ? "📈 Driemaandelijkse taak" :
+                                  formData.frequency_type === 'SemiAnnual' ? "📅 Halfjaarlijkse taak" : "🗓️ Jaarlijkse taak"
+                              ),
+                              React.createElement('p', { className: "text-sm text-blue-700 mb-3" },
+                                  "Selecteer de datum waarop deze taak gedaan moet worden:"
+                              ),
+                              React.createElement('div', { className: "flex space-x-4" },
+                                  React.createElement('div', { className: "flex-1" },
+                                      React.createElement('label', { className: "block text-sm font-medium mb-1 text-blue-800" }, "Maand"),
+                                      React.createElement('select', {
+                                          value: formData.specific_date?.month || 0,
+                                          onChange: (e) => setFormData({
+                                              ...formData,
+                                              specific_date: {
+                                                  ...formData.specific_date,
+                                                  month: parseInt(e.target.value)
+                                              }
+                                          }),
+                                          className: "w-full p-2 border rounded"
+                                      },
+                                          ["Januari", "Februari", "Maart", "April", "Mei", "Juni",
+                                          "Juli", "Augustus", "September", "Oktober", "November", "December"]
+                                          .map((month, index) =>
+                                              React.createElement('option', { key: index, value: index }, month)
+                                          )
+                                      )
+                                  ),
+                                  React.createElement('div', { className: "flex-1" },
+                                      React.createElement('label', { className: "block text-sm font-medium mb-1 text-blue-800" }, "Dag"),
+                                      React.createElement('select', {
+                                          value: formData.specific_date?.day || 1,
+                                          onChange: (e) => setFormData({
+                                              ...formData,
+                                              specific_date: {
+                                                  ...formData.specific_date,
+                                                  day: parseInt(e.target.value)
+                                              }
+                                          }),
+                                          className: "w-full p-2 border rounded"
+                                      },
+                                          Array.from({ length: 31 }, (_, i) => i + 1).map(day =>
+                                              React.createElement('option', { key: day, value: day }, day)
+                                          )
+                                      )
+                                  )
+                              ),
+                              React.createElement('p', { className: "text-xs text-blue-600 mt-3 p-2 bg-blue-100 rounded" },
+                                  `✓ ${formData.frequency_type === 'Quarterly' ? 'Elk kwartaal' : 
+                                    formData.frequency_type === 'SemiAnnual' ? 'Elke 6 maanden' : 'Elk jaar'} op ${
+                                      ["januari", "februari", "maart", "april", "mei", "juni",
+                                      "juli", "augustus", "september", "oktober", "november", "december"][formData.specific_date?.month || 0]
+                                  } ${formData.specific_date?.day || 1}`
+                              )
                           )
-                        )
                       ),
 
-                      // Subtask Management Section
+                      // Subtask Management Section - Simplified
                       React.createElement('div',
-                        { className: "mt-6 p-4 bg-blue-50 rounded-md border border-blue-200" },
-                        React.createElement('h3', { className: "text-lg font-medium mb-3 flex items-center" },
-                          React.createElement('span', { className: "mr-2" }, "📋"),
-                          "Subtaken"
-                        ),
-
-                        // Enable subtasks toggle
-                        React.createElement('div', { className: "mb-4" },
-                          React.createElement('label', { className: "flex items-center" },
-                            React.createElement('input', {
-                              type: "checkbox",
-                              checked: formData.has_subtasks || false,
-                              onChange: e => {
-                                setFormData({
-                                  ...formData,
-                                  has_subtasks: e.target.checked,
-                                  subtasks: e.target.checked ? (formData.subtasks || [{ name: "", completed: false }]) : []
-                                });
-                              },
-                              className: "mr-2"
-                            }),
-                            React.createElement('span', { className: "text-sm font-medium" }, "Deze taak heeft subtaken")
+                          { className: "mt-6 p-4 bg-green-50 rounded-md border border-green-200" },
+                          React.createElement('h3', { className: "text-lg font-medium mb-3 flex items-center" },
+                              React.createElement('span', { className: "mr-2" }, "📋"),
+                              "Subtaken (optioneel)"
                           ),
-                          React.createElement('p', { className: "text-xs text-gray-500 mt-1" },
-                            "Subtaken laten je een taak opdelen in kleinere onderdelen die afzonderlijk kunnen worden voltooid."
-                          )
-                        ),
 
-                        // Subtask list (only shown when has_subtasks is true)
-                        formData.has_subtasks && React.createElement('div', null,
-                          React.createElement('label', { className: "block text-sm font-medium mb-2" }, "Subtaken:"),
-                          React.createElement('div', { className: "space-y-2 mb-3" },
-                            (formData.subtasks || []).map((subtask, index) =>
-                              React.createElement('div', { key: index, className: "flex items-center" },
-                                React.createElement('input', {
-                                  type: "text",
-                                  value: (subtask && subtask.name) || '',
-                                  placeholder: "Naam van subtaak",
-                                  onChange: e => {
-                                    const newSubtasks = [...(formData.subtasks || [])];
-                                    if (!newSubtasks[index]) {
-                                      newSubtasks[index] = { name: '', completed: false };
-                                    }
-                                    newSubtasks[index].name = e.target.value;
-                                    setFormData({
-                                      ...formData,
-                                      subtasks: newSubtasks
-                                    });
-                                  },
-                                  className: "flex-1 p-2 border rounded-md"
-                                }),
-                                index > 0 && React.createElement('button', {
+                          // Enable subtasks toggle
+                          React.createElement('div', { className: "mb-4" },
+                              React.createElement('label', { className: "flex items-center" },
+                                  React.createElement('input', {
+                                      type: "checkbox",
+                                      checked: formData.has_subtasks || false,
+                                      onChange: e => {
+                                          setFormData({
+                                              ...formData,
+                                              has_subtasks: e.target.checked,
+                                              subtasks: e.target.checked ? (formData.subtasks || [{ name: "", completed: false }]) : []
+                                          });
+                                      },
+                                      className: "mr-2"
+                                  }),
+                                  React.createElement('span', { className: "text-sm font-medium" }, "Deze taak heeft subtaken")
+                              )
+                          ),
+
+                          // Subtask list (only shown when has_subtasks is true)
+                          formData.has_subtasks && React.createElement('div', null,
+                              React.createElement('label', { className: "block text-sm font-medium mb-2" }, "Subtaken:"),
+                              React.createElement('div', { className: "space-y-2 mb-3" },
+                                  (formData.subtasks || []).map((subtask, index) =>
+                                      React.createElement('div', { key: index, className: "flex items-center" },
+                                          React.createElement('input', {
+                                              type: "text",
+                                              value: (subtask && subtask.name) || '',
+                                              placeholder: "Naam van subtaak",
+                                              onChange: e => {
+                                                  const newSubtasks = [...(formData.subtasks || [])];
+                                                  if (!newSubtasks[index]) {
+                                                      newSubtasks[index] = { name: '', completed: false };
+                                                  }
+                                                  newSubtasks[index].name = e.target.value;
+                                                  setFormData({
+                                                      ...formData,
+                                                      subtasks: newSubtasks
+                                                  });
+                                              },
+                                              className: "flex-1 p-2 border rounded-md"
+                                          }),
+                                          index > 0 && React.createElement('button', {
+                                              type: "button",
+                                              onClick: () => {
+                                                  const newSubtasks = [...(formData.subtasks || [])];
+                                                  newSubtasks.splice(index, 1);
+                                                  setFormData({
+                                                      ...formData,
+                                                      subtasks: newSubtasks
+                                                  });
+                                              },
+                                              className: "ml-2 p-2 text-red-500 hover:bg-red-100 rounded-full"
+                                          }, "×")
+                                      )
+                                  )
+                              ),
+
+                              // Add subtask button
+                              React.createElement('button', {
                                   type: "button",
                                   onClick: () => {
-                                    const newSubtasks = [...(formData.subtasks || [])];
-                                    newSubtasks.splice(index, 1);
-                                    setFormData({
-                                      ...formData,
-                                      subtasks: newSubtasks
-                                    });
+                                      setFormData({
+                                          ...formData,
+                                          subtasks: [...(formData.subtasks || []), { name: "", completed: false }]
+                                      });
                                   },
-                                  className: "ml-2 p-2 text-red-500 hover:bg-red-100 rounded-full"
-                                }, "×")
+                                  className: "px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm flex items-center"
+                              },
+                                  React.createElement('span', { className: "mr-1" }, "+"),
+                                  "Subtaak toevoegen"
                               )
-                            )
-                          ),
-
-                          // Add subtask button
-                          React.createElement('button', {
-                            type: "button",
-                            onClick: () => {
-                              setFormData({
-                                ...formData,
-                                subtasks: [...(formData.subtasks || []), { name: "", completed: false }]
-                              });
-                            },
-                            className: "px-3 py-1.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm flex items-center"
-                          },
-                            React.createElement('span', { className: "mr-1" }, "+"),
-                            "Subtaak toevoegen"
-                          ),
-
-                          // IMPROVED: Completion requirements with better descriptions
-                          React.createElement('div', { className: "mt-4" },
-                            React.createElement('label', { className: "block text-sm font-medium mb-2" }, "Voltooiingsvereisten:"),
-                            React.createElement('select', {
-                              name: "subtasks_completion_type",
-                              value: formData.subtasks_completion_type || "all",
-                              onChange: handleChange,
-                              className: "w-full p-2 border rounded"
-                            },
-                              React.createElement('option', { value: "all" }, "Alle subtaken moeten voltooid zijn"),
-                              React.createElement('option', { value: "any" }, "Tenminste één subtaak moet voltooid zijn")
-                            )
-                          ),
-
-                          // IMPROVED: Period explanation with better descriptions
-                          React.createElement('div', { className: "mt-3" },
-                            React.createElement('label', { className: "block text-sm font-medium mb-2" }, "Periode voor subtaken:"),
-                            React.createElement('div', { className: "text-xs text-gray-600 mb-2" },
-                              "Een periode bepaalt hoe lang subtaken actief blijven voordat ze opnieuw beginnen."
-                            ),
-                            React.createElement('select', {
-                              name: "subtasks_period",
-                              value: formData.subtasks_period || "week",
-                              onChange: handleChange,
-                              className: "w-full p-2 border rounded"
-                            },
-                              React.createElement('option', { value: "day" }, "Dagelijks (reset elke dag)"),
-                              React.createElement('option', { value: "week" }, "Wekelijks (reset elke maandag)"),
-                              React.createElement('option', { value: "month" }, "Maandelijks (reset op de 1e)")
-                            )
                           )
-                        )
                       ),
 
                       // Assignee section
@@ -1168,7 +1247,6 @@
                                   value: formData.alternate_with || assigneeOptions[0],
                                   onChange: handleChange
                               },
-                                  // Exclude the currently assigned person from options
                                   assigneeOptions
                                       .filter(name => name !== formData.assigned_to)
                                       .map(name =>
@@ -1184,34 +1262,34 @@
                           )
                       ),
 
-                      // Priority
-                      React.createElement('div', null,
-                          React.createElement('label', { className: "block text-sm font-medium" }, "Prioriteit"),
-                          React.createElement('select', {
-                              name: "priority",
-                              className: "mt-1 block w-full rounded-md border p-2",
-                              value: formData.priority,
-                              onChange: handleChange
-                          },
-                              React.createElement('option', { value: "Hoog" }, "Hoog"),
-                              React.createElement('option', { value: "Middel" }, "Middel"),
-                              React.createElement('option', { value: "Laag" }, "Laag")
+                      // Priority and Duration
+                      React.createElement('div', { className: "grid grid-cols-2 gap-4" },
+                          React.createElement('div', null,
+                              React.createElement('label', { className: "block text-sm font-medium" }, "Prioriteit"),
+                              React.createElement('select', {
+                                  name: "priority",
+                                  className: "mt-1 block w-full rounded-md border p-2",
+                                  value: formData.priority,
+                                  onChange: handleChange
+                              },
+                                  React.createElement('option', { value: "Hoog" }, "Hoog"),
+                                  React.createElement('option', { value: "Middel" }, "Middel"),
+                                  React.createElement('option', { value: "Laag" }, "Laag")
+                              )
+                          ),
+                          React.createElement('div', null,
+                              React.createElement('label', { className: "block text-sm font-medium" }, "Duur (minuten)"),
+                              React.createElement('input', {
+                                  type: "number",
+                                  name: "duration",
+                                  className: "mt-1 block w-full rounded-md border p-2",
+                                  value: formData.duration,
+                                  onChange: handleChange,
+                                  min: 5,
+                                  max: 120,
+                                  step: 5
+                              })
                           )
-                      ),
-
-                      // Duration
-                      React.createElement('div', null,
-                          React.createElement('label', { className: "block text-sm font-medium" }, "Duur (minuten)"),
-                          React.createElement('input', {
-                              type: "number",
-                              name: "duration",
-                              className: "mt-1 block w-full rounded-md border p-2",
-                              value: formData.duration,
-                              onChange: handleChange,
-                              min: 5,
-                              max: 120,
-                              step: 5
-                          })
                       ),
 
                       // Form buttons
@@ -1258,7 +1336,7 @@
           );
       };
 
-      // Updated TaskCard component with subtask toggle fix
+      // Updated TaskCard component - no changes needed for this
       const TaskCard = function({
         chore,
         onMarkDone,
@@ -1304,9 +1382,6 @@
           // State to track expanded subtasks
           const [expandedSubtasks, setExpandedSubtasks] = React.useState({});
             
-          // UPDATED: New state to track selected subtasks
-          const [selectedSubtasks, setSelectedSubtasks] = React.useState({});
-            
           // Function to toggle subtask expansion
           const toggleSubtasks = (choreId) => {
             setExpandedSubtasks(prev => ({
@@ -1334,7 +1409,7 @@
               }
           };
           
-          // UPDATED: New handler for task card click
+          // Handler for task card click
           const handleCardClick = () => {
               if (isProcessing) return; // Prevent clicks while processing
               
@@ -1462,7 +1537,7 @@
                       )
                   ),
                 
-                  // FIXED: Subtask display with improved rendering
+                  // Subtask display with improved rendering
                   hasSubtasks && React.createElement('div', { className: "mt-2" },
                     // Show a progress bar for subtasks
                     React.createElement('div', { className: "flex items-center justify-between text-xs text-gray-600 mb-1" },
@@ -1489,7 +1564,7 @@
                         },
                         className: "text-xs text-blue-600 flex items-center",
                         type: "button",
-                        "data-chore-id": chore.chore_id  // Add data attribute for better targeting
+                        "data-chore-id": chore.chore_id
                       },
                         expandedSubtasks[chore.chore_id] ? "Verberg subtaken" : "Toon subtaken",
                         React.createElement('span', { className: "ml-1" },
