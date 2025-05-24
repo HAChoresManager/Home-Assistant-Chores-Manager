@@ -653,7 +653,17 @@
 
                     // NEW FUNCTION: Process subtask completions
                     const processSubtaskCompletions = async (choreId, subtaskIds, person) => {
-                        if (!choreId || !subtaskIds || subtaskIds.length === 0) return;
+                        if (!choreId || !subtaskIds || !Array.isArray(subtaskIds) || subtaskIds.length === 0) {
+                            console.error('Invalid subtask completion parameters:', { choreId, subtaskIds, person });
+                            setError('Invalid subtask completion data');
+                            return;
+                        }
+                        
+                        if (!person) {
+                            console.error('No person specified for subtask completion');
+                            setError('Please select who completed the subtasks');
+                            return;
+                        }
                         
                         try {
                             // Find the chore to get details
@@ -685,33 +695,63 @@
                                 })
                             );
                             
+                            // Keep track of successful and failed completions
+                            const results = {
+                                successful: [],
+                                failed: []
+                            };
+                            
                             // Process each subtask
                             for (const subtaskId of subtaskIds) {
-                                const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/complete_subtask', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        subtask_id: subtaskId,
-                                        person: assignee
-                                    })
-                                });
+                                if (typeof subtaskId !== 'number' || isNaN(subtaskId)) {
+                                    console.warn(`Invalid subtask ID: ${subtaskId}`);
+                                    results.failed.push({ id: subtaskId, reason: 'Invalid ID' });
+                                    continue;
+                                }
                                 
-                                if (!response.ok) {
-                                    console.error(`Failed to complete subtask ${subtaskId}:`, await response.text());
+                                try {
+                                    const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/complete_subtask', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            subtask_id: subtaskId,
+                                            person: assignee
+                                        })
+                                    });
+                                    
+                                    if (!response.ok) {
+                                        const errorText = await response.text();
+                                        console.error(`Failed to complete subtask ${subtaskId}:`, errorText);
+                                        results.failed.push({ id: subtaskId, reason: errorText });
+                                    } else {
+                                        results.successful.push(subtaskId);
+                                    }
+                                } catch (error) {
+                                    console.error(`Error completing subtask ${subtaskId}:`, error);
+                                    results.failed.push({ id: subtaskId, reason: error.message });
                                 }
                             }
                             
-                            // If all subtasks are completed, mark the main task as completed
-                            // Otherwise just wait for the backend to decide based on completion_type
-                            const allCompleted = chore.subtasks_completion_type === 'all' && 
-                                                chore.subtasks.length === subtaskIds.length;
+                            // Log results
+                            if (results.successful.length > 0) {
+                                console.log(`Successfully completed ${results.successful.length} subtasks:`, results.successful);
+                            }
+                            if (results.failed.length > 0) {
+                                console.warn(`Failed to complete ${results.failed.length} subtasks:`, results.failed);
+                            }
+                            
+                            // Check if main task should be marked as completed based on completion rules
+                            const completionType = chore.subtasks_completion_type || 'all';
+                            const totalSubtasks = chore.subtasks ? chore.subtasks.length : 0;
+                            const completedSubtasks = results.successful.length;
+                            
+                            const shouldCompleteMainTask = 
+                                (completionType === 'all' && completedSubtasks === totalSubtasks) ||
+                                (completionType === 'any' && completedSubtasks > 0);
                                                 
-                            const anyCompleted = chore.subtasks_completion_type === 'any' && 
-                                               subtaskIds.length > 0;
-                                               
-                            if (allCompleted || anyCompleted) {
-                                console.log(`All/required subtasks completed for ${choreId}, marking task as done`);
-                                // Still let the backend handle it, but update UI optimistically
+                            if (shouldCompleteMainTask) {
+                                console.log(`Subtask completion rules met for ${choreId}, marking main task as done`);
+                                // Update main task optimistically
                                 const now = new Date().toISOString();
                                 setChores(prevChores => 
                                     prevChores.map(c => 
@@ -728,7 +768,12 @@
                                 setCompletedToday(prev => prev + 1);
                             }
                             
-                            // Schedule an update after 3 seconds
+                            // If there were any failures, show an error message
+                            if (results.failed.length > 0) {
+                                setError(`Some subtasks could not be completed: ${results.failed.map(f => f.reason).join(', ')}`);
+                            }
+                            
+                            // Schedule a refresh to get updated data from the server
                             setTimeout(() => {
                                 fetchChores();
                             }, 3000);
@@ -736,6 +781,25 @@
                         } catch (err) {
                             console.error('Error processing subtask completions:', err);
                             setError(`Error completing subtasks: ${err.message}`);
+                            
+                            // Revert optimistic updates on error
+                            setChores(prevChores => 
+                                prevChores.map(c => {
+                                    if (c.chore_id === choreId && c.subtasks) {
+                                        return {
+                                            ...c,
+                                            subtasks: c.subtasks.map(s => {
+                                                if (subtaskIds.includes(s.id)) {
+                                                    return { ...s, completed: false }; // Revert
+                                                }
+                                                return s;
+                                            })
+                                        };
+                                    }
+                                    return c;
+                                })
+                            );
+                            
                             // Still try to refresh data after error
                             setTimeout(() => fetchChores(), 2000);
                         }
