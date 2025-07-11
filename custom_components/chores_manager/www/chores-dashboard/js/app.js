@@ -13,7 +13,7 @@
     }
 
     const h = React.createElement;
-    const { useState, useEffect, useCallback } = React;
+    const { useState, useEffect, useCallback, useRef } = React;
 
     /**
      * Auth error banner component
@@ -38,12 +38,12 @@
      */
     const App = function() {
         // Core state
-        const [config, setConfig] = useState(null);
         const [chores, setChores] = useState([]);
         const [completedToday, setCompletedToday] = useState(0);
         const [overdueCount, setOverdueCount] = useState(0);
         const [error, setError] = useState(null);
         const [authError, setAuthError] = useState(false);
+        const [loading, setLoading] = useState(true);
         
         // UI state
         const [showForm, setShowForm] = useState(false);
@@ -55,14 +55,29 @@
         const [processing, setProcessing] = useState({});
         const [showThemeSettings, setShowThemeSettings] = useState(false);
         const [expandedDescriptions, setExpandedDescriptions] = useState({});
+        const [themeSettings, setThemeSettings] = useState({});
+        const [stats, setStats] = useState({});
 
-        // Load configuration and data on mount
+        // Initialize API on mount
         useEffect(() => {
-            loadConfig();
-            loadData();
-            loadAssignees();
-            loadTheme();
-            
+            const initializeApp = async () => {
+                try {
+                    // Initialize the API
+                    if (window.ChoresAPI && window.ChoresAPI.initialize) {
+                        await window.ChoresAPI.initialize();
+                    }
+                    
+                    // Load initial data
+                    await loadData();
+                    await loadTheme();
+                } catch (err) {
+                    console.error('Failed to initialize app:', err);
+                    handleError(err);
+                }
+            };
+
+            initializeApp();
+
             // Set up auto-refresh
             const interval = setInterval(loadData, 60000);
             return () => clearInterval(interval);
@@ -84,54 +99,76 @@
         }, [chores]);
 
         // API functions
-        const loadConfig = async () => {
-            try {
-                const data = await window.choreUtils.fetchData('/api/panel_custom/chores/config');
-                setConfig(data);
-            } catch (err) {
-                console.error('Error loading config:', err);
-                handleError(err);
-            }
-        };
-
         const loadData = async () => {
             try {
-                const data = await window.choreUtils.fetchData('/api/panel_custom/chores/chores');
-                setChores(data);
-                setAuthError(false);
-            } catch (err) {
-                console.error('Error loading chores:', err);
-                handleError(err);
-            }
-        };
-
-        const loadAssignees = async () => {
-            try {
-                const data = await window.choreUtils.fetchData('/api/panel_custom/chores/assignees');
-                setAssignees(data);
-            } catch (err) {
-                console.error('Error loading assignees:', err);
-            }
-        };
-
-        const loadTheme = () => {
-            const savedTheme = localStorage.getItem('choresTheme');
-            if (savedTheme) {
-                try {
-                    const theme = JSON.parse(savedTheme);
-                    window.ThemeIntegration.applyCustomTheme(theme);
-                } catch (err) {
-                    console.error('Error loading theme:', err);
+                setLoading(true);
+                
+                // Get sensor state which contains all data
+                const sensorData = await window.ChoresAPI.getSensorState();
+                
+                if (sensorData && sensorData.attributes) {
+                    const attrs = sensorData.attributes;
+                    
+                    // Set chores
+                    setChores(attrs.overdue_tasks || []);
+                    
+                    // Set assignees
+                    setAssignees(attrs.assignees || []);
+                    
+                    // Set stats
+                    setStats(attrs.stats || {});
+                    
+                    // Set completed today count
+                    setCompletedToday(attrs.completed_today || 0);
+                    
+                    // Set theme settings if available
+                    if (attrs.theme_settings) {
+                        setThemeSettings(attrs.theme_settings);
+                        applyTheme(attrs.theme_settings);
+                    }
                 }
+                
+                setAuthError(false);
+                setError(null);
+            } catch (err) {
+                console.error('Error loading data:', err);
+                handleError(err);
+            } finally {
+                setLoading(false);
+                setRefreshing(false);
+            }
+        };
+
+        const loadTheme = async () => {
+            try {
+                // Check localStorage first
+                const savedTheme = localStorage.getItem('choresTheme');
+                if (savedTheme) {
+                    const theme = JSON.parse(savedTheme);
+                    applyTheme(theme);
+                }
+            } catch (err) {
+                console.error('Error loading theme:', err);
+            }
+        };
+
+        const applyTheme = (theme) => {
+            if (theme && typeof theme === 'object') {
+                const root = document.documentElement;
+                root.style.setProperty('--theme-background', theme.backgroundColor || '#ffffff');
+                root.style.setProperty('--theme-card-color', theme.cardColor || '#f8f8f8');
+                root.style.setProperty('--theme-primary-text', theme.primaryTextColor || '#000000');
+                root.style.setProperty('--theme-secondary-text', theme.secondaryTextColor || '#333333');
             }
         };
 
         // Error handling
         const handleError = (error) => {
-            if (error.message && error.message.includes('401')) {
+            const errorMessage = error.message || 'An error occurred';
+            if (errorMessage.includes('401') || errorMessage.includes('Authentication')) {
                 setAuthError(true);
             } else {
-                setError(error.message || 'An error occurred');
+                setError(errorMessage);
                 setTimeout(() => setError(null), 5000);
             }
         };
@@ -140,10 +177,7 @@
         const markDone = async (choreId, completedBy) => {
             setProcessing(prev => ({ ...prev, [choreId]: true }));
             try {
-                await window.choreUtils.postData('/api/panel_custom/chores/complete', {
-                    chore_id: choreId,
-                    done_by: completedBy
-                });
+                await window.ChoresAPI.chores.markDone(choreId, completedBy);
                 await loadData();
             } catch (err) {
                 console.error('Error marking chore as done:', err);
@@ -160,11 +194,7 @@
 
         const saveChore = async (choreData) => {
             try {
-                if (choreData.chore_id) {
-                    await window.choreUtils.postData('/api/panel_custom/chores/update', choreData);
-                } else {
-                    await window.choreUtils.postData('/api/panel_custom/chores/add', choreData);
-                }
+                await window.ChoresAPI.chores.addChore(choreData);
                 await loadData();
                 setShowForm(false);
                 setSelectedChore(null);
@@ -176,7 +206,7 @@
 
         const deleteChore = async (choreId) => {
             try {
-                await window.choreUtils.postData('/api/panel_custom/chores/delete', { chore_id: choreId });
+                await window.ChoresAPI.chores.deleteChore(choreId);
                 await loadData();
                 setShowForm(false);
                 setSelectedChore(null);
@@ -188,7 +218,7 @@
 
         const resetCompletion = async (choreId) => {
             try {
-                await window.choreUtils.postData('/api/panel_custom/chores/reset', { chore_id: choreId });
+                await window.ChoresAPI.chores.resetChore(choreId);
                 await loadData();
                 setShowForm(false);
                 setSelectedChore(null);
@@ -200,11 +230,14 @@
 
         const undoLastCompletion = async () => {
             try {
-                const data = await window.choreUtils.fetchData('/api/panel_custom/chores/last_completed');
-                if (data && data.chore_id) {
-                    await window.choreUtils.postData('/api/panel_custom/chores/undo', { 
-                        chore_id: data.chore_id 
-                    });
+                // Find the most recently completed task
+                const today = new Date().toDateString();
+                const recentlyCompleted = chores
+                    .filter(c => c.last_done && new Date(c.last_done).toDateString() === today)
+                    .sort((a, b) => new Date(b.last_done) - new Date(a.last_done));
+                
+                if (recentlyCompleted.length > 0) {
+                    await window.ChoresAPI.chores.resetChore(recentlyCompleted[0].chore_id || recentlyCompleted[0].id);
                     await loadData();
                 }
             } catch (err) {
@@ -214,20 +247,19 @@
         };
 
         const updateDescription = async (choreId, description) => {
-            const chore = chores.find(c => (c.chore_id || c.id) === choreId);
-            if (chore) {
-                await saveChore({ ...chore, description });
+            try {
+                await window.ChoresAPI.chores.updateDescription(choreId, description);
+                await loadData();
+            } catch (err) {
+                console.error('Error updating description:', err);
+                handleError(err);
             }
         };
 
-        const processSubtaskCompletions = async (choreId, subtaskIndex, completedBy) => {
+        const processSubtaskCompletions = async (choreId, subtaskIds, completedBy) => {
             setProcessing(prev => ({ ...prev, [choreId]: true }));
             try {
-                await window.choreUtils.postData('/api/panel_custom/chores/subtask/complete', {
-                    chore_id: choreId,
-                    subtask_index: subtaskIndex,
-                    completed_by: completedBy
-                });
+                await window.ChoresAPI.chores.completeSubtasks(choreId, subtaskIds, completedBy);
                 await loadData();
             } catch (err) {
                 console.error('Error completing subtask:', err);
@@ -240,14 +272,12 @@
         // User management
         const saveUser = async (userData, action = 'add') => {
             try {
-                const endpoint = action === 'delete' 
-                    ? '/api/panel_custom/chores/assignee/delete'
-                    : action === 'update'
-                    ? '/api/panel_custom/chores/assignee/update'
-                    : '/api/panel_custom/chores/assignee/add';
-                    
-                await window.choreUtils.postData(endpoint, userData);
-                await loadAssignees();
+                if (action === 'delete') {
+                    await window.ChoresAPI.users.deleteUser(userData.id || userData.user_id);
+                } else {
+                    await window.ChoresAPI.users.addUser(userData);
+                }
+                await loadData();
             } catch (err) {
                 console.error('Error saving user:', err);
                 handleError(err);
@@ -255,10 +285,22 @@
         };
 
         // Theme management
-        const saveTheme = (theme) => {
-            localStorage.setItem('choresTheme', JSON.stringify(theme));
-            window.ThemeIntegration.applyCustomTheme(theme);
-            setShowThemeSettings(false);
+        const saveTheme = async (theme) => {
+            try {
+                // Save to localStorage
+                localStorage.setItem('choresTheme', JSON.stringify(theme));
+                
+                // Apply theme immediately
+                applyTheme(theme);
+                
+                // Save to backend
+                await window.ChoresAPI.theme.saveTheme(theme);
+                
+                setShowThemeSettings(false);
+            } catch (err) {
+                console.error('Error saving theme:', err);
+                handleError(err);
+            }
         };
 
         // Refresh functions
@@ -270,14 +312,14 @@
                 setAuthError(false);
             } catch (err) {
                 handleError(err);
-            } finally {
-                setRefreshing(false);
             }
         };
 
         const refreshAuth = async () => {
             try {
-                await window.AuthHelper.refreshAuth();
+                if (window.choreAuth && window.choreAuth.initAuth) {
+                    await window.choreAuth.initAuth();
+                }
                 await handleRefresh();
             } catch (err) {
                 console.error('Error refreshing auth:', err);
@@ -301,14 +343,11 @@
         }));
 
         // Get today's chores and upcoming chores
-        const { todayChores, upcomingChores } = window.choreUtils.categorizeCChores(choresWithState);
-
-        // Calculate user statistics
-        const userStats = window.choreUtils.calculateUserStats(chores);
-        const orderedStats = window.choreUtils.orderStatsByAssignees(userStats, assignees);
+        const todayChores = choresWithState.filter(chore => window.choreUtils.isDueToday(chore));
+        const upcomingChores = choresWithState.filter(chore => !window.choreUtils.isDueToday(chore));
 
         // Loading state
-        if (!config) {
+        if (loading) {
             return h('div', { className: "flex items-center justify-center h-screen" },
                 h('div', { className: "text-center" },
                     h('div', { className: "animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4" }),
@@ -355,7 +394,7 @@
                     : h('div', { className: "space-y-4" },
                         todayChores.map(chore =>
                             h(window.choreComponents.TaskCard, {
-                                key: chore.chore_id,
+                                key: chore.chore_id || chore.id,
                                 chore: chore,
                                 onMarkDone: markDone,
                                 onEdit: handleEdit,
@@ -378,11 +417,11 @@
                     }, "Configuratie")
                 ),
                 h('div', { className: "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" },
-                    Object.entries(orderedStats).map(([assignee, stats]) =>
+                    Object.entries(stats).map(([assignee, userStats]) =>
                         h(window.choreComponents.UserStatsCard, {
                             key: assignee,
                             assignee: assignee,
-                            stats: stats,
+                            stats: userStats,
                             assignees: assignees
                         })
                     )
@@ -426,7 +465,7 @@
                 : h('div', { className: "space-y-4 mb-12" },
                     upcomingChores.map(chore =>
                         h(window.choreComponents.TaskCard, {
-                            key: chore.chore_id,
+                            key: chore.chore_id || chore.id,
                             chore: chore,
                             onMarkDone: markDone,
                             onEdit: handleEdit,
@@ -483,7 +522,7 @@
                 },
                     h(window.choreComponents.ThemeSettings, {
                         onSave: saveTheme,
-                        currentTheme: JSON.parse(localStorage.getItem('choresTheme') || '{}')
+                        currentTheme: themeSettings
                     })
                 )
             ),
