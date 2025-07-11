@@ -64,7 +64,7 @@
 
         const icons = {
             info: 'ℹ️',
-            success: '✓',
+            success: '✅',
             warning: '⚠️',
             error: '❌'
         };
