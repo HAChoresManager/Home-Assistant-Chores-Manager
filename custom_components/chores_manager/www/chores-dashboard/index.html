@@ -124,6 +124,10 @@
     <script src="js/theme-integration.js?v=20250415-modular" type="text/javascript"></script>
 
     <!-- Load new modular API layer -->
+    <script src="js/api/base.js?v=20250415-modular" type="text/javascript"></script>
+    <script src="js/api/chores.js?v=20250415-modular" type="text/javascript"></script>
+    <script src="js/api/users.js?v=20250415-modular" type="text/javascript"></script>
+    <script src="js/api/theme.js?v=20250415-modular" type="text/javascript"></script>
     <script src="js/api/index.js?v=20250415-modular" type="text/javascript"></script>
 
     <!-- Load component loader which will load all components -->
@@ -149,8 +153,7 @@
                                          window.choreUtils && 
                                          window.choreComponents &&
                                          window.ChoresApp &&
-                                         window.AuthHelper &&
-                                         window.ThemeIntegration;
+                                         window.ChoresAPI;
 
                 if (dependenciesLoaded) {
                     console.log('All dependencies loaded, initializing app...');
@@ -174,8 +177,7 @@
                     if (!window.choreUtils) missing.push('choreUtils');
                     if (!window.choreComponents) missing.push('choreComponents');
                     if (!window.ChoresApp) missing.push('ChoresApp');
-                    if (!window.AuthHelper) missing.push('AuthHelper');
-                    if (!window.ThemeIntegration) missing.push('ThemeIntegration');
+                    if (!window.ChoresAPI) missing.push('ChoresAPI');
                     
                     console.log(`Attempt ${initAttempts}/${maxAttempts} - Waiting for dependencies:`, missing);
                     setTimeout(checkDependenciesAndInit, 100);
