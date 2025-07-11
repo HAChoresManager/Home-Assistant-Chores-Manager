@@ -1,100 +1,76 @@
-"""Base component utilities."""
-
-window.ChoreComponents = window.ChoreComponents || {};
+/**
+ * Base UI components for the Chores Manager
+ * Provides common, reusable components used throughout the application
+ */
 
 (function() {
     'use strict';
-    
-    const { createElement: h } = React;
-    
-    /**
-     * Error Boundary component
-     */
-    class ErrorBoundary extends React.Component {
-        constructor(props) {
-            super(props);
-            this.state = { hasError: false, error: null };
-        }
-        
-        static getDerivedStateFromError(error) {
-            return { hasError: true, error };
-        }
-        
-        componentDidCatch(error, errorInfo) {
-            console.error('Error caught by boundary:', error, errorInfo);
-        }
-        
-        render() {
-            if (this.state.hasError) {
-                return h('div', {
-                    className: 'error-boundary-container p-4 bg-red-50 text-red-700 rounded-lg'
-                },
-                    h('h2', { className: 'text-lg font-bold mb-2' }, 'Something went wrong'),
-                    h('p', { className: 'mb-2' }, this.state.error?.message || 'An unexpected error occurred'),
-                    h('button', {
-                        className: 'px-4 py-2 bg-red-200 rounded hover:bg-red-300',
-                        onClick: () => {
-                            this.setState({ hasError: false, error: null });
-                            window.location.reload();
-                        }
-                    }, 'Reload Application')
-                );
-            }
-            
-            return this.props.children;
-        }
+
+    // Check dependencies
+    if (!window.React) {
+        console.error('Base components require React');
+        return;
     }
-    
+
+    const h = React.createElement;
+
     /**
      * Loading spinner component
      */
-    const LoadingSpinner = ({ message = 'Loading...', size = 'medium' }) => {
+    const Loading = ({ message = 'Loading...', size = 'medium' }) => {
         const sizeClasses = {
-            small: 'w-6 h-6',
-            medium: 'w-10 h-10',
-            large: 'w-16 h-16'
+            small: 'h-8 w-8',
+            medium: 'h-12 w-12',
+            large: 'h-16 w-16'
         };
-        
+
         return h('div', { className: 'flex flex-col items-center justify-center p-4' },
             h('div', {
-                className: `${sizeClasses[size]} border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin`
+                className: `animate-spin rounded-full border-b-2 border-blue-500 ${sizeClasses[size]}`
             }),
-            message && h('p', { className: 'mt-2 text-gray-600' }, message)
+            message && h('p', { className: 'mt-4 text-gray-600' }, message)
         );
     };
-    
+
     /**
-     * Empty state component
+     * Error message component
      */
-    const EmptyState = ({ icon = '📋', title, description, action }) => {
-        return h('div', { className: 'text-center py-8' },
-            h('div', { className: 'text-4xl mb-4' }, icon),
-            h('h3', { className: 'text-lg font-medium text-gray-900 mb-2' }, title),
-            description && h('p', { className: 'text-gray-500 mb-4' }, description),
-            action && h('div', { className: 'mt-4' }, action)
+    const ErrorMessage = ({ error, onRetry }) => {
+        return h('div', { className: 'bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded' },
+            h('div', { className: 'flex items-start' },
+                h('span', { className: 'text-xl mr-2' }, '⚠️'),
+                h('div', { className: 'flex-1' },
+                    h('p', { className: 'font-medium' }, 'An error occurred'),
+                    h('p', { className: 'text-sm mt-1' }, error.message || error)
+                ),
+                onRetry && h('button', {
+                    className: 'ml-4 bg-red-200 hover:bg-red-300 text-red-800 font-bold py-1 px-3 rounded',
+                    onClick: onRetry
+                }, 'Retry')
+            )
         );
     };
-    
+
     /**
      * Alert component
      */
     const Alert = ({ type = 'info', title, message, onClose }) => {
         const typeStyles = {
-            info: 'bg-blue-50 border-blue-200 text-blue-700',
-            success: 'bg-green-50 border-green-200 text-green-700',
-            warning: 'bg-yellow-50 border-yellow-200 text-yellow-700',
-            error: 'bg-red-50 border-red-200 text-red-700'
+            info: 'bg-blue-100 border-blue-500 text-blue-700',
+            success: 'bg-green-100 border-green-500 text-green-700',
+            warning: 'bg-yellow-100 border-yellow-500 text-yellow-700',
+            error: 'bg-red-100 border-red-500 text-red-700'
         };
-        
+
         const icons = {
             info: 'ℹ️',
             success: '✅',
             warning: '⚠️',
             error: '❌'
         };
-        
+
         return h('div', {
-            className: `p-4 border rounded-lg ${typeStyles[type]} flex items-start`
+            className: `p-4 border-l-4 rounded ${typeStyles[type]} flex items-start`
         },
             h('span', { className: 'mr-2 text-xl' }, icons[type]),
             h('div', { className: 'flex-1' },
@@ -107,20 +83,20 @@ window.ChoreComponents = window.ChoreComponents || {};
             }, '✕')
         );
     };
-    
+
     /**
      * Modal wrapper component
      */
     const Modal = ({ isOpen, onClose, title, children, size = 'medium' }) => {
         if (!isOpen) return null;
-        
+
         const sizeClasses = {
             small: 'max-w-md',
             medium: 'max-w-lg',
             large: 'max-w-2xl',
             xlarge: 'max-w-4xl'
         };
-        
+
         return h('div', {
             className: 'modal-container',
             onClick: (e) => {
@@ -143,36 +119,111 @@ window.ChoreComponents = window.ChoreComponents || {};
             )
         );
     };
-    
+
     /**
-     * Confirm dialog component
+     * Empty state component
      */
-    const ConfirmDialog = ({ isOpen, title, message, onConfirm, onCancel, confirmText = 'Confirm', cancelText = 'Cancel' }) => {
-        if (!isOpen) return null;
+    const EmptyState = ({ icon = '📭', title, message, action }) => {
+        return h('div', { className: 'text-center py-12' },
+            h('div', { className: 'text-6xl mb-4' }, icon),
+            h('h3', { className: 'text-lg font-medium text-gray-900 mb-2' }, title),
+            message && h('p', { className: 'text-gray-500 mb-4' }, message),
+            action && h('button', {
+                className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
+                onClick: action.onClick
+            }, action.label)
+        );
+    };
+
+    /**
+     * Badge component
+     */
+    const Badge = ({ children, color = 'gray', size = 'medium' }) => {
+        const colorClasses = {
+            gray: 'bg-gray-100 text-gray-800',
+            red: 'bg-red-100 text-red-800',
+            yellow: 'bg-yellow-100 text-yellow-800',
+            green: 'bg-green-100 text-green-800',
+            blue: 'bg-blue-100 text-blue-800',
+            purple: 'bg-purple-100 text-purple-800'
+        };
+
+        const sizeClasses = {
+            small: 'px-2 py-0.5 text-xs',
+            medium: 'px-2.5 py-0.5 text-sm',
+            large: 'px-3 py-1 text-base'
+        };
+
+        return h('span', {
+            className: `inline-flex items-center rounded-full font-medium ${colorClasses[color]} ${sizeClasses[size]}`
+        }, children);
+    };
+
+    /**
+     * Progress bar component
+     */
+    const ProgressBar = ({ value, max = 100, color = 'blue', showLabel = false }) => {
+        const percentage = Math.min(100, Math.max(0, (value / max) * 100));
         
-        return h('div', { className: 'modal-container' },
-            h('div', { className: 'confirm-dialog bg-white p-4 rounded-lg shadow-lg max-w-md w-full mx-auto' },
-                h('h3', { className: 'text-lg font-medium mb-2' }, title),
-                h('p', { className: 'mb-4 text-gray-700' }, message),
-                h('div', { className: 'flex justify-end space-x-2' },
-                    h('button', {
-                        onClick: onCancel,
-                        className: 'px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200'
-                    }, cancelText),
-                    h('button', {
-                        onClick: onConfirm,
-                        className: 'px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700'
-                    }, confirmText)
-                )
+        const colorClasses = {
+            blue: 'bg-blue-500',
+            green: 'bg-green-500',
+            yellow: 'bg-yellow-500',
+            red: 'bg-red-500',
+            purple: 'bg-purple-500'
+        };
+
+        return h('div', { className: 'w-full' },
+            showLabel && h('div', { className: 'flex justify-between text-sm text-gray-600 mb-1' },
+                h('span', null, `${value}/${max}`),
+                h('span', null, `${Math.round(percentage)}%`)
+            ),
+            h('div', { className: 'progress-container' },
+                h('div', {
+                    className: `progress-bar ${colorClasses[color]}`,
+                    style: { width: `${percentage}%` }
+                })
             )
         );
     };
-    
-    // Export components
-    window.ChoreComponents.ErrorBoundary = ErrorBoundary;
-    window.ChoreComponents.LoadingSpinner = LoadingSpinner;
-    window.ChoreComponents.EmptyState = EmptyState;
-    window.ChoreComponents.Alert = Alert;
-    window.ChoreComponents.Modal = Modal;
-    window.ChoreComponents.ConfirmDialog = ConfirmDialog;
+
+    /**
+     * Tooltip component
+     */
+    const Tooltip = ({ children, content, position = 'top' }) => {
+        const [isVisible, setIsVisible] = React.useState(false);
+
+        const positionClasses = {
+            top: 'bottom-full left-1/2 transform -translate-x-1/2 mb-2',
+            bottom: 'top-full left-1/2 transform -translate-x-1/2 mt-2',
+            left: 'right-full top-1/2 transform -translate-y-1/2 mr-2',
+            right: 'left-full top-1/2 transform -translate-y-1/2 ml-2'
+        };
+
+        return h('div', { 
+            className: 'relative inline-block',
+            onMouseEnter: () => setIsVisible(true),
+            onMouseLeave: () => setIsVisible(false)
+        },
+            children,
+            isVisible && h('div', {
+                className: `absolute z-10 px-3 py-2 text-sm text-white bg-gray-900 rounded-md shadow-lg whitespace-nowrap ${positionClasses[position]}`
+            }, content)
+        );
+    };
+
+    // Export base components
+    window.choreComponents = window.choreComponents || {};
+    Object.assign(window.choreComponents, {
+        Loading,
+        ErrorMessage,
+        Alert,
+        Modal,
+        EmptyState,
+        Badge,
+        ProgressBar,
+        Tooltip
+    });
+
+    console.log('Base components loaded successfully');
 })();
