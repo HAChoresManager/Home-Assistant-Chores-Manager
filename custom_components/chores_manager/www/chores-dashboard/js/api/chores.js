@@ -14,12 +14,22 @@ window.ChoresAPI = window.ChoresAPI || {};
          * Add or update a chore
          */
         async addChore(choreData) {
+            // Ensure chore_id is set for updates
+            if (!choreData.chore_id && choreData.id) {
+                choreData.chore_id = choreData.id;
+            }
+            
+            // For new chores, generate a unique ID if not provided
+            if (!choreData.chore_id) {
+                choreData.chore_id = `chore_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            }
+            
             // Normalize the data for API
             const normalizedData = {
                 chore_id: choreData.chore_id,
             };
             
-            // Only include fields that are present
+            // Only include fields that are present and not undefined
             const fields = [
                 'name', 'frequency_type', 'frequency_days', 'frequency_times',
                 'assigned_to', 'priority', 'duration', 'icon', 'description',
@@ -35,6 +45,15 @@ window.ChoresAPI = window.ChoresAPI || {};
                 }
             });
             
+            // Set defaults for required fields if not present
+            normalizedData.name = normalizedData.name || 'Unnamed Task';
+            normalizedData.frequency_type = normalizedData.frequency_type || 'Wekelijks';
+            normalizedData.frequency_days = Number(normalizedData.frequency_days) || 7;
+            normalizedData.frequency_times = Number(normalizedData.frequency_times) || 1;
+            normalizedData.assigned_to = normalizedData.assigned_to || 'Wie kan';
+            normalizedData.priority = normalizedData.priority || 'Middel';
+            normalizedData.duration = Number(normalizedData.duration) || 15;
+            
             // Convert numeric fields
             ['frequency_days', 'frequency_times', 'duration', 'weekday', 'monthday', 'startMonth', 'startDay'].forEach(field => {
                 if (normalizedData[field] !== undefined) {
@@ -48,6 +67,24 @@ window.ChoresAPI = window.ChoresAPI || {};
                     normalizedData[field] = Boolean(normalizedData[field]);
                 }
             });
+            
+            // Handle subtasks
+            if (normalizedData.has_subtasks && normalizedData.subtasks) {
+                // Ensure subtasks is an array
+                if (!Array.isArray(normalizedData.subtasks)) {
+                    normalizedData.subtasks = [];
+                }
+                
+                // Filter out empty subtasks
+                normalizedData.subtasks = normalizedData.subtasks
+                    .filter(st => st && st.name && st.name.trim())
+                    .map(st => ({
+                        name: st.name.trim(),
+                        completed: st.completed || false
+                    }));
+            } else {
+                normalizedData.subtasks = [];
+            }
             
             return await this.callService(
                 window.ChoresAPI.ENDPOINTS.ADD_CHORE,
@@ -80,7 +117,7 @@ window.ChoresAPI = window.ChoresAPI || {};
                 window.ChoresAPI.ENDPOINTS.UPDATE_DESCRIPTION,
                 {
                     chore_id: choreId,
-                    description: description
+                    description: description || ''
                 }
             );
         }
