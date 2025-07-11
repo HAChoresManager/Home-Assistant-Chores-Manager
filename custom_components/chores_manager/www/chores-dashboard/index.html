@@ -6,7 +6,7 @@
     <title>Huishoudelijke Taken</title>
     <!-- Force cache refresh with timestamp -->
     <link rel="stylesheet" href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" type="text/css">
-    <link rel="stylesheet" href="css/styles.css?v=20250415-auth-fix" type="text/css">
+    <link rel="stylesheet" href="css/styles.css?v=20250415-modular" type="text/css">
     <style>
         /* Base styling for better readability */
         html, body {
@@ -31,1362 +31,174 @@
         body {
             background-color: #ffffff !important;
         }
+
+        /* Loading spinner */
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 400px;
+            padding: 20px;
+        }
+
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #666;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .error-container {
+            background-color: #fee;
+            border: 1px solid #fcc;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px;
+            color: #c00;
+        }
+
+        .error-container h2 {
+            margin-top: 0;
+            color: #900;
+        }
+
+        .error-container pre {
+            background-color: #fdd;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
     </style>
     <script>
         // Global error handler for better debugging
         window.addEventListener('error', function(event) {
             console.error('Global error caught:', event.error);
-            document.getElementById('root').innerHTML = 
-                `<div style="color: #000; padding: 20px; background: #fff;">
-                    <h2>Dashboard Error</h2>
-                    <p>Error: ${event.error ? event.error.message : 'Unknown error'}</p>
-                    <pre>${event.error ? event.error.stack : ''}</pre>
-                    <button onclick="window.location.reload()">Reload Page</button>
-                </div>`;
+            const rootEl = document.getElementById('root');
+            if (rootEl && !rootEl.querySelector('.error-container')) {
+                rootEl.innerHTML = `
+                    <div class="error-container">
+                        <h2>Dashboard Error</h2>
+                        <p>Error: ${event.error ? event.error.message : 'Unknown error'}</p>
+                        <pre>${event.error ? event.error.stack : ''}</pre>
+                        <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
+                    </div>`;
+            }
         });
+
+        // Add version info to global object
+        window.CHORES_APP_VERSION = "1.4.0-20250415-modular";
+        console.log('Chores Dashboard Version:', window.CHORES_APP_VERSION);
     </script>
 </head>
 <body>
-    <div id="root">Loading dashboard...</div>
+    <div id="root">
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Loading dashboard...</div>
+        </div>
+    </div>
 
     <!-- Load React first -->
     <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
 
-    <!-- Load auth-helper first - this now handles all authentication -->
-    <script src="js/auth-helper.js?v=20250415-auth-fix" type="text/javascript"></script>
-    <!-- Load our scripts with explicit type, timestamp and defer -->
-    <script src="js/utils.js?v=20250415-auth-fix" type="text/javascript"></script>
-    <script src="js/components.js?v=20250415-auth-fix" type="text/javascript"></script>
-    <script src="js/theme-integration.js?v=20250415-auth-fix" type="text/javascript"></script>
+    <!-- Load core utilities and helpers -->
+    <script src="js/auth-helper.js?v=20250415-modular" type="text/javascript"></script>
+    <script src="js/utils.js?v=20250415-modular" type="text/javascript"></script>
+    <script src="js/theme-integration.js?v=20250415-modular" type="text/javascript"></script>
+
+    <!-- Load new modular API layer -->
+    <script src="js/api/index.js?v=20250415-modular" type="text/javascript"></script>
+
+    <!-- Load component loader which will load all components -->
+    <script src="js/components/index.js?v=20250415-modular" type="text/javascript"></script>
+
+    <!-- Load main app component -->
+    <script src="js/app.js?v=20250415-modular" type="text/javascript"></script>
 
     <script type="text/javascript">
-        // Add version info to global object
-        window.CHORES_APP_VERSION = "1.3.3-20250415-auth-fix";
-        
-        // Auth error component
-        const AuthErrorBanner = function({onRefresh}) {
-            return React.createElement('div', {
-                className: 'auth-error-banner bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded'
-            }, 
-                React.createElement('div', { className: 'flex items-center' },
-                    React.createElement('div', { className: 'mr-2' }, '⚠️'),
-                    React.createElement('div', null, 'Authentication error. Please refresh your session.'),
-                    React.createElement('button', {
-                        onClick: onRefresh,
-                        className: 'ml-auto bg-red-200 hover:bg-red-300 text-red-800 font-bold py-1 px-3 rounded'
-                    }, 'Refresh Auth')
-                )
-            );
-        };
-        
-        // Use a more robust initialization approach
+        // Initialize app when all dependencies are loaded
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('Loading chores dashboard version: ' + window.CHORES_APP_VERSION);
+            console.log('DOM loaded, initializing app...');
             
-            function waitForDependencies() {
-                if (window.choreUtils && window.choreComponents) {
-                    console.log('Dependencies loaded, initializing app...');
+            let initAttempts = 0;
+            const maxAttempts = 50; // 5 seconds timeout
+
+            function checkDependenciesAndInit() {
+                initAttempts++;
+
+                // Check if all required dependencies are loaded
+                const dependenciesLoaded = window.React && 
+                                         window.ReactDOM && 
+                                         window.choreUtils && 
+                                         window.choreComponents &&
+                                         window.ChoresApp &&
+                                         window.AuthHelper &&
+                                         window.ThemeIntegration;
+
+                if (dependenciesLoaded) {
+                    console.log('All dependencies loaded, initializing app...');
                     try {
-                        initApp();
+                        window.ChoresApp.initApp();
                     } catch (error) {
                         console.error('Error initializing app:', error);
-                        document.getElementById('root').innerHTML = 
-                            `<div style="color: #000; padding: 20px; background: #fff;">
-                                <h2>Error Loading Dashboard</h2>
-                                <p>An error occurred while initializing the dashboard: ${error.message}</p>
-                                <button onclick="window.location.reload()">Reload Page</button>
+                        document.getElementById('root').innerHTML = `
+                            <div class="error-container">
+                                <h2>Initialization Error</h2>
+                                <p>Failed to initialize the dashboard: ${error.message}</p>
+                                <pre>${error.stack}</pre>
+                                <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
                             </div>`;
                     }
+                } else if (initAttempts < maxAttempts) {
+                    // Check which dependencies are missing
+                    const missing = [];
+                    if (!window.React) missing.push('React');
+                    if (!window.ReactDOM) missing.push('ReactDOM');
+                    if (!window.choreUtils) missing.push('choreUtils');
+                    if (!window.choreComponents) missing.push('choreComponents');
+                    if (!window.ChoresApp) missing.push('ChoresApp');
+                    if (!window.AuthHelper) missing.push('AuthHelper');
+                    if (!window.ThemeIntegration) missing.push('ThemeIntegration');
+                    
+                    console.log(`Attempt ${initAttempts}/${maxAttempts} - Waiting for dependencies:`, missing);
+                    setTimeout(checkDependenciesAndInit, 100);
                 } else {
-                    console.log('Waiting for dependencies...');
-                    setTimeout(waitForDependencies, 100);
+                    console.error('Failed to load dependencies after', maxAttempts, 'attempts');
+                    document.getElementById('root').innerHTML = `
+                        <div class="error-container">
+                            <h2>Loading Error</h2>
+                            <p>Failed to load required dependencies. Please refresh the page.</p>
+                            <p>Missing: ${missing.join(', ')}</p>
+                            <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
+                        </div>`;
                 }
             }
 
-            waitForDependencies();
-
-            function initApp() {
-                console.log('Starting dashboard app v' + window.CHORES_APP_VERSION);
-
-                // Main App component
-                const App = function() {
-                    const [config, setConfig] = React.useState(null);
-                    const [chores, setChores] = React.useState([]);
-                    const [completedToday, setCompletedToday] = React.useState(0);
-                    const [overdueCount, setOverdueCount] = React.useState(0);
-                    const [error, setError] = React.useState(null);
-                    const [showForm, setShowForm] = React.useState(false);
-                    const [selectedChore, setSelectedChore] = React.useState(null);
-                    const [selectedDescription, setSelectedDescription] = React.useState(null);
-                    const [loading, setLoading] = React.useState(false);
-                    const [statsData, setStatsData] = React.useState({});
-                    const [assignees, setAssignees] = React.useState([]);
-                    const [lastUpdated, setLastUpdated] = React.useState(new Date());
-                    const [retryCount, setRetryCount] = React.useState(0);
-                    const [skipNextRefresh, setSkipNextRefresh] = React.useState(false);
-                    const [showUndoConfirm, setShowUndoConfirm] = React.useState(false);
-                    const [lastCompletedTask, setLastCompletedTask] = React.useState(null);
-                    // Track optimistic updates with expiry times
-                    const [optimisticUpdates, setOptimisticUpdates] = React.useState({});
-                    // Add debug mode
-                    const [debugMode] = React.useState(false);
-                    // Show user management modal
-                    const [showUserManagement, setShowUserManagement] = React.useState(false);
-                    const [forceStableState, setForceStableState] = React.useState({});
-                    // Auth error state - simplified
-                    const [authError, setAuthError] = React.useState(false);
-                    // Auth ready state
-                    const [authReady, setAuthReady] = React.useState(false);
-                    // Theme settings state
-                    const [themeSettings, setThemeSettings] = React.useState({
-                        backgroundColor: '#ffffff',
-                        cardColor: '#f8f8f8',
-                        primaryTextColor: '#000000',
-                        secondaryTextColor: '#333333'
-                    });
-
-                    // Debug log function
-                    const debugLog = (message, data) => {
-                        if (debugMode) {
-                            console.log(`[DEBUG] ${message}`, data || '');
-                        }
-                    };
-                    
-                    // Handle auth refresh button click - simplified
-                    const handleAuthRefresh = async () => {
-                        setLoading(true);
-                        try {
-                            console.log('Performing manual token refresh...');
-                            
-                            if (window.choreAuth && window.choreAuth.clearToken) {
-                                window.choreAuth.clearToken();
-                            }
-                            
-                            // Re-initialize authentication
-                            if (window.choreAuth && window.choreAuth.initAuth) {
-                                await window.choreAuth.initAuth();
-                            }
-                            
-                            // Wait a moment for auth to complete
-                            setTimeout(() => {
-                                if (!authError) {
-                                    fetchChores();
-                                }
-                            }, 1000);
-                            
-                        } catch (e) {
-                            console.error('Error during manual token refresh:', e);
-                            // Last resort - reload the page completely
-                            window.location.reload(true);
-                        } finally {
-                            setLoading(false);
-                        }
-                    };
-
-                    // Apply theme to document root
-                    React.useEffect(() => {
-                        // Apply custom theme variables to root element
-                        const root = document.documentElement;
-                        root.style.setProperty('--theme-background', themeSettings.backgroundColor);
-                        root.style.setProperty('--theme-card-color', themeSettings.cardColor);
-                        root.style.setProperty('--theme-primary-text', themeSettings.primaryTextColor);
-                        root.style.setProperty('--theme-secondary-text', themeSettings.secondaryTextColor);
-                    }, [themeSettings]);
-
-                    // Load config
-                    React.useEffect(() => {
-                        const loadConfig = async () => {
-                            try {
-                                const response = await fetch('/local/chores-dashboard/config.json?nocache=' + new Date().getTime(), {
-                                    cache: 'no-store'
-                                });
-                                if (!response.ok) {
-                                    throw new Error(`Failed to load config: ${response.status} ${response.statusText}`);
-                                }
-                                const configData = await response.json();
-                                setConfig(configData);
-                            } catch (err) {
-                                console.error('Error loading config:', err);
-                                setError('Failed to load config: ' + err.message);
-                            }
-                        };
-                        loadConfig();
-                    }, []);
-
-                    // Set up authentication event listeners - simplified
-                    React.useEffect(() => {
-                        // Listen for auth errors
-                        const handleAuthError = (event) => {
-                            console.warn('Authentication error detected:', event.detail?.message || 'Unknown error');
-                            setAuthError(true);
-                            setAuthReady(false);
-                        };
-                        
-                        // Listen for auth ready events
-                        const handleAuthReady = (event) => {
-                            console.log('Authentication ready');
-                            setAuthError(false);
-                            setAuthReady(true);
-                        };
-                        
-                        window.addEventListener('chores-auth-error', handleAuthError);
-                        window.addEventListener('chores-auth-ready', handleAuthReady);
-                        
-                        // Clean up on unmount
-                        return () => {
-                            window.removeEventListener('chores-auth-error', handleAuthError);
-                            window.removeEventListener('chores-auth-ready', handleAuthReady);
-                        };
-                    }, []);
-
-                    // Fetch chores data when auth is ready
-                    React.useEffect(() => {
-                        if (authReady && config) {
-                            console.log('Auth ready and config loaded, starting to fetch chores...');
-                            fetchChores();
-                            const interval = setInterval(fetchChores, 15000);
-                            return () => clearInterval(interval);
-                        }
-                    }, [authReady, config]);
-
-                    // Fetch chores data with robust optimistic update handling
-                    const fetchChores = async () => {
-                        if (skipNextRefresh) {
-                            return;
-                        }
-                    
-                        try {
-                            setLastUpdated(new Date());
-                    
-                            const response = await window.choreUtils.fetchWithAuth('/api/states/sensor.chores_overview');
-                    
-                            // Check for auth errors
-                            if (response.status === 401) {
-                                setAuthError(true);
-                                setAuthReady(false);
-                                console.error('Authentication failed when fetching chores');
-                                return;
-                            }
-                            
-                            // Clear auth error state if request was successful
-                            setAuthError(false);
-                    
-                            if (response.status === 404) {
-                                // Create empty data structure with default users
-                                const emptyData = {
-                                    state: "0",
-                                    attributes: {
-                                        friendly_name: "Chores Overview",
-                                        overdue_tasks: [],
-                                        stats: {},
-                                        assignees: [
-                                            {id: "laura", name: "Laura", color: "#F5B7B1", active: true},
-                                            {id: "martijn", name: "Martijn", color: "#F9E79F", active: true},
-                                            {id: "wie_kan", name: "Wie kan", color: "#A9DFBF", active: true}
-                                        ]
-                                    }
-                                };
-                    
-                                // Show empty UI and notify user
-                                setError('The Chores Manager sensor is not available yet. Adding tasks will still work, but you need to restart Home Assistant to see them.');
-                                processChoreTasks(emptyData);
-                                
-                                // Keep trying periodically
-                                setRetryCount(prev => prev + 1);
-                                setTimeout(fetchChores, 10000);
-                                return;
-                            }
-                    
-                            if (!response.ok) {
-                                throw new Error(`API error: ${response.status}`);
-                            }
-                    
-                            const data = await response.json();
-                            
-                            // Check for theme settings
-                            if (data.attributes?.theme_settings) {
-                                setThemeSettings(data.attributes.theme_settings);
-                            }
-                            
-                            processChoreTasks(data);
-                    
-                        } catch (err) {
-                            console.error('Error loading chores:', err);
-                            
-                            // Check if this is potentially an auth error
-                            if (err.message && err.message.includes('401')) {
-                                setAuthError(true);
-                                setAuthReady(false);
-                            }
-                            
-                            setRetryCount(prev => prev + 1);
-                            setTimeout(fetchChores, 5000);
-                        }
-                    };
-
-                    const processChoreTasks = (data) => {
-                        // Get the tasks from the sensor attributes
-                        const tasks = (data.attributes?.overdue_tasks || [])
-                            .filter(task => task.name && task.name.trim() !== '') // Filter out empty tasks
-                            .map(task => {
-                                const taskId = task.chore_id || task.id;
-                                
-                                // Check if we have an optimistic update for this task
-                                const optimisticData = optimisticUpdates[taskId];
-                                
-                                if (optimisticData && Date.now() < optimisticData.expiry) {
-                                    // Use our optimistic data instead of server data
-                                    return {
-                                        ...task,
-                                        ...optimisticData.data,
-                                        isOptimistic: true
-                                    };
-                                }
-                                
-                                // Otherwise use server data
-                                return {
-                                    ...task,
-                                    chore_id: taskId
-                                };
-                            });
-                        
-                        setChores(tasks);
-                        
-                        // Filter stats to exclude "Wie kan"
-                        const filteredStats = {...data.attributes?.stats};
-                        if (filteredStats["Wie kan"]) {
-                            delete filteredStats["Wie kan"];
-                        }
-                        setStatsData(filteredStats);
-                        
-                        // Include all assignees including "Wie kan"
-                        const filteredAssignees = (data.attributes?.assignees || [])
-                            .filter(assignee => assignee.active);
-                        setAssignees(filteredAssignees);
-                        
-                        // Count tasks completed today
-                        const todayCount = tasks.filter(task =>
-                            task.last_done && window.choreUtils.isToday(task.last_done)
-                        ).length;
-                        
-                        setCompletedToday(todayCount);
-                        
-                        // Find the last completed task for undo
-                        const todayCompleted = tasks.filter(chore => 
-                            chore.last_done && window.choreUtils.isToday(chore.last_done));
-                        if (todayCompleted.length > 0) {
-                            todayCompleted.sort((a, b) => new Date(b.last_done) - new Date(a.last_done));
-                            setLastCompletedTask(todayCompleted[0]);
-                        } else {
-                            setLastCompletedTask(null);
-                        }
-                        
-                        // Calculate overdue count correctly
-                        const overdueTasks = tasks.filter(task =>
-                            window.choreUtils.isDueOrOverdue(task) &&
-                            (!task.last_done || !window.choreUtils.isToday(task.last_done))
-                        );
-                        setOverdueCount(overdueTasks.length);
-                        
-                        // Reset retry counter on success
-                        setRetryCount(0);
-                    };
-
-                    // Add chore function
-                    const addChore = async (choreData) => {
-                        setLoading(true);
-                        try {
-                            console.log('Adding/updating chore', choreData);
-
-                            // Normalize the data for API
-                            const normalizedData = {
-                                chore_id: choreData.chore_id,
-                            };
-
-                            // Only include fields that are present and non-null
-                            if (choreData.name !== undefined) normalizedData.name = choreData.name;
-                            if (choreData.frequency_type !== undefined) normalizedData.frequency_type = choreData.frequency_type;
-                            if (choreData.frequency_days !== undefined) normalizedData.frequency_days = Number(choreData.frequency_days);
-                            if (choreData.frequency_times !== undefined) normalizedData.frequency_times = Number(choreData.frequency_times);
-                            if (choreData.assigned_to !== undefined) normalizedData.assigned_to = choreData.assigned_to;
-                            if (choreData.priority !== undefined) normalizedData.priority = choreData.priority;
-                            if (choreData.duration !== undefined) normalizedData.duration = Number(choreData.duration);
-                            if (choreData.icon !== undefined) normalizedData.icon = choreData.icon;
-                            if (choreData.description !== undefined) normalizedData.description = choreData.description;
-                            if (choreData.alternate_with !== undefined) normalizedData.alternate_with = choreData.alternate_with;
-                            if (choreData.use_alternating !== undefined) normalizedData.use_alternating = Boolean(choreData.use_alternating);
-                            if (choreData.notify_when_due !== undefined) normalizedData.notify_when_due = Boolean(choreData.notify_when_due);
-                            if (choreData.weekday !== undefined) normalizedData.weekday = Number(choreData.weekday);
-                            if (choreData.monthday !== undefined) normalizedData.monthday = Number(choreData.monthday);
-
-                            // Handle quarterly and semi-annual start dates
-                            if (choreData.startMonth !== undefined) normalizedData.startMonth = Number(choreData.startMonth);
-                            if (choreData.startDay !== undefined) normalizedData.startDay = Number(choreData.startDay);
-
-                            // Handle special fields for day selections
-                            if (choreData.active_days) normalizedData.active_days = choreData.active_days;
-                            if (choreData.active_monthdays) normalizedData.active_monthdays = choreData.active_monthdays;
-                            
-                            // Handle subtasks
-                            if (choreData.has_subtasks !== undefined) normalizedData.has_subtasks = Boolean(choreData.has_subtasks);
-                            if (choreData.subtasks) normalizedData.subtasks = choreData.subtasks;
-                            if (choreData.subtasks_completion_type) normalizedData.subtasks_completion_type = choreData.subtasks_completion_type;
-                            if (choreData.subtasks_streak_type) normalizedData.subtasks_streak_type = choreData.subtasks_streak_type;
-                            if (choreData.subtasks_period) normalizedData.subtasks_period = choreData.subtasks_period;
-
-                            // Handle special frequency values
-                            if (normalizedData.frequency_type === "Meerdere keren per week") {
-                                normalizedData.frequency_days = 7;
-                                normalizedData.frequency_times = Math.min(Math.max(1, normalizedData.frequency_times || 2), 7);
-                            } else if (normalizedData.frequency_type === "Meerdere keren per maand") {
-                                normalizedData.frequency_days = 30;
-                                normalizedData.frequency_times = Math.min(Math.max(1, normalizedData.frequency_times || 4), 30);
-                            } else if (normalizedData.frequency_type === "Per kwartaal") {
-                                normalizedData.frequency_days = 90;
-                                normalizedData.frequency_times = 1;
-                            } else if (normalizedData.frequency_type === "Halfjaarlijks") {
-                                normalizedData.frequency_days = 180;
-                                normalizedData.frequency_times = 1;
-                            } else if (normalizedData.frequency_type === "Aangepast") {
-                                // Convert custom frequency to appropriate type
-                                if (normalizedData.subtasks_period === "week") {
-                                    normalizedData.frequency_type = "Meerdere keren per week";
-                                    normalizedData.frequency_days = 7;
-                                } else {
-                                    normalizedData.frequency_type = "Meerdere keren per maand";
-                                    normalizedData.frequency_days = 30;
-                                }
-                            }
-
-                            const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/add_chore', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify(normalizedData)
-                            });
-
-                            if (!response.ok) {
-                                const errorText = await response.text();
-                                console.error('Error response:', errorText);
-                                throw new Error(`Server returned ${response.status}: ${errorText}`);
-                            }
-
-                            setShowForm(false);
-                            setSelectedChore(null);
-                            // Force immediate refresh
-                            await fetchChores();
-                        } catch (err) {
-                            console.error('Error adding chore:', err);
-                            setError('Error adding task: ' + err.message);
-                        } finally {
-                            setLoading(false);
-                        }
-                    };
-
-                    // Update task description
-                    const updateDescription = async (choreId, description) => {
-                        setLoading(true);
-                        try {
-                            const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/update_description', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                    chore_id: choreId,
-                                    description: description
-                                })
-                            });
-
-                            if (!response.ok) {
-                                throw new Error(`Update failed: ${await response.text()}`);
-                            }
-
-                            setSelectedDescription(null);
-                            await fetchChores();
-                        } catch (err) {
-                            console.error('Error updating description:', err);
-                            setError('Error updating description: ' + err.message);
-                        } finally {
-                            setLoading(false);
-                        }
-                    };
-
-                    // Delete chore function
-                    const deleteChore = async (choreId) => {
-                        setLoading(true);
-                        try {
-                            const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/delete_chore', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                    chore_id: choreId
-                                })
-                            });
-                    
-                            if (!response.ok) {
-                                throw new Error(`Delete failed: ${await response.text()}`);
-                            }
-                    
-                            setSelectedChore(null);
-                            setShowForm(false);
-                            await fetchChores();
-                        } catch (err) {
-                            console.error('Error deleting chore:', err);
-                            setError('Error deleting task: ' + err.message);
-                        } finally {
-                            setLoading(false);
-                        }
-                    };
-
-                    // Mark done function with user selection
-                    const markDone = async (chore_id, selectedPerson = null) => {
-                        if (!chore_id) return;
-                    
-                        try {
-                            // Find the chore
-                            const chore = chores.find(c => c.chore_id === chore_id);
-                            if (!chore) return;
-                    
-                            // Use selected person, but never "Wie kan" for completion
-                            const person = selectedPerson || (chore.assigned_to === "Wie kan" ? "Laura" : chore.assigned_to);
-                            
-                            // Force the task to stay in one place by saving its intended location
-                            setForceStableState(prev => ({
-                                ...prev, 
-                                [chore_id]: {
-                                    action: 'complete',
-                                    timestamp: Date.now(),
-                                    expires: Date.now() + 120000, // 2 minutes
-                                    shouldBeInUpcoming: true
-                                }
-                            }));
-                    
-                            // Set task to visual processing state
-                            setChores(prevChores => 
-                                prevChores.map(c => 
-                                    c.chore_id === chore_id 
-                                        ? { ...c, isProcessing: true } 
-                                        : c
-                                )
-                            );
-                            
-                            // Update UI to show task as completed immediately
-                            const now = new Date().toISOString();
-                            setChores(prevChores => 
-                                prevChores.map(c => 
-                                    c.chore_id === chore_id 
-                                        ? { 
-                                            ...c, 
-                                            last_done: now,
-                                            last_done_by: person,
-                                            isProcessing: false,
-                                            isCompleted: true,
-                                            isOptimistic: true
-                                          }
-                                        : c
-                                )
-                            );
-                            
-                            // Update stats immediately for consistency
-                            setCompletedToday(prev => prev + 1);
-                            
-                            // Block ALL refreshes for 45 seconds
-                            setSkipNextRefresh(true);
-                            
-                            // Make the API call
-                            const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/mark_done', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Cache-Control': 'no-cache, no-store, must-revalidate'
-                                },
-                                body: JSON.stringify({
-                                    chore_id: chore_id,
-                                    person: person
-                                })
-                            });
-                    
-                            if (!response.ok) {
-                                throw new Error(`API call failed: ${await response.text()}`);
-                            }
-                            
-                            // Schedule multiple refreshes to be skipped
-                            for (let i = 1; i <= 3; i++) {
-                                setTimeout(() => {
-                                    setSkipNextRefresh(true);
-                                }, i * 15000); // Set skip flag every 15 seconds
-                            }
-                            
-                            // Finally allow a refresh after 45+ seconds
-                            setTimeout(() => {
-                                setSkipNextRefresh(false);
-                                fetchChores();
-                            }, 45000);
-                    
-                        } catch (err) {
-                            console.error('Error completing task:', err);
-                            
-                            // Reset task state on error
-                            setForceStableState(prev => {
-                                const newState = {...prev};
-                                delete newState[chore_id];
-                                return newState;
-                            });
-                            
-                            setChores(prevChores => 
-                                prevChores.map(c => 
-                                    c.chore_id === chore_id 
-                                        ? { ...c, isProcessing: false, isOptimistic: false, isCompleted: false }
-                                        : c
-                                )
-                            );
-                            
-                            setError(`Error completing task: ${err.message}`);
-                            setSkipNextRefresh(false);
-                        }
-                    };
-
-                    // NEW FUNCTION: Process subtask completions
-                    const processSubtaskCompletions = async (choreId, subtaskIds, person) => {
-                        if (!choreId || !subtaskIds || !Array.isArray(subtaskIds) || subtaskIds.length === 0) {
-                            console.error('Invalid subtask completion parameters:', { choreId, subtaskIds, person });
-                            setError('Invalid subtask completion data');
-                            return;
-                        }
-                        
-                        if (!person) {
-                            console.error('No person specified for subtask completion');
-                            setError('Please select who completed the subtasks');
-                            return;
-                        }
-                        
-                        try {
-                            // Find the chore to get details
-                            const chore = chores.find(c => c.chore_id === choreId);
-                            if (!chore) {
-                                throw new Error(`Chore ${choreId} not found`);
-                            }
-                            
-                            // Use selected person, default to assigned person if not specified
-                            const assignee = person || (chore.assigned_to === "Wie kan" ? "Laura" : chore.assigned_to);
-                            
-                            console.log(`Processing ${subtaskIds.length} subtasks for chore ${choreId} by ${assignee}`);
-                            
-                            // Update UI optimistically for subtasks
-                            setChores(prevChores => 
-                                prevChores.map(c => {
-                                    if (c.chore_id === choreId && c.subtasks) {
-                                        return {
-                                            ...c,
-                                            subtasks: c.subtasks.map(s => {
-                                                if (subtaskIds.includes(s.id)) {
-                                                    return { ...s, completed: true };
-                                                }
-                                                return s;
-                                            })
-                                        };
-                                    }
-                                    return c;
-                                })
-                            );
-                            
-                            // Keep track of successful and failed completions
-                            const results = {
-                                successful: [],
-                                failed: []
-                            };
-                            
-                            // Process each subtask
-                            for (const subtaskId of subtaskIds) {
-                                if (typeof subtaskId !== 'number' || isNaN(subtaskId)) {
-                                    console.warn(`Invalid subtask ID: ${subtaskId}`);
-                                    results.failed.push({ id: subtaskId, reason: 'Invalid ID' });
-                                    continue;
-                                }
-                                
-                                try {
-                                    const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/complete_subtask', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                            subtask_id: subtaskId,
-                                            person: assignee
-                                        })
-                                    });
-                                    
-                                    if (!response.ok) {
-                                        const errorText = await response.text();
-                                        console.error(`Failed to complete subtask ${subtaskId}:`, errorText);
-                                        results.failed.push({ id: subtaskId, reason: errorText });
-                                    } else {
-                                        results.successful.push(subtaskId);
-                                    }
-                                } catch (error) {
-                                    console.error(`Error completing subtask ${subtaskId}:`, error);
-                                    results.failed.push({ id: subtaskId, reason: error.message });
-                                }
-                            }
-                            
-                            // Log results
-                            if (results.successful.length > 0) {
-                                console.log(`Successfully completed ${results.successful.length} subtasks:`, results.successful);
-                            }
-                            if (results.failed.length > 0) {
-                                console.warn(`Failed to complete ${results.failed.length} subtasks:`, results.failed);
-                            }
-                            
-                            // Check if main task should be marked as completed based on completion rules
-                            const completionType = chore.subtasks_completion_type || 'all';
-                            const totalSubtasks = chore.subtasks ? chore.subtasks.length : 0;
-                            const completedSubtasks = results.successful.length;
-                            
-                            const shouldCompleteMainTask = 
-                                (completionType === 'all' && completedSubtasks === totalSubtasks) ||
-                                (completionType === 'any' && completedSubtasks > 0);
-                                                
-                            if (shouldCompleteMainTask) {
-                                console.log(`Subtask completion rules met for ${choreId}, marking main task as done`);
-                                // Update main task optimistically
-                                const now = new Date().toISOString();
-                                setChores(prevChores => 
-                                    prevChores.map(c => 
-                                        c.chore_id === choreId
-                                            ? { 
-                                                ...c, 
-                                                isProcessing: false,
-                                                last_done: now,
-                                                last_done_by: assignee
-                                            }
-                                            : c
-                                    )
-                                );
-                                setCompletedToday(prev => prev + 1);
-                            }
-                            
-                            // If there were any failures, show an error message
-                            if (results.failed.length > 0) {
-                                setError(`Some subtasks could not be completed: ${results.failed.map(f => f.reason).join(', ')}`);
-                            }
-                            
-                            // Schedule a refresh to get updated data from the server
-                            setTimeout(() => {
-                                fetchChores();
-                            }, 3000);
-                            
-                        } catch (err) {
-                            console.error('Error processing subtask completions:', err);
-                            setError(`Error completing subtasks: ${err.message}`);
-                            
-                            // Revert optimistic updates on error
-                            setChores(prevChores => 
-                                prevChores.map(c => {
-                                    if (c.chore_id === choreId && c.subtasks) {
-                                        return {
-                                            ...c,
-                                            subtasks: c.subtasks.map(s => {
-                                                if (subtaskIds.includes(s.id)) {
-                                                    return { ...s, completed: false }; // Revert
-                                                }
-                                                return s;
-                                            })
-                                        };
-                                    }
-                                    return c;
-                                })
-                            );
-                            
-                            // Still try to refresh data after error
-                            setTimeout(() => fetchChores(), 2000);
-                        }
-                    };
-
-                    // Reset completion function with improved alternating handling
-                    const resetCompletion = async (chore_id) => {
-                        if (!chore_id) return;
-                        setLoading(true);
-                    
-                        try {
-                            // Get the current chore data before resetting
-                            const chore = chores.find(c => c.chore_id === chore_id);
-                            if (!chore) {
-                                throw new Error("Chore not found");
-                            }
-
-                            // IMPORTANT: Force stable state to keep task in the right place
-                            setForceStableState(prev => ({
-                                ...prev, 
-                                [chore_id]: {
-                                    action: 'reset',
-                                    timestamp: Date.now(),
-                                    expires: Date.now() + 120000, // 2 minutes
-                                    shouldBeInUpcoming: false
-                                }
-                            }));
-                        
-                            // CRITICAL: For alternating tasks, get the ORIGINAL assignee before swapping
-                            // This requires getting the data directly from API rather than relying on local state
-                            let originalAssignedTo = null;
-                            let originalAlternateWith = null;
-
-                            if (chore.use_alternating && chore.alternate_with) {
-                                try {
-                                    // Get up-to-date data from API
-                                    const response = await window.choreUtils.fetchWithAuth(`/api/states/sensor.chores_overview?nocache=${Date.now()}`);
-
-                                    if (response.ok) {
-                                        const data = await response.json();
-                                        const allTasks = data.attributes?.overdue_tasks || [];
-                                        // Find this specific task in the API data
-                                        const apiTask = allTasks.find(t => t.chore_id === chore_id);
-
-                                        if (apiTask) {
-                                            // If task was completed and alternated, we need to swap back
-                                            if (apiTask.last_done) {
-                                                originalAssignedTo = apiTask.alternate_with;
-                                                originalAlternateWith = apiTask.assigned_to;
-                                            }
-                                        }
-                                    }
-                                } catch (err) {
-                                    console.error("Failed to get original task state:", err);
-                                }
-                            }
-
-                            // If we couldn't determine from API, make educated guess
-                            if (chore.use_alternating && !originalAssignedTo) {
-                                originalAssignedTo = chore.alternate_with;
-                                originalAlternateWith = chore.assigned_to;
-                            }
-
-                            // Prepare swap request if needed
-                            const alternateRequest = (originalAssignedTo && originalAlternateWith) ? {
-                                chore_id: chore_id,
-                                assigned_to: originalAssignedTo,
-                                alternate_with: originalAlternateWith
-                            } : null;
-                        
-                            // Now reset the task
-                            const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/reset_chore', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                    chore_id: chore_id
-                                })
-                            });
-                        
-                            if (!response.ok) {
-                                throw new Error(`Reset failed: ${await response.text()}`);
-                            }
-
-                            // If alternating task, swap back
-                            if (alternateRequest) {
-                                const alternateResponse = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/add_chore', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                    },
-                                    body: JSON.stringify(alternateRequest)
-                                });
-                            
-                                if (!alternateResponse.ok) {
-                                    console.warn("Warning: Failed to revert alternating assignment", await alternateResponse.text());
-                                }
-                            }
-                        
-                            // Update UI optimistically
-                            setChores(prevChores => 
-                                prevChores.map(c => 
-                                    c.chore_id === chore_id
-                                        ? { 
-                                            ...c, 
-                                            last_done: null,
-                                            last_done_by: null,
-                                            isCompleted: false,
-                                            isOptimistic: true,
-                                            // For alternating tasks, revert the assigned_to and alternate_with
-                                            ...(alternateRequest ? {
-                                                assigned_to: alternateRequest.assigned_to,
-                                                alternate_with: alternateRequest.alternate_with
-                                            } : {})
-                                        }
-                                        : c
-                                )
-                            );
-                                    
-                            setSelectedChore(null);
-                            setCompletedToday(prev => Math.max(0, prev - 1));
-                                    
-                            // Skip next refresh for consistency
-                            setSkipNextRefresh(true);
-                                    
-                            // Allow refresh after delay
-                            setTimeout(() => {
-                                setSkipNextRefresh(false);
-                                fetchChores();
-                            }, 5000);
-                        
-                        } catch (err) {
-                            console.error('Error resetting completion:', err);
-                            setError('Error resetting task completion: ' + err.message);
-                        } finally {
-                            setLoading(false);
-                        }
-                    };
-
-                    // Add user function
-                    const addUser = async (userData) => {
-                        setLoading(true);
-                        try {
-                            const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/add_user', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify(userData)
-                            });
-
-                            if (!response.ok) {
-                                throw new Error(`User update failed: ${await response.text()}`);
-                            }
-
-                            // Refresh data
-                            await fetchChores();
-                        } catch (err) {
-                            console.error('Error updating user:', err);
-                            setError('Error updating user: ' + err.message);
-                        } finally {
-                            setLoading(false);
-                        }
-                    };
-
-                    // Delete user function
-                    const deleteUser = async (userId) => {
-                        setLoading(true);
-                        try {
-                            const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/delete_user', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                    user_id: userId
-                                })
-                            });
-
-                            if (!response.ok) {
-                                throw new Error(`User deletion failed: ${await response.text()}`);
-                            }
-
-                            // Refresh data
-                            await fetchChores();
-                        } catch (err) {
-                            console.error('Error deleting user:', err);
-                            setError('Error deleting user: ' + err.message);
-                        } finally {
-                            setLoading(false);
-                        }
-                    };
-
-                    // Theme settings save function
-                    const handleSaveTheme = async (themeData) => {
-                        setLoading(true);
-                        try {
-                            const response = await window.choreUtils.fetchWithAuth('/api/services/chores_manager/save_theme', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify(themeData)
-                            });
-                        
-                            if (!response.ok) {
-                                throw new Error(`Failed to save theme: ${await response.text()}`);
-                            }
-                        
-                            // Immediately update local state
-                            setThemeSettings(themeData);
-                            setShowUserManagement(false);
-                            
-                            // Force a refresh of the sensor data to get the latest theme settings
-                            setTimeout(() => {
-                                fetchChores();
-                            }, 500);
-                        } catch (err) {
-                            console.error('Error saving theme:', err);
-                            setError('Error saving theme settings: ' + err.message);
-                        } finally {
-                            setLoading(false);
-                        }
-                    };
-
-                    // Undo last completed task with confirmation
-                    const handleUndoLastCompleted = () => {
-                        if (lastCompletedTask) {
-                            setShowUndoConfirm(true);
-                        } else {
-                            setError("Geen taken voltooid vandaag om ongedaan te maken");
-                        }
-                    };
-
-                    const confirmUndoLastCompleted = async () => {
-                        setShowUndoConfirm(false);
-                    
-                        if (!lastCompletedTask) return;
-                        setLoading(true);
-                    
-                        try {                    
-                            // Update stats immediately
-                            setCompletedToday(prev => Math.max(0, prev - 1));
-                    
-                            // Important: Always use last_done_by as the key to determine who completed it
-                            const completedBy = lastCompletedTask.last_done_by || lastCompletedTask.assigned_to;
-                            
-                            const duration = lastCompletedTask.duration || 0;
-                    
-                            // Update statsData optimistically for the correct person who completed it
-                            setStatsData(prevStats => {
-                                if (prevStats[completedBy]) {
-                                    const updatedStats = {...prevStats};
-                                    updatedStats[completedBy] = {
-                                        ...updatedStats[completedBy],
-                                        tasks_completed: Math.max(0, (updatedStats[completedBy].tasks_completed || 0) - 1),
-                                        time_completed: Math.max(0, (updatedStats[completedBy].time_completed || 0) - duration)
-                                    };
-                                    return updatedStats;
-                                }
-                                return prevStats;
-                            });
-                    
-                            // Remove any optimistic updates for this task
-                            setOptimisticUpdates(prev => {
-                                const newUpdates = {...prev};
-                                delete newUpdates[lastCompletedTask.chore_id];
-                                return newUpdates;
-                            });
-                    
-                            // Reset its completion
-                            await resetCompletion(lastCompletedTask.chore_id);
-                    
-                            // Force a complete refresh after a delay
-                            setTimeout(() => {
-                                fetchChores();
-                            }, 3000);
-                    
-                        } catch (err) {
-                            console.error('Error undoing last completion:', err);
-                            setError('Error undoing last task completion: ' + err.message);
-                        } finally {
-                            setLoading(false);
-                        }
-                    };
-
-                    // Edit chore handler
-                    const handleEdit = (chore) => {
-                        setSelectedChore(chore);
-                        setShowForm(true);
-                    };
-
-                    // Show description handler
-                    const handleShowDescription = (chore) => {
-                        setSelectedDescription(chore);
-                    };
-
-                    // Handle toggling description
-                    const handleToggleDescription = (choreId) => {
-                        // This is handled within the TaskCard component now
-                    };
-
-                    // Cancel form handler
-                    const handleCancelForm = () => {
-                        setShowForm(false);
-                        setSelectedChore(null);
-                    };
-
-                    // Toggle user management modal
-                    const toggleUserManagement = () => {
-                        setShowUserManagement(!showUserManagement);
-                    };
-
-                    // Sort and group tasks
-                    const sortedChores = [...chores].sort((a, b) => {
-                        // Sort by due state: overdue, due today, future
-                        const aNextDue = window.choreUtils.calculateNextDueDate(a);
-                        const bNextDue = window.choreUtils.calculateNextDueDate(b);
-                        return aNextDue - bNextDue;
-                    });
-
-                    // Use stable state categorization
-                    const urgentChores = sortedChores.filter(chore => {
-                        const stableState = forceStableState[chore.chore_id];
-
-                        // If we have a forced state for this task and it's recent, respect it
-                        if (stableState && stableState.timestamp > Date.now() - 120000) {
-                            return !stableState.shouldBeInUpcoming; // Not urgent if it should be in upcoming
-                        }
-
-                        // Normal logic
-                        if (chore.isCompleted || chore.isOptimistic || chore.isProcessing || 
-                            (chore.last_done && window.choreUtils.isToday(chore.last_done))) {
-                            return false; // Not urgent if completed today
-                        }
-
-                        return (window.choreUtils.isDueOrOverdue(chore) || window.choreUtils.isDueToday(chore));
-                    });
-
-                    // Also update upcoming logic
-                    const upcomingChores = sortedChores.filter(chore => {
-                        const stableState = forceStableState[chore.chore_id];
-
-                        // If we have a forced state for this task and it's recent, respect it
-                        if (stableState && stableState.timestamp > Date.now() - 120000) {
-                            return stableState.shouldBeInUpcoming; // Upcoming if it should be in upcoming
-                        }
-
-                        // Normal logic - either completed today or not urgent
-                        return (chore.isCompleted || chore.isOptimistic || chore.isProcessing || 
-                               (chore.last_done && window.choreUtils.isToday(chore.last_done))) || 
-                               (!window.choreUtils.isDueOrOverdue(chore) && !window.choreUtils.isDueToday(chore));
-                    });
-
-                    // Sort stats to maintain order but exclude "Wie kan"
-                    const orderedStatsKeys = ["Laura", "Martijn", "Samen", "Noud"];
-                    let orderedStats = {};
-                    
-                    // Add keys in order
-                    orderedStatsKeys.forEach(key => {
-                        if (statsData[key]) {
-                            orderedStats[key] = statsData[key];
-                        }
-                    });
-                    
-                    // Add any other keys that might be custom users
-                    Object.keys(statsData).forEach(key => {
-                        if (!orderedStatsKeys.includes(key) && key !== "Wie kan") {
-                            orderedStats[key] = statsData[key];
-                        }
-                    });
-
-                    // Show loading screen if auth is not ready yet
-                    if (!authReady && !authError) {
-                        return React.createElement('div',
-                            { className: "p-4 text-center" },
-                            React.createElement('div', { className: "text-lg mb-4" }, "🔑 Authenticating..."),
-                            React.createElement('div', { className: "text-gray-600" }, "Please wait while we verify your access to Home Assistant.")
-                        );
-                    }
-
-                    if (error) {
-                        return React.createElement('div',
-                            { className: "p-4 bg-red-50 text-red-700 rounded-lg" },
-                            error,
-                            React.createElement('button', {
-                                onClick: fetchChores,
-                                className: "mt-2 p-2 bg-red-200 rounded"
-                            }, "Opnieuw proberen")
-                        );
-                    }
-
-                    // Render the dashboard - REORDERED elements to match requirements
-                    return React.createElement('div',
-                        { className: "max-w-5xl mx-auto pt-4" },
-
-                        // Auth error banner at the top
-                        authError && React.createElement(AuthErrorBanner, {
-                            onRefresh: handleAuthRefresh
-                        }),
-
-                        // Urgent Tasks Section
-                        React.createElement('div', null,
-                            React.createElement('h2', { className: "text-xl font-semibold mb-4" }, "Taken Voor Vandaag"),
-                            urgentChores.length > 0 ?
-                                React.createElement('div', { className: "space-y-4 mb-8" },
-                                    urgentChores.map(chore =>
-                                        React.createElement(window.choreComponents.TaskCard, {
-                                            key: chore.chore_id,
-                                            chore: chore,
-                                            onMarkDone: markDone,
-                                            onEdit: handleEdit,
-                                            onShowDescription: updateDescription,
-                                            onToggleDescription: handleToggleDescription,
-                                            onMarkSubtaskDone: processSubtaskCompletions,
-                                            assignees: assignees
-                                        })
-                                    )
-                                ) :
-                                React.createElement('div', { className: "bg-green-100 border border-green-400 text-green-700 p-4 rounded-lg mb-8 text-center" },
-                                    React.createElement('span', { className: "mr-2 text-xl" }, "🎉"),
-                                    React.createElement('span', { className: "font-medium" }, "Geweldig! Alle taken zijn voltooid voor vandaag!")
-                                )
-                        ),
-
-                        // User Stats Section with Manage Users Button
-                        React.createElement('div', { className: "mb-6" },
-                            React.createElement('div', { className: "flex justify-between items-center mb-3" },
-                                React.createElement('h2', { className: "text-xl font-semibold" }, "Prestaties & Statistieken"),
-                                React.createElement('button', {
-                                    className: "px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm",
-                                    onClick: toggleUserManagement
-                                }, "Configuratie")
-                            ),
-                            React.createElement('div', { className: "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" },
-                                Object.entries(orderedStats).map(([assignee, stats]) =>
-                                    React.createElement(window.choreComponents.UserStatsCard, {
-                                        key: assignee,
-                                        assignee: assignee,
-                                        stats: stats,
-                                        assignees: assignees
-                                    })
-                                )
-                            )
-                        ),
-
-                        // Stats Cards - MOVED BELOW User Stats as requested
-                        React.createElement('div',
-                            { className: "grid grid-cols-2 gap-4 mb-6" },
-                            React.createElement(window.choreComponents.StatsCard, {
-                                title: "Voltooid Vandaag",
-                                value: completedToday,
-                                color: "#4ade80",
-                                desc: "📅"
-                            }),
-                            React.createElement(window.choreComponents.StatsCard, {
-                                title: "Achterstallig",
-                                value: overdueCount,
-                                color: "#ef4444",
-                                desc: "⚠️"
-                            })
-                        ),
-
-                        // New Task Button - UPDATED STYLING
-                        React.createElement('button', {
-                            className: "w-full p-3 border rounded-md flex items-center justify-center bg-gray-100 border-gray-300 hover:bg-gray-200 task-action-button",
-                            onClick: () => setShowForm(true)
-                        },
-                            React.createElement('span', { className: "mr-2" }, "+"),
-                            "Nieuwe Taak"
-                        ),
-
-                        // Section Divider
-                        React.createElement('div', { className: "section-divider mb-8" },
-                            React.createElement('span', { className: "section-divider-text" }, "Aankomende Taken")
-                        ),
-
-                        // Upcoming Tasks
-                        upcomingChores.length === 0 ?
-                            React.createElement('div', { className: "text-center text-gray-500 mt-8" },
-                                "Geen aankomende taken"
-                            ) :
-                            React.createElement('div',
-                                { className: "space-y-4 mb-12" },
-                                upcomingChores.map(chore =>
-                                    React.createElement(window.choreComponents.TaskCard, {
-                                        key: chore.chore_id,
-                                        chore: chore,
-                                        onMarkDone: markDone,
-                                        onEdit: handleEdit,
-                                        onShowDescription: updateDescription, 
-                                        onToggleDescription: handleToggleDescription,
-                                        onMarkSubtaskDone: processSubtaskCompletions,
-                                        assignees: assignees
-                                    })
-                                )
-                            ),
-
-                        // Undo Last Completed button - always visible but disabled when no completions
-                        React.createElement('div', { className: "mt-8 mb-20" },
-                            React.createElement('button', {
-                                className: `w-full p-3 border rounded-md flex items-center justify-center ${
-                                    completedToday > 0 
-                                        ? "bg-gray-100 border-gray-300 hover:bg-gray-200 task-action-button" 
-                                        : "bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed task-action-button"
-                                }`,
-                                onClick: completedToday > 0 ? handleUndoLastCompleted : () => setError("Geen taken voltooid vandaag om ongedaan te maken"),
-                                disabled: completedToday === 0
-                            },
-                                React.createElement('span', { className: "mr-2" }, "↩️"),
-                                completedToday > 0 
-                                    ? "Laatste voltooiing ongedaan maken" 
-                                    : "Geen voltooiingen om ongedaan te maken"
-                            )
-                        ),
-
-                        // Last updated timestamp
-                        React.createElement('div', { className: "text-center text-xs text-gray-400 mb-20" },
-                            "Laatst bijgewerkt: ",
-                            lastUpdated.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                            authReady && React.createElement('span', { className: "ml-2 text-green-500" }, "🔑")
-                        ),
-
-                        // Task form modal (for new or edit)
-                        (showForm || selectedChore) && React.createElement(window.choreComponents.TaskForm, {
-                            onSubmit: addChore,
-                            onDelete: deleteChore,
-                            onCancel: handleCancelForm,
-                            onResetCompletion: resetCompletion,
-                            initialData: selectedChore,
-                            assignees: assignees
-                        }),
-
-                        // Description viewer modal - No longer needed since it's built into the task card now
-                        selectedDescription && React.createElement(window.choreComponents.TaskDescription, {
-                            description: selectedDescription.description,
-                            choreId: selectedDescription.chore_id,
-                            onSave: updateDescription,
-                            onClose: () => setSelectedDescription(null)
-                        }),
-
-                        // Undo confirmation dialog
-                        lastCompletedTask && React.createElement(window.choreComponents.ConfirmDialog, {
-                            isOpen: showUndoConfirm,
-                            title: "Voltooiing ongedaan maken",
-                            message: `Weet je zeker dat je de laatste voltooiing van "${lastCompletedTask.name}" (voltooid door ${lastCompletedTask.last_done_by || lastCompletedTask.assigned_to}) ongedaan wilt maken?`,
-                            onConfirm: confirmUndoLastCompleted,
-                            onCancel: () => setShowUndoConfirm(false)
-                        }),
-                        
-                        // User Management Modal
-                        showUserManagement && React.createElement(window.choreComponents.UserManagement, {
-                            users: assignees,
-                            onClose: toggleUserManagement,
-                            onAddUser: addUser,
-                            onDeleteUser: deleteUser,
-                            onSaveTheme: handleSaveTheme,
-                            currentTheme: themeSettings
-                        }),
-
-                        // Loading overlay
-                        loading && React.createElement('div',
-                            { className: "fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-40" },
-                            React.createElement('div',
-                                { className: "bg-white p-4 rounded-lg shadow-lg" },
-                                "Bezig met laden..."
-                            )
-                        ),
-
-                        // Debug information (only in debug mode)
-                        debugMode && React.createElement('div',
-                            { className: "fixed bottom-0 right-0 bg-white p-2 text-xs text-gray-500 border border-gray-300 rounded-tl-md max-w-xs overflow-hidden" },
-                            "Debug Mode | ",
-                            Object.keys(optimisticUpdates).length > 0
-                                ? `Optimistic updates: ${Object.keys(optimisticUpdates).length}`
-                                : "No optimistic updates"
-                        )
-                    );
-                };
-
-                // Render when DOM is ready
-                ReactDOM.render(
-                    React.createElement(App),
-                    document.getElementById('root')
-                );
-            }
+            // Wait for component loader to signal readiness
+            window.addEventListener('choreComponentsReady', function() {
+                console.log('Components ready event received');
+                checkDependenciesAndInit();
+            });
+
+            // Start checking after a short delay
+            setTimeout(checkDependenciesAndInit, 100);
         });
     </script>
 </body>
