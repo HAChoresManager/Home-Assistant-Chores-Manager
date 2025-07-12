@@ -1,9 +1,9 @@
 """Date and time utilities for Chores Manager."""
 import re
 import logging
+import json
 from datetime import datetime, date, timedelta
 from typing import Optional, Union
-import json
 
 _LOGGER = logging.getLogger(__name__)
 
