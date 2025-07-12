@@ -14,7 +14,7 @@ __all__ = [
     'send_user_summary_notification',
     # Date utilities
     'parse_date',
-    'is_today', 
+    'is_today',
     'format_date',
     'format_date_friendly',
     'get_start_of_period',

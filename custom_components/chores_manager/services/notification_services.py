@@ -11,7 +11,7 @@ from ..database import (
     mark_notifications_sent,
     get_notification_summary
 )
-from ..utils import async_check_due_notifications, send_user_summary_notification
+from ..utils.notifications import async_check_due_notifications, send_user_summary_notification
 from .base import service_error_handler, ServiceResponse
 
 _LOGGER = logging.getLogger(__name__)
