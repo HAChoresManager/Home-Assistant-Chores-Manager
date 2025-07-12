@@ -213,33 +213,54 @@ async def _setup_web_assets(hass: HomeAssistant) -> None:
 
         def copy_files():
             _LOGGER.info("Setting up web assets from %s to %s", www_source, www_target)
+            
+            # Check if source exists
             if not os.path.exists(www_source):
                 _LOGGER.error("Source directory %s does not exist", www_source)
-                backup_source = os.path.join(hass.config.path("www"), "chores-dashboard-backup")
-                if os.path.exists(backup_source):
-                    _LOGGER.info("Using backup source: %s", backup_source)
-                    www_source_actual = backup_source
+                # List contents of parent directory for debugging
+                parent_dir = os.path.dirname(__file__)
+                _LOGGER.info("Contents of %s: %s", parent_dir, os.listdir(parent_dir))
+                
+                # Check if www directory exists
+                www_dir = os.path.join(parent_dir, "www")
+                if os.path.exists(www_dir):
+                    _LOGGER.info("Contents of www: %s", os.listdir(www_dir))
+                return False
+            
+            # List source contents for debugging
+            _LOGGER.info("Source directory contents: %s", os.listdir(www_source))
+            
+            # Create target directory
+            os.makedirs(www_target, exist_ok=True)
+            
+            # Copy all files
+            import shutil
+            for item in os.listdir(www_source):
+                source_path = os.path.join(www_source, item)
+                target_path = os.path.join(www_target, item)
+                
+                if os.path.isdir(source_path):
+                    if os.path.exists(target_path):
+                        shutil.rmtree(target_path)
+                    shutil.copytree(source_path, target_path)
                 else:
-                    _LOGGER.error("No source directory found for web assets")
-                    return
-            else:
-                www_source_actual = www_source
-
-            os.makedirs(os.path.dirname(www_target), exist_ok=True)
-            if os.path.exists(www_target):
-                _LOGGER.info("Removing existing directory at %s", www_target)
-                shutil.rmtree(www_target)
-            shutil.copytree(www_source_actual, www_target)
-            _LOGGER.info("Files copied successfully")
+                    shutil.copy2(source_path, target_path)
+                
+                _LOGGER.info("Copied %s to %s", item, target_path)
+            
+            # Set permissions
             for root, dirs, files in os.walk(www_target):
                 for d in dirs:
                     os.chmod(os.path.join(root, d), 0o755)
                 for f in files:
                     os.chmod(os.path.join(root, f), 0o644)
-            _LOGGER.info("Files in target directory: %s", os.listdir(www_target))
+            
+            _LOGGER.info("Web assets setup completed")
+            return True
 
-        await hass.async_add_executor_job(copy_files)
-        _LOGGER.info("Web assets setup completed")
+        success = await hass.async_add_executor_job(copy_files)
+        if not success:
+            _LOGGER.error("Failed to copy web assets")
     except Exception as e:
         _LOGGER.error("Failed to copy web assets: %s", e, exc_info=True)
 
