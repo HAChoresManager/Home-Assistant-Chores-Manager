@@ -1,6 +1,7 @@
 """Chore-related database operations."""
 import json
 import logging
+import sqlite3
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
