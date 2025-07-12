@@ -1,6 +1,7 @@
 """Database migration utilities."""
 import logging
 import sqlite3
+import json
 from typing import Dict, Any, List
 
 from .base import get_connection

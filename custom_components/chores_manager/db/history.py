@@ -1,10 +1,10 @@
 """History tracking and statistics database operations."""
 import logging
+import sqlite3
 from datetime import datetime, timedelta, date
 from typing import Dict, Any, List, Optional, Tuple
 
 from .base import get_connection
-from .chores import get_chore_by_id
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -1,5 +1,6 @@
 """User/Assignee management database operations."""
 import logging
+import sqlite3  # ADD THIS IMPORT
 from typing import Dict, Any, Optional, List
 
 from .base import get_connection
