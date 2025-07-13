@@ -256,10 +256,20 @@
             }
         };
 
-        const processSubtaskCompletions = async (choreId, subtaskIds, completedBy) => {
+        const processSubtaskCompletions = async (choreId, subtaskIndex, completedBy) => {
             setProcessing(prev => ({ ...prev, [choreId]: true }));
             try {
-                await window.ChoresAPI.chores.completeSubtasks(choreId, subtaskIds, completedBy);
+                // Find the chore to get subtask details
+                const chore = chores.find(c => (c.chore_id || c.id) === choreId);
+                if (!chore || !chore.subtasks || !chore.subtasks[subtaskIndex]) {
+                    throw new Error('Subtask not found');
+                }
+                
+                const subtask = chore.subtasks[subtaskIndex];
+                // Assuming subtasks have an id property, otherwise we need to handle differently
+                const subtaskId = subtask.id || subtaskIndex;
+                
+                await window.ChoresAPI.chores.completeSubtasks(choreId, [subtaskId], completedBy);
                 await loadData();
             } catch (err) {
                 console.error('Error completing subtask:', err);

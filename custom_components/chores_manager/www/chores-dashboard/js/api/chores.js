@@ -88,8 +88,13 @@ window.ChoresAPI = window.ChoresAPI || {};
                 normalizedData.subtasks = [];
             }
             
+            const endpoints = window.ChoresAPI.ENDPOINTS;
+            if (!endpoints || !endpoints.ADD_CHORE) {
+                throw new Error('API endpoints not properly initialized');
+            }
+            
             return await this.callService(
-                window.ChoresAPI.ENDPOINTS.ADD_CHORE,
+                endpoints.ADD_CHORE,
                 normalizedData
             );
         }
@@ -102,8 +107,13 @@ window.ChoresAPI = window.ChoresAPI || {};
                 throw new Error('Both choreId and person are required');
             }
             
+            const endpoints = window.ChoresAPI.ENDPOINTS;
+            if (!endpoints || !endpoints.MARK_DONE) {
+                throw new Error('API endpoints not properly initialized');
+            }
+            
             return await this.callService(
-                window.ChoresAPI.ENDPOINTS.MARK_DONE,
+                endpoints.MARK_DONE,
                 {
                     chore_id: choreId,
                     person: person
@@ -115,8 +125,13 @@ window.ChoresAPI = window.ChoresAPI || {};
          * Update chore description
          */
         async updateDescription(choreId, description) {
+            const endpoints = window.ChoresAPI.ENDPOINTS;
+            if (!endpoints || !endpoints.UPDATE_DESCRIPTION) {
+                throw new Error('API endpoints not properly initialized');
+            }
+            
             return await this.callService(
-                window.ChoresAPI.ENDPOINTS.UPDATE_DESCRIPTION,
+                endpoints.UPDATE_DESCRIPTION,
                 {
                     chore_id: choreId,
                     description: description || ''
@@ -128,8 +143,13 @@ window.ChoresAPI = window.ChoresAPI || {};
          * Reset chore completion
          */
         async resetChore(choreId) {
+            const endpoints = window.ChoresAPI.ENDPOINTS;
+            if (!endpoints || !endpoints.RESET_CHORE) {
+                throw new Error('API endpoints not properly initialized');
+            }
+            
             return await this.callService(
-                window.ChoresAPI.ENDPOINTS.RESET_CHORE,
+                endpoints.RESET_CHORE,
                 {
                     chore_id: choreId
                 }
@@ -140,8 +160,13 @@ window.ChoresAPI = window.ChoresAPI || {};
          * Delete a chore
          */
         async deleteChore(choreId) {
+            const endpoints = window.ChoresAPI.ENDPOINTS;
+            if (!endpoints || !endpoints.DELETE_CHORE) {
+                throw new Error('API endpoints not properly initialized');
+            }
+            
             return await this.callService(
-                window.ChoresAPI.ENDPOINTS.DELETE_CHORE,
+                endpoints.DELETE_CHORE,
                 {
                     chore_id: choreId
                 }
@@ -152,6 +177,11 @@ window.ChoresAPI = window.ChoresAPI || {};
          * Force a chore to be due today
          */
         async forceDue(choreId, notify = false, message = null) {
+            const endpoints = window.ChoresAPI.ENDPOINTS;
+            if (!endpoints || !endpoints.FORCE_DUE) {
+                throw new Error('API endpoints not properly initialized');
+            }
+            
             const data = {
                 chore_id: choreId,
                 notify: notify
@@ -162,7 +192,7 @@ window.ChoresAPI = window.ChoresAPI || {};
             }
             
             return await this.callService(
-                window.ChoresAPI.ENDPOINTS.FORCE_DUE,
+                endpoints.FORCE_DUE,
                 data
             );
         }
@@ -175,6 +205,11 @@ window.ChoresAPI = window.ChoresAPI || {};
                 throw new Error('Invalid parameters for subtask completion');
             }
             
+            const endpoints = window.ChoresAPI.ENDPOINTS;
+            if (!endpoints || !endpoints.COMPLETE_SUBTASK) {
+                throw new Error('API endpoints not properly initialized');
+            }
+            
             const results = {
                 successful: [],
                 failed: []
@@ -184,7 +219,7 @@ window.ChoresAPI = window.ChoresAPI || {};
             for (const subtaskId of subtaskIds) {
                 try {
                     await this.callService(
-                        window.ChoresAPI.ENDPOINTS.COMPLETE_SUBTASK,
+                        endpoints.COMPLETE_SUBTASK,
                         {
                             subtask_id: subtaskId,
                             person: person
@@ -204,8 +239,13 @@ window.ChoresAPI = window.ChoresAPI || {};
          * Add a subtask
          */
         async addSubtask(choreId, name, position = 0) {
+            const endpoints = window.ChoresAPI.ENDPOINTS;
+            if (!endpoints || !endpoints.ADD_SUBTASK) {
+                throw new Error('API endpoints not properly initialized');
+            }
+            
             return await this.callService(
-                window.ChoresAPI.ENDPOINTS.ADD_SUBTASK,
+                endpoints.ADD_SUBTASK,
                 {
                     chore_id: choreId,
                     name: name,
@@ -218,8 +258,13 @@ window.ChoresAPI = window.ChoresAPI || {};
          * Delete a subtask
          */
         async deleteSubtask(subtaskId) {
+            const endpoints = window.ChoresAPI.ENDPOINTS;
+            if (!endpoints || !endpoints.DELETE_SUBTASK) {
+                throw new Error('API endpoints not properly initialized');
+            }
+            
             return await this.callService(
-                window.ChoresAPI.ENDPOINTS.DELETE_SUBTASK,
+                endpoints.DELETE_SUBTASK,
                 {
                     subtask_id: subtaskId
                 }
