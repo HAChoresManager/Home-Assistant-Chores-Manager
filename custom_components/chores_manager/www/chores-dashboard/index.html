@@ -140,22 +140,24 @@
         // Initialize app when all dependencies are loaded
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM loaded, initializing app...');
-            
+
             let initAttempts = 0;
             const maxAttempts = 50; // 5 seconds timeout
 
             function checkDependenciesAndInit() {
                 initAttempts++;
 
-                // Check if all required dependencies are loaded
-                const dependenciesLoaded = window.React && 
-                                         window.ReactDOM && 
-                                         window.choreUtils && 
-                                         window.choreComponents &&
-                                         window.ChoresApp &&
-                                         window.ChoresAPI;
+                // Always compute what's missing:
+                const missing = [];
+                if (!window.React)            missing.push('React');
+                if (!window.ReactDOM)         missing.push('ReactDOM');
+                if (!window.choreUtils)       missing.push('choreUtils');
+                if (!window.choreComponents)  missing.push('choreComponents');
+                if (!window.ChoresApp)        missing.push('ChoresApp');
+                if (!window.ChoresAPI)        missing.push('ChoresAPI');
 
-                if (dependenciesLoaded) {
+                // If nothing is missing, initialize:
+                if (missing.length === 0) {
                     console.log('All dependencies loaded, initializing app...');
                     try {
                         window.ChoresApp.initApp();
@@ -169,20 +171,15 @@
                                 <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
                             </div>`;
                     }
+
+                // Otherwise, retry until maxAttempts:
                 } else if (initAttempts < maxAttempts) {
-                    // Check which dependencies are missing
-                    const missing = [];
-                    if (!window.React) missing.push('React');
-                    if (!window.ReactDOM) missing.push('ReactDOM');
-                    if (!window.choreUtils) missing.push('choreUtils');
-                    if (!window.choreComponents) missing.push('choreComponents');
-                    if (!window.ChoresApp) missing.push('ChoresApp');
-                    if (!window.ChoresAPI) missing.push('ChoresAPI');
-                    
                     console.log(`Attempt ${initAttempts}/${maxAttempts} - Waiting for dependencies:`, missing);
                     setTimeout(checkDependenciesAndInit, 100);
+
+                // Give up and show error with missing list:
                 } else {
-                    console.error('Failed to load dependencies after', maxAttempts, 'attempts');
+                    console.error(`Failed to load dependencies after ${maxAttempts} attempts; missing:`, missing);
                     document.getElementById('root').innerHTML = `
                         <div class="error-container">
                             <h2>Loading Error</h2>
