@@ -138,6 +138,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM loaded, initializing app...');
 
+
             let initAttempts = 0;
             const maxAttempts = 50; // 5 seconds timeout
             let appScriptLoaded = false;
@@ -183,12 +184,17 @@
                     }
 
                 // Otherwise, retry until maxAttempts:
+
+                // Otherwise, retry until maxAttempts:
                 } else if (initAttempts < maxAttempts) {
                     console.log(`Attempt ${initAttempts}/${maxAttempts} - Waiting for dependencies:`, missing);
                     setTimeout(checkDependenciesAndInit, 100);
 
                 // Give up and show error with missing list:
+
+                // Give up and show error with missing list:
                 } else {
+                    console.error(`Failed to load dependencies after ${maxAttempts} attempts; missing:`, missing);
                     console.error(`Failed to load dependencies after ${maxAttempts} attempts; missing:`, missing);
                     document.getElementById('root').innerHTML = `
                         <div class="error-container">
@@ -212,3 +218,4 @@
     </script>
 </body>
 </html>
+
