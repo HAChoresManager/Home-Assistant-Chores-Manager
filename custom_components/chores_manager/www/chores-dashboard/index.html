@@ -133,9 +133,6 @@
     <!-- Load component loader which will load all components -->
     <script src="js/components/index.js?v=20250415-modular" type="text/javascript"></script>
 
-    <!-- Load main app component -->
-    <script src="js/app.js?v=20250415-modular" type="text/javascript"></script>
-
     <script type="text/javascript">
         // Initialize app when all dependencies are loaded
         document.addEventListener('DOMContentLoaded', function() {
@@ -143,7 +140,20 @@
 
             let initAttempts = 0;
             const maxAttempts = 50; // 5 seconds timeout
-
+            let appScriptLoaded = false;
+              
+            // Dynamically inject app.js and flag when it's ready
+            (function loadAppBundle() {
+              const s = document.createElement('script');
+              s.src = 'js/app.js?v=20250415-modular';
+              s.onload = () => {
+                appScriptLoaded = true;
+                console.log('ChoresApp bundle loaded');
+              };
+              s.onerror = () => console.error('Failed to load js/app.js');
+              document.head.appendChild(s);
+            })();
+          
             function checkDependenciesAndInit() {
                 initAttempts++;
 
@@ -153,7 +163,7 @@
                 if (!window.ReactDOM)         missing.push('ReactDOM');
                 if (!window.choreUtils)       missing.push('choreUtils');
                 if (!window.choreComponents)  missing.push('choreComponents');
-                if (!window.ChoresApp)        missing.push('ChoresApp');
+                if (!appScriptLoaded)         missing.push('ChoresApp');
                 if (!window.ChoresAPI)        missing.push('ChoresAPI');
 
                 // If nothing is missing, initialize:
