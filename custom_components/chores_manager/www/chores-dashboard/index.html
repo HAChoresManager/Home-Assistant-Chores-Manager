@@ -133,41 +133,31 @@
     <!-- Load component loader which will load all components -->
     <script src="js/components/index.js?v=20250415-modular" type="text/javascript"></script>
 
+    <!-- Load the main app last -->
+    <script src="js/app.js?v=20250415-modular" type="text/javascript"></script>
+
     <script type="text/javascript">
         // Initialize app when all dependencies are loaded
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, initializing app...');
-
+            console.log('DOM loaded, waiting for dependencies...');
 
             let initAttempts = 0;
             const maxAttempts = 50; // 5 seconds timeout
-            let appScriptLoaded = false;
-              
-            // Dynamically inject app.js and flag when it's ready
-            (function loadAppBundle() {
-              const s = document.createElement('script');
-              s.src = 'js/app.js?v=20250415-modular';
-              s.onload = () => {
-                appScriptLoaded = true;
-                console.log('ChoresApp bundle loaded');
-              };
-              s.onerror = () => console.error('Failed to load js/app.js');
-              document.head.appendChild(s);
-            })();
-          
+            
             function checkDependenciesAndInit() {
                 initAttempts++;
 
-                // Always compute what's missing:
+                // Check what's missing
                 const missing = [];
-                if (!window.React)            missing.push('React');
-                if (!window.ReactDOM)         missing.push('ReactDOM');
-                if (!window.choreUtils)       missing.push('choreUtils');
-                if (!window.choreComponents)  missing.push('choreComponents');
-                if (!appScriptLoaded)         missing.push('ChoresApp');
-                if (!window.ChoresAPI)        missing.push('ChoresAPI');
+                if (!window.React) missing.push('React');
+                if (!window.ReactDOM) missing.push('ReactDOM');
+                if (!window.choreUtils) missing.push('choreUtils');
+                if (!window.choreComponents) missing.push('choreComponents');
+                if (!window.ChoresApp) missing.push('ChoresApp');
+                if (!window.ChoresAPI) missing.push('ChoresAPI');
+                if (window.ChoresAPI && !window.ChoresAPI.ENDPOINTS) missing.push('ChoresAPI.ENDPOINTS');
 
-                // If nothing is missing, initialize:
+                // If nothing is missing, initialize
                 if (missing.length === 0) {
                     console.log('All dependencies loaded, initializing app...');
                     try {
@@ -182,19 +172,10 @@
                                 <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
                             </div>`;
                     }
-
-                // Otherwise, retry until maxAttempts:
-
-                // Otherwise, retry until maxAttempts:
                 } else if (initAttempts < maxAttempts) {
                     console.log(`Attempt ${initAttempts}/${maxAttempts} - Waiting for dependencies:`, missing);
                     setTimeout(checkDependenciesAndInit, 100);
-
-                // Give up and show error with missing list:
-
-                // Give up and show error with missing list:
                 } else {
-                    console.error(`Failed to load dependencies after ${maxAttempts} attempts; missing:`, missing);
                     console.error(`Failed to load dependencies after ${maxAttempts} attempts; missing:`, missing);
                     document.getElementById('root').innerHTML = `
                         <div class="error-container">
@@ -209,13 +190,12 @@
             // Wait for component loader to signal readiness
             window.addEventListener('choreComponentsReady', function() {
                 console.log('Components ready event received');
-                checkDependenciesAndInit();
+                setTimeout(checkDependenciesAndInit, 100);
             });
 
-            // Start checking after a short delay
-            setTimeout(checkDependenciesAndInit, 100);
+            // Also check periodically in case the event was missed
+            setTimeout(checkDependenciesAndInit, 500);
         });
     </script>
 </body>
 </html>
-

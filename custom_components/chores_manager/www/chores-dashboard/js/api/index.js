@@ -7,12 +7,19 @@ window.ChoresAPI = window.ChoresAPI || {};
 (function() {
     'use strict';
     
+    // Save references to what was already loaded
+    const ENDPOINTS = window.ChoresAPI.ENDPOINTS;
+    const BaseAPI = window.ChoresAPI.BaseAPI;
+    const ChoresAPI = window.ChoresAPI.ChoresAPI;
+    const UsersAPI = window.ChoresAPI.UsersAPI;
+    const ThemeAPI = window.ChoresAPI.ThemeAPI;
+    
     // Main API class that combines all API modules
     class API {
         constructor() {
-            this.chores = new window.ChoresAPI.ChoresAPI();
-            this.users = new window.ChoresAPI.UsersAPI();
-            this.theme = new window.ChoresAPI.ThemeAPI();
+            this.chores = new ChoresAPI();
+            this.users = new UsersAPI();
+            this.theme = new ThemeAPI();
             
             // Expose getSensorState from base API
             this.getSensorState = this.chores.getSensorState.bind(this.chores);
@@ -32,9 +39,17 @@ window.ChoresAPI = window.ChoresAPI || {};
         }
     }
     
-    // Create and export singleton instance
-    window.ChoresAPI = new API();
+    // Create singleton instance but preserve existing properties
+    const apiInstance = new API();
     
-    // Also export the API class for testing
+    // Restore the static properties
+    window.ChoresAPI = apiInstance;
+    window.ChoresAPI.ENDPOINTS = ENDPOINTS;
+    window.ChoresAPI.BaseAPI = BaseAPI;
+    window.ChoresAPI.ChoresAPI = ChoresAPI;
+    window.ChoresAPI.UsersAPI = UsersAPI;
+    window.ChoresAPI.ThemeAPI = ThemeAPI;
     window.ChoresAPI.API = API;
+    
+    console.log('ChoresAPI initialized with endpoints:', Object.keys(ENDPOINTS || {}));
 })();
