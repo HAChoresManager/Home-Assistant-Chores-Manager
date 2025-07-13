@@ -1,4 +1,6 @@
-"""Simple state management for the Chores Dashboard."""
+/**
+ * Simple state management for the Chores Dashboard.
+ */
 
 (function() {
     'use strict';

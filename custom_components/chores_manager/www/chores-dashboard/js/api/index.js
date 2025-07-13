@@ -1,4 +1,6 @@
-"""Main API module that combines all API classes."""
+/**
+ * Main API module that combines all API classes.
+ */
 
 window.ChoresAPI = window.ChoresAPI || {};
 
