@@ -1,4 +1,6 @@
-"""Base API functionality for Chores Dashboard."""
+/**
+ * Base API functionality for Chores Dashboard.
+ */
 
 window.ChoresAPI = window.ChoresAPI || {};
 
