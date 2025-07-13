@@ -1,4 +1,6 @@
-"""Chores API functionality."""
+/**
+ * Chores API functionality.
+ */
 
 window.ChoresAPI = window.ChoresAPI || {};
 

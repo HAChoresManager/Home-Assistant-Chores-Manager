@@ -1,4 +1,6 @@
-"""Theme API functionality."""
+/**
+ * Theme API functionality.
+ */
 
 window.ChoresAPI = window.ChoresAPI || {};
 
