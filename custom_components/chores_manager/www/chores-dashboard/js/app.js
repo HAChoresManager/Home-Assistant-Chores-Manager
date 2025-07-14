@@ -96,11 +96,23 @@
             // Data loading functions
             const loadData = async () => {
                 try {
-                    const data = await window.choreUtils.fetchData('/api/panel_custom/chores/state');
-                    if (data && data.chores) {
-                        setChores(data.chores);
-                        if (data.assignees) {
-                            setAssignees(data.assignees);
+                    // Get sensor state directly from ChoresAPI
+                    const sensorData = await window.ChoresAPI.chores.getSensorState();
+                    
+                    if (sensorData && sensorData.attributes) {
+                        // The sensor stores all tasks in 'overdue_tasks' (despite the name)
+                        const allChores = sensorData.attributes.overdue_tasks || [];
+                        
+                        setChores(allChores);
+                        
+                        if (sensorData.attributes.assignees) {
+                            setAssignees(sensorData.attributes.assignees);
+                        }
+                        
+                        // Also load theme from sensor data
+                        if (sensorData.attributes.theme_settings) {
+                            setThemeSettings(sensorData.attributes.theme_settings);
+                            applyTheme(sensorData.attributes.theme_settings);
                         }
                     }
                     setLoading(false);
@@ -149,8 +161,12 @@
             // Theme management
             const loadTheme = async () => {
                 try {
-                    const theme = await window.choreUtils.fetchData('/api/panel_custom/chores/theme');
-                    if (theme) {
+                    // Theme comes from sensor data, so we'll get it from there
+                    // The loadData function will set the theme from sensor attributes
+                    const sensorData = await window.ChoresAPI.chores.getSensorState();
+                    
+                    if (sensorData && sensorData.attributes && sensorData.attributes.theme_settings) {
+                        const theme = sensorData.attributes.theme_settings;
                         setThemeSettings(theme);
                         applyTheme(theme);
                     }
@@ -161,9 +177,12 @@
 
             const saveTheme = async (theme) => {
                 try {
-                    await window.choreUtils.postData('/api/panel_custom/chores/theme', { theme });
+                    // Use the theme API
+                    await window.ChoresAPI.theme.saveTheme(theme);
                     setThemeSettings(theme);
                     applyTheme(theme);
+                    // Reload data to get updated sensor state
+                    await loadData();
                 } catch (err) {
                     console.error('Error saving theme:', err);
                     handleError(err);
