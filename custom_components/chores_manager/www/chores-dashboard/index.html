@@ -190,10 +190,29 @@
             // Wait for component loader to signal readiness
             window.addEventListener('choreComponentsReady', function() {
                 console.log('Components ready event received');
+                // Try to initialize app.js in case it loaded before components
+                window.dispatchEvent(new CustomEvent('tryInitializeApp'));
+                // Check dependencies after a short delay
                 setTimeout(checkDependenciesAndInit, 100);
             });
 
-            // Also check periodically in case the event was missed
+            // Also periodically try to initialize app.js if it hasn't initialized yet
+            const appInitInterval = setInterval(function() {
+                if (!window.ChoresApp && window.choreComponents) {
+                    console.log('Triggering app initialization attempt...');
+                    window.dispatchEvent(new CustomEvent('tryInitializeApp'));
+                }
+                if (window.ChoresApp) {
+                    clearInterval(appInitInterval);
+                }
+            }, 200);
+
+            // Stop trying after 5 seconds
+            setTimeout(function() {
+                clearInterval(appInitInterval);
+            }, 5000);
+
+            // Start checking after a delay to give scripts time to load
             setTimeout(checkDependenciesAndInit, 500);
         });
     </script>
