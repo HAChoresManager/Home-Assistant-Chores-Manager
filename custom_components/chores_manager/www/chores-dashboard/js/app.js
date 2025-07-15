@@ -64,6 +64,30 @@
             useEffect(() => {
                 const initializeApp = async () => {
                     try {
+                        // Wait for API to be ready
+                        if (!window.ChoresAPI || !window.ChoresAPI._initialized) {
+                            // Wait for API ready event
+                            await new Promise((resolve) => {
+                                const checkAPI = () => {
+                                    if (window.ChoresAPI && window.ChoresAPI._initialized) {
+                                        resolve();
+                                    } else {
+                                        // Also listen for the event
+                                        window.addEventListener('chores-api-ready', resolve, { once: true });
+                                        // But also check periodically in case event was missed
+                                        setTimeout(() => {
+                                            if (window.ChoresAPI && window.ChoresAPI._initialized) {
+                                                resolve();
+                                            } else {
+                                                checkAPI();
+                                            }
+                                        }, 100);
+                                    }
+                                };
+                                checkAPI();
+                            });
+                        }
+                        
                         // Initialize the API
                         if (window.ChoresAPI && window.ChoresAPI.initialize) {
                             await window.ChoresAPI.initialize();
@@ -96,6 +120,13 @@
             // Data loading functions
             const loadData = async () => {
                 try {
+                    // Ensure API is available
+                    if (!window.ChoresAPI || !window.ChoresAPI.chores || !window.ChoresAPI.chores.getSensorState) {
+                        console.error('API not properly initialized');
+                        setLoading(false);
+                        return;
+                    }
+                    
                     // Get sensor state directly from ChoresAPI
                     const sensorData = await window.ChoresAPI.chores.getSensorState();
                     
@@ -135,8 +166,8 @@
                 const today = new Date().toDateString();
                 
                 choresList.forEach(chore => {
-                    if (chore.last_completed) {
-                        const lastCompleted = new Date(chore.last_completed);
+                    if (chore.last_done) {
+                        const lastCompleted = new Date(chore.last_done);
                         if (lastCompleted.toDateString() === today) {
                             stats.completedToday++;
                         }
@@ -144,7 +175,7 @@
                     
                     if (chore.is_overdue) {
                         stats.overdueCount++;
-                    } else if (chore.due_days !== null && chore.due_days <= 3) {
+                    } else if (chore.days_until_due !== null && chore.days_until_due <= 3 && chore.days_until_due >= 0) {
                         stats.upcomingCount++;
                     }
                 });
@@ -161,6 +192,12 @@
             // Theme management
             const loadTheme = async () => {
                 try {
+                    // Ensure API is available
+                    if (!window.ChoresAPI || !window.ChoresAPI.chores || !window.ChoresAPI.chores.getSensorState) {
+                        console.warn('API not ready for theme loading');
+                        return;
+                    }
+                    
                     // Theme comes from sensor data, so we'll get it from there
                     // The loadData function will set the theme from sensor attributes
                     const sensorData = await window.ChoresAPI.chores.getSensorState();
@@ -298,14 +335,14 @@
 
             const undoLastCompletion = async () => {
                 const choreToUndo = chores.find(chore => {
-                    if (!chore.last_completed) return false;
-                    const lastCompleted = new Date(chore.last_completed);
+                    if (!chore.last_done) return false;
+                    const lastCompleted = new Date(chore.last_done);
                     const today = new Date().toDateString();
                     return lastCompleted.toDateString() === today;
                 });
 
                 if (choreToUndo) {
-                    await resetCompletion(choreToUndo.id);
+                    await resetCompletion(choreToUndo.chore_id || choreToUndo.id);
                 }
             };
 
@@ -414,14 +451,14 @@
                         })
                         : chores.map(chore => 
                             h(window.choreComponents.TaskCard, {
-                                key: chore.id,
+                                key: chore.chore_id || chore.id,
                                 chore: chore,
                                 onComplete: markDone,
                                 onEdit: handleEdit,
                                 onForceDue: forceDue,
                                 onCompleteSubtasks: completeSubtasks,
                                 onDescriptionClick: setSelectedDescription,
-                                isProcessing: processing[chore.id] || false,
+                                isProcessing: processing[chore.chore_id || chore.id] || false,
                                 assignees: assignees
                             })
                         )
