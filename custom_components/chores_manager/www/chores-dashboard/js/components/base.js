@@ -35,18 +35,40 @@
     /**
      * Error message component
      */
-    const ErrorMessage = ({ error, onRetry }) => {
+    const ErrorMessage = ({ error, message, onRetry, onDismiss }) => {
+        // Handle different types of error input
+        let errorMessage = '';
+        if (message) {
+            errorMessage = message;
+        } else if (error) {
+            if (typeof error === 'string') {
+                errorMessage = error;
+            } else if (error.message) {
+                errorMessage = error.message;
+            } else {
+                errorMessage = 'An unknown error occurred';
+            }
+        } else {
+            errorMessage = 'An error occurred';
+        }
+
         return h('div', { className: 'bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded' },
             h('div', { className: 'flex items-start' },
                 h('span', { className: 'text-xl mr-2' }, '⚠️'),
                 h('div', { className: 'flex-1' },
                     h('p', { className: 'font-medium' }, 'An error occurred'),
-                    h('p', { className: 'text-sm mt-1' }, error.message || error)
+                    h('p', { className: 'text-sm mt-1' }, errorMessage)
                 ),
-                onRetry && h('button', {
-                    className: 'ml-4 bg-red-200 hover:bg-red-300 text-red-800 font-bold py-1 px-3 rounded',
-                    onClick: onRetry
-                }, 'Retry')
+                h('div', { className: 'flex items-center ml-4' },
+                    onRetry && h('button', {
+                        className: 'bg-red-200 hover:bg-red-300 text-red-800 font-bold py-1 px-3 rounded mr-2',
+                        onClick: onRetry
+                    }, 'Retry'),
+                    onDismiss && h('button', {
+                        className: 'text-red-600 hover:text-red-800',
+                        onClick: onDismiss
+                    }, '✕')
+                )
             )
         );
     };
