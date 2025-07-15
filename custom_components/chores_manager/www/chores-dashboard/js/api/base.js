@@ -1,251 +1,221 @@
 /**
- * Base UI components for the Chores Manager
- * Provides common, reusable components used throughout the application
+ * Base API functionality for Chores Dashboard.
  */
+
+window.ChoresAPI = window.ChoresAPI || {};
 
 (function() {
     'use strict';
-
-    // Check dependencies
-    if (!window.React) {
-        console.error('Base components require React');
-        return;
-    }
-
-    const h = React.createElement;
-
-    /**
-     * Loading spinner component
-     */
-    const Loading = ({ message = 'Loading...', size = 'medium' }) => {
-        const sizeClasses = {
-            small: 'h-8 w-8',
-            medium: 'h-12 w-12',
-            large: 'h-16 w-16'
-        };
-
-        return h('div', { className: 'flex flex-col items-center justify-center p-4' },
-            h('div', {
-                className: `animate-spin rounded-full border-b-2 border-blue-500 ${sizeClasses[size]}`
-            }),
-            message && h('p', { className: 'mt-4 text-gray-600' }, message)
-        );
+    
+    // API endpoints
+    const ENDPOINTS = {
+        // Chore services
+        ADD_CHORE: '/api/services/chores_manager/add_chore',
+        MARK_DONE: '/api/services/chores_manager/mark_done',
+        UPDATE_DESCRIPTION: '/api/services/chores_manager/update_description',
+        RESET_CHORE: '/api/services/chores_manager/reset_chore',
+        DELETE_CHORE: '/api/services/chores_manager/delete_chore',
+        FORCE_DUE: '/api/services/chores_manager/force_due',
+        
+        // Subtask services
+        COMPLETE_SUBTASK: '/api/services/chores_manager/complete_subtask',
+        ADD_SUBTASK: '/api/services/chores_manager/add_subtask',
+        DELETE_SUBTASK: '/api/services/chores_manager/delete_subtask',
+        
+        // User services
+        ADD_USER: '/api/services/chores_manager/add_user',
+        DELETE_USER: '/api/services/chores_manager/delete_user',
+        GET_HA_USERS: '/api/services/chores_manager/get_ha_users',
+        
+        // Theme services
+        SAVE_THEME: '/api/services/chores_manager/save_theme',
+        
+        // Sensor endpoint
+        SENSOR_STATE: '/api/states/sensor.chores_overview'
     };
-
-    /**
-     * Error message component
-     */
-    const ErrorMessage = ({ error, message, onRetry, onDismiss }) => {
-        // Handle different types of error input
-        let errorMessage = '';
-        if (message) {
-            errorMessage = message;
-        } else if (error) {
-            if (typeof error === 'string') {
-                errorMessage = error;
-            } else if (error.message) {
-                errorMessage = error.message;
-            } else {
-                errorMessage = 'An unknown error occurred';
-            }
-        } else {
-            errorMessage = 'An error occurred';
+    
+    // Base API class
+    class BaseAPI {
+        constructor() {
+            this.retryConfig = {
+                maxRetries: 3,
+                baseDelay: 1000,
+                maxDelay: 5000
+            };
         }
-
-        return h('div', { className: 'bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded' },
-            h('div', { className: 'flex items-start' },
-                h('span', { className: 'text-xl mr-2' }, '⚠️'),
-                h('div', { className: 'flex-1' },
-                    h('p', { className: 'font-medium' }, 'An error occurred'),
-                    h('p', { className: 'text-sm mt-1' }, errorMessage)
-                ),
-                h('div', { className: 'flex items-center ml-4' },
-                    onRetry && h('button', {
-                        className: 'bg-red-200 hover:bg-red-300 text-red-800 font-bold py-1 px-3 rounded mr-2',
-                        onClick: onRetry
-                    }, 'Retry'),
-                    onDismiss && h('button', {
-                        className: 'text-red-600 hover:text-red-800',
-                        onClick: onDismiss
-                    }, '✕')
-                )
-            )
-        );
-    };
-
-    /**
-     * Alert component
-     */
-    const Alert = ({ type = 'info', title, message, onClose }) => {
-        const typeStyles = {
-            info: 'bg-blue-100 border-blue-500 text-blue-700',
-            success: 'bg-green-100 border-green-500 text-green-700',
-            warning: 'bg-yellow-100 border-yellow-500 text-yellow-700',
-            error: 'bg-red-100 border-red-500 text-red-700'
-        };
-
-        const icons = {
-            info: 'ℹ️',
-            success: '✅',
-            warning: '⚠️',
-            error: '❌'
-        };
-
-        return h('div', {
-            className: `p-4 border-l-4 rounded ${typeStyles[type]} flex items-start`
-        },
-            h('span', { className: 'mr-2 text-xl' }, icons[type]),
-            h('div', { className: 'flex-1' },
-                title && h('h4', { className: 'font-medium mb-1' }, title),
-                h('p', null, message)
-            ),
-            onClose && h('button', {
-                className: 'ml-2 hover:opacity-70',
-                onClick: onClose
-            }, '✕')
-        );
-    };
-
-    /**
-     * Modal wrapper component
-     */
-    const Modal = ({ isOpen, onClose, title, children, size = 'medium' }) => {
-        if (!isOpen) return null;
-
-        const sizeClasses = {
-            small: 'max-w-md',
-            medium: 'max-w-lg',
-            large: 'max-w-2xl',
-            xlarge: 'max-w-4xl'
-        };
-
-        return h('div', {
-            className: 'modal-container',
-            onClick: (e) => {
-                if (e.target === e.currentTarget) {
-                    onClose();
+        
+        /**
+         * Make an authenticated API call with retry logic
+         */
+        async fetchWithAuth(url, options = {}) {
+            const maxRetries = this.retryConfig.maxRetries;
+            let lastError = null;
+            
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    const token = this.getAuthToken();
+                    
+                    const fetchOptions = {
+                        ...options,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Cache-Control': 'no-cache',
+                            ...options.headers
+                        },
+                        credentials: 'same-origin'
+                    };
+                    
+                    if (token) {
+                        fetchOptions.headers['Authorization'] = `Bearer ${token}`;
+                    }
+                    
+                    const response = await fetch(url, fetchOptions);
+                    
+                    // Handle 401 errors
+                    if (response.status === 401 && attempt < maxRetries) {
+                        console.warn(`Authentication failed for ${url}, retrying...`);
+                        await this.handleAuthError();
+                        await this.delay(this.calculateBackoff(attempt));
+                        continue;
+                    }
+                    
+                    return response;
+                    
+                } catch (error) {
+                    lastError = error;
+                    console.error(`Fetch error for ${url} (attempt ${attempt + 1}):`, error);
+                    
+                    if (attempt < maxRetries) {
+                        await this.delay(this.calculateBackoff(attempt));
+                    }
                 }
             }
-        },
-            h('div', {
-                className: `modal-content ${sizeClasses[size]} w-full mx-auto`
-            },
-                h('div', { className: 'flex justify-between items-center mb-4' },
-                    h('h2', { className: 'text-xl font-bold' }, title),
-                    h('button', {
-                        className: 'text-gray-400 hover:text-gray-600',
-                        onClick: onClose
-                    }, '✕')
-                ),
-                children
-            )
-        );
-    };
-
-    /**
-     * Empty state component
-     */
-    const EmptyState = ({ icon = '📭', title, message, action }) => {
-        return h('div', { className: 'text-center py-12' },
-            h('div', { className: 'text-6xl mb-4' }, icon),
-            h('h3', { className: 'text-lg font-medium text-gray-900 mb-2' }, title),
-            message && h('p', { className: 'text-gray-500 mb-4' }, message),
-            action && h('button', {
-                className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
-                onClick: action.onClick
-            }, action.label)
-        );
-    };
-
-    /**
-     * Badge component
-     */
-    const Badge = ({ children, color = 'gray', size = 'medium' }) => {
-        const colorClasses = {
-            gray: 'bg-gray-100 text-gray-800',
-            red: 'bg-red-100 text-red-800',
-            yellow: 'bg-yellow-100 text-yellow-800',
-            green: 'bg-green-100 text-green-800',
-            blue: 'bg-blue-100 text-blue-800',
-            purple: 'bg-purple-100 text-purple-800'
-        };
-
-        const sizeClasses = {
-            small: 'px-2 py-0.5 text-xs',
-            medium: 'px-2.5 py-0.5 text-sm',
-            large: 'px-3 py-1 text-base'
-        };
-
-        return h('span', {
-            className: `inline-flex items-center rounded-full font-medium ${colorClasses[color]} ${sizeClasses[size]}`
-        }, children);
-    };
-
-    /**
-     * Progress bar component
-     */
-    const ProgressBar = ({ value, max = 100, color = 'blue', showLabel = false }) => {
-        const percentage = Math.min(100, Math.max(0, (value / max) * 100));
+            
+            throw lastError || new Error('Max retries exceeded');
+        }
         
-        const colorClasses = {
-            blue: 'bg-blue-500',
-            green: 'bg-green-500',
-            yellow: 'bg-yellow-500',
-            red: 'bg-red-500',
-            purple: 'bg-purple-500'
-        };
-
-        return h('div', { className: 'w-full' },
-            showLabel && h('div', { className: 'flex justify-between text-sm text-gray-600 mb-1' },
-                h('span', null, `${value}/${max}`),
-                h('span', null, `${Math.round(percentage)}%`)
-            ),
-            h('div', { className: 'progress-container' },
-                h('div', {
-                    className: `progress-bar ${colorClasses[color]}`,
-                    style: { width: `${percentage}%` }
-                })
-            )
-        );
-    };
-
-    /**
-     * Tooltip component
-     */
-    const Tooltip = ({ children, content, position = 'top' }) => {
-        const [isVisible, setIsVisible] = React.useState(false);
-
-        const positionClasses = {
-            top: 'bottom-full left-1/2 transform -translate-x-1/2 mb-2',
-            bottom: 'top-full left-1/2 transform -translate-x-1/2 mt-2',
-            left: 'right-full top-1/2 transform -translate-y-1/2 mr-2',
-            right: 'left-full top-1/2 transform -translate-y-1/2 ml-2'
-        };
-
-        return h('div', { 
-            className: 'relative inline-block',
-            onMouseEnter: () => setIsVisible(true),
-            onMouseLeave: () => setIsVisible(false)
-        },
-            children,
-            isVisible && h('div', {
-                className: `absolute z-10 px-3 py-2 text-sm text-white bg-gray-900 rounded-md shadow-lg whitespace-nowrap ${positionClasses[position]}`
-            }, content)
-        );
-    };
-
-    // Export base components
-    window.choreComponents = window.choreComponents || {};
-    Object.assign(window.choreComponents, {
-        Loading,
-        ErrorMessage,
-        Alert,
-        Modal,
-        EmptyState,
-        Badge,
-        ProgressBar,
-        Tooltip
-    });
-
-    console.log('Base components loaded successfully');
+        /**
+         * Get the authentication token
+         */
+        getAuthToken() {
+            // Try multiple sources
+            const token = localStorage.getItem('chores_auth_token') ||
+                         window.choreUtils?.getAuthToken?.() ||
+                         null;
+            
+            if (!token) {
+                console.warn('No authentication token available');
+            }
+            
+            return token;
+        }
+        
+        /**
+         * Handle authentication errors
+         */
+        async handleAuthError() {
+            // Clear stored token
+            localStorage.removeItem('chores_auth_token');
+            
+            // Try to refresh token if auth helper is available
+            if (window.choreAuth?.getBestToken) {
+                try {
+                    const newToken = await window.choreAuth.getBestToken();
+                    if (newToken) {
+                        localStorage.setItem('chores_auth_token', newToken);
+                    }
+                } catch (e) {
+                    console.error('Failed to refresh token:', e);
+                }
+            }
+            
+            // Dispatch auth error event
+            window.dispatchEvent(new CustomEvent('chores-auth-error', {
+                detail: { message: 'Authentication failed' }
+            }));
+        }
+        
+        /**
+         * Calculate exponential backoff delay
+         */
+        calculateBackoff(attempt) {
+            const delay = Math.min(
+                this.retryConfig.baseDelay * Math.pow(2, attempt),
+                this.retryConfig.maxDelay
+            );
+            // Add jitter
+            return delay + Math.random() * 1000;
+        }
+        
+        /**
+         * Delay helper
+         */
+        delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+        
+        /**
+         * Make a service call
+         */
+        async callService(endpoint, data = {}) {
+            try {
+                const response = await this.fetchWithAuth(endpoint, {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Service call failed: ${response.status} ${errorText}`);
+                }
+                
+                const result = await response.json();
+                
+                // Check for service-level errors
+                if (result && result.success === false) {
+                    throw new Error(result.error || 'Service returned an error');
+                }
+                
+                return result;
+                
+            } catch (error) {
+                console.error('Service call error:', error);
+                throw error;
+            }
+        }
+        
+        /**
+         * Get sensor state
+         */
+        async getSensorState() {
+            const response = await this.fetchWithAuth(ENDPOINTS.SENSOR_STATE);
+            
+            if (response.status === 404) {
+                // Sensor not available yet
+                return {
+                    state: "0",
+                    attributes: {
+                        friendly_name: "Chores Overview",
+                        overdue_tasks: [],
+                        stats: {},
+                        assignees: [
+                            {id: "laura", name: "Laura", color: "#F5B7B1", active: true},
+                            {id: "martijn", name: "Martijn", color: "#F9E79F", active: true},
+                            {id: "wie_kan", name: "Wie kan", color: "#A9DFBF", active: true}
+                        ]
+                    }
+                };
+            }
+            
+            if (!response.ok) {
+                throw new Error(`Failed to get sensor state: ${response.status}`);
+            }
+            
+            return await response.json();
+        }
+    }
+    
+    // Export
+    window.ChoresAPI.BaseAPI = BaseAPI;
+    window.ChoresAPI.ENDPOINTS = ENDPOINTS;
 })();
