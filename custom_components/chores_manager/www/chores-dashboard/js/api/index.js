@@ -7,22 +7,32 @@ window.ChoresAPI = window.ChoresAPI || {};
 (function() {
     'use strict';
     
-    // Save references to what was already loaded
-    const ENDPOINTS = window.ChoresAPI.ENDPOINTS;
-    const BaseAPI = window.ChoresAPI.BaseAPI;
-    const ChoresAPI = window.ChoresAPI.ChoresAPI;
-    const UsersAPI = window.ChoresAPI.UsersAPI;
-    const ThemeAPI = window.ChoresAPI.ThemeAPI;
+    // Wait for all API modules to be loaded
+    function checkAPIDependencies() {
+        return window.ChoresAPI.BaseAPI && 
+               window.ChoresAPI.ChoresAPI && 
+               window.ChoresAPI.UsersAPI && 
+               window.ChoresAPI.ThemeAPI &&
+               window.ChoresAPI.ENDPOINTS;
+    }
     
     // Main API class that combines all API modules
     class API {
         constructor() {
-            this.chores = new ChoresAPI();
-            this.users = new UsersAPI();
-            this.theme = new ThemeAPI();
+            // Only create instances if classes are available
+            if (!checkAPIDependencies()) {
+                throw new Error('API dependencies not loaded');
+            }
+            
+            this.chores = new window.ChoresAPI.ChoresAPI();
+            this.users = new window.ChoresAPI.UsersAPI();
+            this.theme = new window.ChoresAPI.ThemeAPI();
             
             // Expose getSensorState from base API
             this.getSensorState = this.chores.getSensorState.bind(this.chores);
+            
+            // Mark as initialized
+            this._initialized = true;
         }
         
         /**
@@ -39,17 +49,43 @@ window.ChoresAPI = window.ChoresAPI || {};
         }
     }
     
-    // Create singleton instance but preserve existing properties
-    const apiInstance = new API();
+    // Initialize API when dependencies are ready
+    function initializeAPI() {
+        if (!checkAPIDependencies()) {
+            console.warn('API dependencies not ready, waiting...');
+            setTimeout(initializeAPI, 50);
+            return;
+        }
+        
+        try {
+            // Save references before creating instance
+            const ENDPOINTS = window.ChoresAPI.ENDPOINTS;
+            const BaseAPI = window.ChoresAPI.BaseAPI;
+            const ChoresAPI = window.ChoresAPI.ChoresAPI;
+            const UsersAPI = window.ChoresAPI.UsersAPI;
+            const ThemeAPI = window.ChoresAPI.ThemeAPI;
+            
+            // Create singleton instance
+            const apiInstance = new API();
+            
+            // Replace window.ChoresAPI with instance but preserve static properties
+            window.ChoresAPI = apiInstance;
+            window.ChoresAPI.ENDPOINTS = ENDPOINTS;
+            window.ChoresAPI.BaseAPI = BaseAPI;
+            window.ChoresAPI.ChoresAPI = ChoresAPI;
+            window.ChoresAPI.UsersAPI = UsersAPI;
+            window.ChoresAPI.ThemeAPI = ThemeAPI;
+            window.ChoresAPI.API = API;
+            
+            console.log('ChoresAPI initialized successfully with endpoints:', Object.keys(ENDPOINTS || {}));
+            
+            // Dispatch event to signal API is ready
+            window.dispatchEvent(new CustomEvent('chores-api-ready'));
+        } catch (error) {
+            console.error('Failed to initialize API:', error);
+        }
+    }
     
-    // Restore the static properties
-    window.ChoresAPI = apiInstance;
-    window.ChoresAPI.ENDPOINTS = ENDPOINTS;
-    window.ChoresAPI.BaseAPI = BaseAPI;
-    window.ChoresAPI.ChoresAPI = ChoresAPI;
-    window.ChoresAPI.UsersAPI = UsersAPI;
-    window.ChoresAPI.ThemeAPI = ThemeAPI;
-    window.ChoresAPI.API = API;
-    
-    console.log('ChoresAPI initialized with endpoints:', Object.keys(ENDPOINTS || {}));
+    // Start initialization
+    initializeAPI();
 })();
