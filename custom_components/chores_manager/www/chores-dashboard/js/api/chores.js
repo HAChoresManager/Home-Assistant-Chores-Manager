@@ -7,6 +7,14 @@ window.ChoresAPI = window.ChoresAPI || {};
 (function() {
     'use strict';
     
+    // Wait for BaseAPI to be available
+    if (!window.ChoresAPI.BaseAPI) {
+        console.error('ChoresAPI.BaseAPI not found. Make sure base.js is loaded first.');
+        // Set a flag to indicate this module failed to load
+        window.ChoresAPI._choresAPIError = 'BaseAPI not available';
+        return;
+    }
+    
     class ChoresAPI extends window.ChoresAPI.BaseAPI {
         constructor() {
             super();
@@ -50,63 +58,29 @@ window.ChoresAPI = window.ChoresAPI || {};
             // Set defaults for required fields if not present
             normalizedData.name = normalizedData.name || 'Unnamed Task';
             normalizedData.frequency_type = normalizedData.frequency_type || 'Wekelijks';
-            normalizedData.frequency_days = Number(normalizedData.frequency_days) || 7;
-            normalizedData.frequency_times = Number(normalizedData.frequency_times) || 1;
-            normalizedData.assigned_to = normalizedData.assigned_to || 'Wie kan';
-            normalizedData.priority = normalizedData.priority || 'Middel';
-            normalizedData.duration = Number(normalizedData.duration) || 15;
+            normalizedData.frequency_days = normalizedData.frequency_days || 7;
             
-            // Convert numeric fields
-            ['frequency_days', 'frequency_times', 'duration', 'weekday', 'monthday', 'startMonth', 'startDay'].forEach(field => {
-                if (normalizedData[field] !== undefined) {
-                    normalizedData[field] = Number(normalizedData[field]);
-                }
-            });
-            
-            // Convert boolean fields
-            ['use_alternating', 'notify_when_due', 'has_subtasks'].forEach(field => {
-                if (normalizedData[field] !== undefined) {
-                    normalizedData[field] = Boolean(normalizedData[field]);
-                }
-            });
-            
-            // Handle subtasks
-            if (normalizedData.has_subtasks && normalizedData.subtasks) {
-                // Ensure subtasks is an array
-                if (!Array.isArray(normalizedData.subtasks)) {
-                    normalizedData.subtasks = [];
-                }
-                
-                // Filter out empty subtasks
-                normalizedData.subtasks = normalizedData.subtasks
-                    .filter(st => st && st.name && st.name.trim())
-                    .map(st => ({
-                        name: st.name.trim(),
-                        completed: st.completed || false
-                    }));
-            } else {
-                normalizedData.subtasks = [];
+            // Handle date fields conversion
+            if (choreData.start_date) {
+                normalizedData.start_date = choreData.start_date;
+            }
+            if (choreData.end_date) {
+                normalizedData.end_date = choreData.end_date;
             }
             
+            // Ensure ENDPOINTS are available
             const endpoints = window.ChoresAPI.ENDPOINTS;
             if (!endpoints || !endpoints.ADD_CHORE) {
                 throw new Error('API endpoints not properly initialized');
             }
             
-            return await this.callService(
-                endpoints.ADD_CHORE,
-                normalizedData
-            );
+            return await this.callService(endpoints.ADD_CHORE, normalizedData);
         }
         
         /**
          * Mark a chore as done
          */
-        async markDone(choreId, person) {
-            if (!choreId || !person) {
-                throw new Error('Both choreId and person are required');
-            }
-            
+        async markDone(choreId, completedBy) {
             const endpoints = window.ChoresAPI.ENDPOINTS;
             if (!endpoints || !endpoints.MARK_DONE) {
                 throw new Error('API endpoints not properly initialized');
@@ -116,7 +90,7 @@ window.ChoresAPI = window.ChoresAPI || {};
                 endpoints.MARK_DONE,
                 {
                     chore_id: choreId,
-                    person: person
+                    completed_by: completedBy
                 }
             );
         }
@@ -134,13 +108,13 @@ window.ChoresAPI = window.ChoresAPI || {};
                 endpoints.UPDATE_DESCRIPTION,
                 {
                     chore_id: choreId,
-                    description: description || ''
+                    description: description
                 }
             );
         }
         
         /**
-         * Reset chore completion
+         * Reset a chore
          */
         async resetChore(choreId) {
             const endpoints = window.ChoresAPI.ENDPOINTS;
@@ -174,40 +148,34 @@ window.ChoresAPI = window.ChoresAPI || {};
         }
         
         /**
-         * Force a chore to be due today
+         * Force chore to be due
          */
-        async forceDue(choreId, notify = false, message = null) {
+        async forceDue(choreId) {
             const endpoints = window.ChoresAPI.ENDPOINTS;
             if (!endpoints || !endpoints.FORCE_DUE) {
                 throw new Error('API endpoints not properly initialized');
             }
             
-            const data = {
-                chore_id: choreId,
-                notify: notify
-            };
-            
-            if (message) {
-                data.message = message;
-            }
-            
             return await this.callService(
                 endpoints.FORCE_DUE,
-                data
+                {
+                    chore_id: choreId
+                }
             );
         }
         
         /**
          * Complete subtasks
          */
-        async completeSubtasks(choreId, subtaskIds, person) {
-            if (!choreId || !subtaskIds || !Array.isArray(subtaskIds) || !person) {
-                throw new Error('Invalid parameters for subtask completion');
-            }
-            
+        async completeSubtasks(subtaskIds, person) {
             const endpoints = window.ChoresAPI.ENDPOINTS;
             if (!endpoints || !endpoints.COMPLETE_SUBTASK) {
                 throw new Error('API endpoints not properly initialized');
+            }
+            
+            // Handle both single subtask and array
+            if (!Array.isArray(subtaskIds)) {
+                subtaskIds = [subtaskIds];
             }
             
             const results = {
@@ -274,4 +242,5 @@ window.ChoresAPI = window.ChoresAPI || {};
     
     // Export
     window.ChoresAPI.ChoresAPI = ChoresAPI;
+    console.log('ChoresAPI.ChoresAPI loaded successfully');
 })();

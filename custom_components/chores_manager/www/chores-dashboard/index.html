@@ -123,12 +123,63 @@
     <script src="js/utils.js?v=20250415-modular" type="text/javascript"></script>
     <script src="js/theme-integration.js?v=20250415-modular" type="text/javascript"></script>
 
-    <!-- Load new modular API layer -->
+    <!-- Load new modular API layer with deferred execution -->
     <script src="js/api/base.js?v=20250415-modular" type="text/javascript"></script>
-    <script src="js/api/chores.js?v=20250415-modular" type="text/javascript"></script>
-    <script src="js/api/users.js?v=20250415-modular" type="text/javascript"></script>
-    <script src="js/api/theme.js?v=20250415-modular" type="text/javascript"></script>
-    <script src="js/api/index.js?v=20250415-modular" type="text/javascript"></script>
+    
+    <!-- Wait for base.js to load completely before loading other API modules -->
+    <script type="text/javascript">
+        // Ensure BaseAPI is loaded before loading dependent modules
+        (function() {
+            'use strict';
+            
+            // Function to load a script dynamically
+            function loadScript(src) {
+                return new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.type = 'text/javascript';
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                });
+            }
+            
+            // Function to load API modules in sequence
+            async function loadAPIModules() {
+                try {
+                    // Wait a bit to ensure base.js is fully executed
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    
+                    // Check if BaseAPI is available
+                    if (!window.ChoresAPI || !window.ChoresAPI.BaseAPI) {
+                        throw new Error('BaseAPI not loaded properly');
+                    }
+                    
+                    console.log('BaseAPI confirmed loaded, loading dependent modules...');
+                    
+                    // Load API modules in sequence
+                    await loadScript('js/api/chores.js?v=20250415-modular');
+                    await loadScript('js/api/users.js?v=20250415-modular');
+                    await loadScript('js/api/theme.js?v=20250415-modular');
+                    await loadScript('js/api/index.js?v=20250415-modular');
+                    
+                    console.log('All API modules loaded successfully');
+                    
+                } catch (error) {
+                    console.error('Error loading API modules:', error);
+                    document.getElementById('root').innerHTML = `
+                        <div class="error-container">
+                            <h2>Loading Error</h2>
+                            <p>Failed to load API modules: ${error.message}</p>
+                            <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
+                        </div>`;
+                }
+            }
+            
+            // Start loading API modules
+            loadAPIModules();
+        })();
+    </script>
 
     <!-- Load component loader which will load all components -->
     <script src="js/components/index.js?v=20250415-modular" type="text/javascript"></script>
@@ -180,40 +231,20 @@
                     document.getElementById('root').innerHTML = `
                         <div class="error-container">
                             <h2>Loading Error</h2>
-                            <p>Failed to load required dependencies. Please refresh the page.</p>
+                            <p>Failed to load required dependencies.</p>
                             <p>Missing: ${missing.join(', ')}</p>
                             <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
                         </div>`;
                 }
             }
 
-            // Wait for component loader to signal readiness
-            window.addEventListener('choreComponentsReady', function() {
-                console.log('Components ready event received');
-                // Try to initialize app.js in case it loaded before components
-                window.dispatchEvent(new CustomEvent('tryInitializeApp'));
-                // Check dependencies after a short delay
-                setTimeout(checkDependenciesAndInit, 100);
-            });
+            // Start checking after a short delay to allow scripts to load
+            setTimeout(checkDependenciesAndInit, 100);
+        });
 
-            // Also periodically try to initialize app.js if it hasn't initialized yet
-            const appInitInterval = setInterval(function() {
-                if (!window.ChoresApp && window.choreComponents) {
-                    console.log('Triggering app initialization attempt...');
-                    window.dispatchEvent(new CustomEvent('tryInitializeApp'));
-                }
-                if (window.ChoresApp) {
-                    clearInterval(appInitInterval);
-                }
-            }, 200);
-
-            // Stop trying after 5 seconds
-            setTimeout(function() {
-                clearInterval(appInitInterval);
-            }, 5000);
-
-            // Start checking after a delay to give scripts time to load
-            setTimeout(checkDependenciesAndInit, 500);
+        // Add event listener for components ready
+        window.addEventListener('componentsReady', function() {
+            console.log('Components ready event received');
         });
     </script>
 </body>
