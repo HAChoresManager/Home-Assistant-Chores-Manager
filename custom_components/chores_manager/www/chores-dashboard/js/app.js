@@ -87,16 +87,36 @@
             // Load all data
             const loadData = async () => {
                 try {
-                    const [choresData, assigneesData, statsData, themeData] = await Promise.all([
-                        window.ChoresAPI.chores.getAll(),
-                        window.ChoresAPI.users.getAll(),
-                        window.ChoresAPI.stats.getAll(),
-                        window.ChoresAPI.settings.getTheme()
-                    ]);
+                    // Get all data from the sensor state
+                    const sensorData = await window.ChoresAPI.getSensorState();
+                    
+                    // Extract data from sensor attributes
+                    const attributes = sensorData.attributes || {};
+                    const choresData = attributes.overdue_tasks || [];
+                    const assigneesData = attributes.assignees || [];
+                    const statsData = attributes.stats || {};
+                    const themeData = attributes.theme_settings || {};
+                    
+                    // Calculate additional stats
+                    const completedToday = attributes.completed_today || 0;
+                    const overdueCount = choresData.filter(c => 
+                        (c.is_overdue || c.is_due_today) && (!c.last_done || !window.choreUtils.isToday(c.last_done))
+                    ).length;
+                    const upcomingCount = choresData.filter(c => 
+                        c.days_until_due > 0 && c.days_until_due <= 7
+                    ).length;
+                    
+                    const enrichedStats = {
+                        ...statsData,
+                        completedToday,
+                        overdueCount,
+                        upcomingCount,
+                        totalChores: choresData.length
+                    };
 
                     setChores(choresData);
                     setAssignees(assigneesData);
-                    setStats(statsData);
+                    setStats(enrichedStats);
                     
                     if (themeData) {
                         setThemeSettings(themeData);
@@ -124,7 +144,10 @@
             // Save user settings
             const saveUser = async (usersData) => {
                 try {
-                    await window.ChoresAPI.users.saveAll(usersData);
+                    // Save each user individually
+                    for (const user of usersData) {
+                        await window.ChoresAPI.users.addUser(user);
+                    }
                     await loadData();
                     setShowUserManagement(false);
                 } catch (err) {
@@ -136,7 +159,7 @@
             // Save theme settings
             const saveTheme = async (theme) => {
                 try {
-                    await window.ChoresAPI.settings.saveTheme(theme);
+                    await window.ChoresAPI.theme.saveTheme(theme);
                     setThemeSettings(theme);
                     applyTheme(theme);
                     setShowThemeSettings(false);
@@ -503,21 +526,56 @@
     }
 
     // Wait for choreComponentsReady event or check if components are already loaded
-    if (window.choreComponents && window.React && window.ReactDOM && window.choreUtils) {
-        // Components are already loaded, initialize immediately
+    function checkIfReady() {
+        return window.choreComponents && 
+               window.React && 
+               window.ReactDOM && 
+               window.choreUtils && 
+               window.ChoresAPI && 
+               window.ChoresAPI.chores && 
+               window.ChoresAPI.users && 
+               window.ChoresAPI.stats && 
+               window.ChoresAPI.settings;
+    }
+
+    if (checkIfReady()) {
+        // Everything is already loaded, initialize immediately
         initializeAppModule();
     } else {
+        // Track what we're waiting for
+        let componentsReady = false;
+        let apiReady = false;
+        
+        function tryInitialize() {
+            if (componentsReady && apiReady) {
+                initializeAppModule();
+            }
+        }
+        
         // Wait for components to be ready
         window.addEventListener('choreComponentsReady', function() {
             console.log('App.js: Components ready event received');
-            initializeAppModule();
+            componentsReady = true;
+            tryInitialize();
         });
         
-        // Also listen for a backup manual check from index.html
-        window.addEventListener('tryInitializeApp', function() {
-            if (window.choreComponents && window.React && window.ReactDOM && window.choreUtils) {
+        // Wait for API to be ready
+        window.addEventListener('chores-api-ready', function() {
+            console.log('App.js: API ready event received');
+            apiReady = true;
+            tryInitialize();
+        });
+        
+        // Also check periodically in case events were missed
+        const checkInterval = setInterval(function() {
+            if (checkIfReady()) {
+                clearInterval(checkInterval);
+                console.log('App.js: All dependencies detected via polling');
                 initializeAppModule();
             }
-        });
+        }, 100);
+        
+        // Stop checking after 10 seconds
+        setTimeout(() => clearInterval(checkInterval), 10000);
     }
 })();
