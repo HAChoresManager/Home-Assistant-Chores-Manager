@@ -653,3 +653,36 @@ button.text-blue-500:hover,
     margin-left: 0.25rem !important;
     margin-right: 0.25rem !important;
 }
+
+/* Fix for task icon display */
+.task-icon {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 1.5rem !important;
+    line-height: 1 !important;
+    width: 2rem !important;
+    height: 2rem !important;
+    margin-right: 0.5rem !important;
+    /* Ensure emoji display properly */
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif !important;
+}
+
+/* Ensure proper emoji rendering throughout */
+.icon-option,
+.task-icon,
+span[role="img"] {
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif !important;
+}
+
+/* Remove any accidental text nodes showing as "0" */
+.task-card-wrapper > :not(.task-card):not(.task-description):not(.modal-container) {
+    display: none !important;
+}
+
+/* Ensure single column on mobile, 2 columns on medium screens is intentional */
+@media (max-width: 768px) {
+    .task-list {
+        grid-template-columns: 1fr !important;
+    }
+}
