@@ -31,6 +31,11 @@ window.ChoresAPI = window.ChoresAPI || {};
             // Expose getSensorState from base API
             this.getSensorState = this.chores.getSensorState.bind(this.chores);
             
+            // Add backward compatibility for sensor.getState()
+            this.sensor = {
+                getState: this.getSensorState.bind(this)
+            };
+            
             // Mark as initialized
             this._initialized = true;
         }
