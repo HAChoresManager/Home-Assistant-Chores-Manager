@@ -44,13 +44,20 @@ window.ChoresAPI = window.ChoresAPI || {};
          * Initialize the API
          */
         async initialize() {
-            // Check authentication
-            const token = this.chores.getAuthToken();
+            // Check authentication - use BaseAPI method through chores instance
+            const token = this.chores.getAuthToken ? this.chores.getAuthToken() : null;
             if (!token) {
                 console.warn('API initialized without authentication token');
             }
             
             return true;
+        }
+        
+        /**
+         * Get authentication token (delegate to BaseAPI)
+         */
+        getAuthToken() {
+            return this.chores.getAuthToken ? this.chores.getAuthToken() : null;
         }
     }
     
@@ -66,21 +73,38 @@ window.ChoresAPI = window.ChoresAPI || {};
             // Save references before creating instance
             const ENDPOINTS = window.ChoresAPI.ENDPOINTS;
             const BaseAPI = window.ChoresAPI.BaseAPI;
-            const ChoresAPI = window.ChoresAPI.ChoresAPI;
+            const ChoresAPIClass = window.ChoresAPI.ChoresAPI;
             const UsersAPI = window.ChoresAPI.UsersAPI;
             const ThemeAPI = window.ChoresAPI.ThemeAPI;
             
             // Create singleton instance
             const apiInstance = new API();
             
-            // Replace window.ChoresAPI with instance but preserve static properties
-            window.ChoresAPI = apiInstance;
-            window.ChoresAPI.ENDPOINTS = ENDPOINTS;
-            window.ChoresAPI.BaseAPI = BaseAPI;
-            window.ChoresAPI.ChoresAPI = ChoresAPI;
-            window.ChoresAPI.UsersAPI = UsersAPI;
-            window.ChoresAPI.ThemeAPI = ThemeAPI;
-            window.ChoresAPI.API = API;
+            // Create a new namespace that includes both the instance and the classes
+            const ChoresAPINamespace = {
+                // The main API instance (what app.js will use)
+                instance: apiInstance,
+                
+                // Preserve all the class definitions
+                ENDPOINTS: ENDPOINTS,
+                BaseAPI: BaseAPI,
+                ChoresAPI: ChoresAPIClass,
+                UsersAPI: UsersAPI,
+                ThemeAPI: ThemeAPI,
+                API: API,
+                
+                // Expose instance methods at the root level for backward compatibility
+                chores: apiInstance.chores,
+                users: apiInstance.users,
+                theme: apiInstance.theme,
+                getSensorState: apiInstance.getSensorState.bind(apiInstance),
+                sensor: apiInstance.sensor,
+                initialize: apiInstance.initialize.bind(apiInstance),
+                getAuthToken: apiInstance.getAuthToken.bind(apiInstance)
+            };
+            
+            // Replace window.ChoresAPI with the new namespace
+            window.ChoresAPI = ChoresAPINamespace;
             
             console.log('ChoresAPI initialized successfully with endpoints:', Object.keys(ENDPOINTS || {}));
             
