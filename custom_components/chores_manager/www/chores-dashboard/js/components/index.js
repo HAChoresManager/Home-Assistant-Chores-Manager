@@ -24,7 +24,7 @@
     function loadScript(src) {
         return new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            script.src = src + '?v=' + (window.CHORES_APP_VERSION || Date.now());
+            script.src = src + '?v=' + (window.CHORES_APP_VERSION || '1.4.0-20250415-modular');
             script.type = 'text/javascript';
             
             script.onload = () => {
@@ -64,43 +64,62 @@
             // Verify that choreComponents exists and has expected properties
             if (window.choreComponents) {
                 const expectedComponents = [
+                    // Base components
+                    'Loading', 'ErrorMessage', 'Alert', 'Modal', 'EmptyState', 'Badge', 'ProgressBar', 'Tooltip',
+                    // Task components
                     'TaskCard', 'TaskDescription', 'PriorityIndicator',
+                    // Form components
                     'TaskForm', 'UserManagement', 'IconSelector',
+                    // Stats components
                     'StatsCard', 'UserStatsCard', 'ThemeSettings',
+                    // Dialog components
                     'ConfirmDialog', 'CompletionConfirmDialog', 'SubtaskCompletionDialog'
                 ];
                 
                 const missingComponents = expectedComponents.filter(
-                    comp => !window.choreComponents[comp]
+                    comp => typeof window.choreComponents[comp] !== 'function'
                 );
                 
                 if (missingComponents.length > 0) {
-                    console.warn('Missing components:', missingComponents);
+                    console.warn('Some expected components are missing:', missingComponents);
                 } else {
                     console.log('All expected components are available');
                 }
+                
+                // Log available components
+                const availableComponents = Object.keys(window.choreComponents).filter(
+                    key => typeof window.choreComponents[key] === 'function'
+                );
+                console.log('Available components:', availableComponents);
             }
             
-            // Trigger custom event to signal components are ready
-            window.dispatchEvent(new CustomEvent('choreComponentsReady'));
+            // Dispatch event to signal components are ready
+            window.dispatchEvent(new CustomEvent('chores-components-ready'));
         } else {
-            console.error(`Only ${loadedCount}/${componentFiles.length} components loaded`);
+            console.error(`Failed to load all components. Loaded: ${loadedCount}/${componentFiles.length}`);
             console.error('Load errors:', loadErrors);
+            
+            // Show error in the root element
+            const rootElement = document.getElementById('root');
+            if (rootElement) {
+                rootElement.innerHTML = `
+                    <div class="error-container">
+                        <h2>Component Loading Error</h2>
+                        <p>Failed to load some components. Please refresh the page.</p>
+                        <p>Errors: ${loadErrors.map(e => e.message).join(', ')}</p>
+                        <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">
+                            Reload Page
+                        </button>
+                    </div>
+                `;
+            }
         }
     }
 
     // Start loading components
     loadAllComponents().catch(error => {
-        console.error('Fatal error loading components:', error);
+        console.error('Critical error loading components:', error);
     });
-
-    // Export loader status
-    window.choreComponentLoader = {
-        isLoading: () => loadedCount < componentFiles.length,
-        getLoadedCount: () => loadedCount,
-        getTotalCount: () => componentFiles.length,
-        getErrors: () => loadErrors
-    };
-
+    
     console.log('Component loader initialized');
 })();
