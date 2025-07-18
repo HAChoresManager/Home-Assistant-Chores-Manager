@@ -38,7 +38,8 @@ window.ChoresApp = window.ChoresApp || {};
             ThemeSettings,
             ConfirmDialog,
             CompletionConfirmDialog,
-            SubtaskCompletionDialog
+            SubtaskCompletionDialog,
+            TaskDescription
         } = window.choreComponents;
         
         const h = React.createElement;
@@ -64,6 +65,7 @@ window.ChoresApp = window.ChoresApp || {};
             const [showThemeSettings, setShowThemeSettings] = useState(false);
             const [selectedDescription, setSelectedDescription] = useState(null);
             const [hasAuthError, setHasAuthError] = useState(false);
+            const [expandedDescriptions, setExpandedDescriptions] = useState({});
             
             // API instances
             const [api, setApi] = useState(null);
@@ -74,14 +76,35 @@ window.ChoresApp = window.ChoresApp || {};
                     try {
                         console.log('Initializing Chores Dashboard App');
                         
+                        // Wait for ChoresAPI to be ready
+                        let attempts = 0;
+                        while (!window.ChoresAPI || !window.ChoresAPI.getSensorState) {
+                            if (attempts > 20) { // 2 seconds timeout
+                                throw new Error('ChoresAPI not properly initialized after timeout');
+                            }
+                            console.log('Waiting for ChoresAPI to be ready...');
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                            attempts++;
+                        }
+                        
                         // Check if all dependencies are loaded
                         if (!window.ChoresAPI) {
                             console.error('ChoresAPI not found');
                             return;
                         }
                         
+                        // Log what's available on ChoresAPI
+                        console.log('ChoresAPI available methods:', Object.keys(window.ChoresAPI).filter(key => typeof window.ChoresAPI[key] === 'function'));
+                        
                         // Use the API instance directly (it's already initialized)
                         const apiInstance = window.ChoresAPI;
+                        
+                        // Verify critical methods exist
+                        if (typeof apiInstance.getSensorState !== 'function') {
+                            console.error('getSensorState method not found on ChoresAPI');
+                            console.log('Available ChoresAPI properties:', Object.keys(apiInstance));
+                            throw new Error('API method getSensorState not available');
+                        }
                         
                         // Initialize if it has an initialize method
                         if (typeof apiInstance.initialize === 'function') {
@@ -94,7 +117,7 @@ window.ChoresApp = window.ChoresApp || {};
                         
                     } catch (err) {
                         console.error('Failed to initialize API:', err);
-                        setError('Failed to initialize application');
+                        setError('Failed to initialize application: ' + err.message);
                     }
                 }
                 
@@ -105,6 +128,9 @@ window.ChoresApp = window.ChoresApp || {};
             useEffect(() => {
                 if (api) {
                     loadData();
+                    // Set up auto-refresh every 30 seconds
+                    const interval = setInterval(loadData, 30000);
+                    return () => clearInterval(interval);
                 }
             }, [api]);
             
@@ -130,9 +156,15 @@ window.ChoresApp = window.ChoresApp || {};
                 
                 try {
                     setLoading(true);
+                    
+                    // Debug log
+                    console.log('Loading data with API:', api);
+                    console.log('getSensorState type:', typeof api.getSensorState);
+                    
+                    // Call the API method
                     const sensorData = await api.getSensorState();
                     
-                    if (sensorData.attributes) {
+                    if (sensorData && sensorData.attributes) {
                         setChores(sensorData.attributes.overdue_tasks || []);
                         setAssignees(sensorData.attributes.assignees || []);
                         setStats(sensorData.attributes.stats || {});
@@ -144,6 +176,7 @@ window.ChoresApp = window.ChoresApp || {};
                             secondaryTextColor: '#333333'
                         });
                     } else {
+                        console.warn('No attributes in sensor data:', sensorData);
                         setChores([]);
                         setAssignees([]);
                         setStats({});
@@ -158,7 +191,7 @@ window.ChoresApp = window.ChoresApp || {};
                         setHasAuthError(true);
                         setError('Authentication error. Please check your Home Assistant token.');
                     } else {
-                        setError('Failed to load data');
+                        setError('Failed to load data: ' + err.message);
                     }
                 } finally {
                     setLoading(false);
@@ -177,29 +210,47 @@ window.ChoresApp = window.ChoresApp || {};
             }, []);
             
             // Task completion handler
-            const handleMarkDone = useCallback(async (choreId, selectedUser) => {
-                if (!api) return;
-                
+            const handleTaskComplete = useCallback(async (choreId, userId, subtaskIndex = null) => {
                 try {
-                    // Set processing state
-                    setChores(prevChores => 
-                        prevChores.map(chore => 
-                            (chore.id === choreId || chore.chore_id === choreId) 
-                                ? { ...chore, isProcessing: true }
-                                : chore
-                        )
-                    );
-                    
-                    await api.chores.markDone(choreId, selectedUser);
+                    if (subtaskIndex !== null && subtaskIndex !== undefined) {
+                        await api.chores.completeSubtask(choreId, subtaskIndex);
+                    } else {
+                        await api.chores.markDone(choreId, userId);
+                    }
+                    setLastCompletion({
+                        choreId,
+                        userId,
+                        timestamp: new Date().toISOString()
+                    });
                     await loadData();
-                    
                 } catch (err) {
                     handleError(err);
-                    
-                    // Remove processing state on error
-                    setChores(prevChores => 
-                        prevChores.map(chore => 
-                            (chore.id === choreId || chore.chore_id === choreId) 
+                }
+            }, [api, loadData, handleError]);
+            
+            // Mark done handler
+            const handleMarkDone = useCallback(async (choreId, userId) => {
+                if (!api) return;
+                
+                // Mark chore as processing
+                setChores(chores => 
+                    chores.map(chore => 
+                        (chore.chore_id === choreId || chore.id === choreId)
+                            ? { ...chore, isProcessing: true }
+                            : chore
+                    )
+                );
+                
+                try {
+                    await api.chores.markDone(choreId, userId);
+                    await loadData();
+                } catch (err) {
+                    handleError(err);
+                } finally {
+                    // Remove processing state
+                    setChores(chores => 
+                        chores.map(chore => 
+                            (chore.chore_id === choreId || chore.id === choreId)
                                 ? { ...chore, isProcessing: false }
                                 : chore
                         )
@@ -234,8 +285,25 @@ window.ChoresApp = window.ChoresApp || {};
                 if (!api) return;
                 
                 try {
-                    // Use addChore for both create and update
-                    await api.chores.addChore(taskData);
+                    if (editingTask) {
+                        // Update existing task
+                        if (taskData.name !== editingTask.name) {
+                            await api.chores.updateDescription(editingTask.chore_id, taskData.name);
+                        }
+                        // Note: Other updates would need additional API methods
+                    } else {
+                        // Add new task
+                        await api.chores.addChore(
+                            taskData.name,
+                            taskData.description,
+                            taskData.frequency,
+                            taskData.frequency_unit,
+                            taskData.assignee,
+                            taskData.priority,
+                            taskData.duration,
+                            taskData.icon
+                        );
+                    }
                     
                     setShowTaskForm(false);
                     setEditingTask(null);
@@ -246,12 +314,28 @@ window.ChoresApp = window.ChoresApp || {};
                 }
             }, [api, editingTask, loadData, handleError]);
             
-            // User management handlers
-            const handleAddUser = useCallback(async (userData) => {
-                if (!api) return;
-                
+            // Task deletion handler
+            const handleDeleteTask = useCallback(async (choreId) => {
                 try {
-                    await api.users.addUser(userData);
+                    await api.chores.deleteChore(choreId);
+                    await loadData();
+                } catch (err) {
+                    handleError(err);
+                }
+            }, [api, loadData, handleError]);
+            
+            // Toggle description handler
+            const handleToggleDescription = useCallback((choreId, isExpanded) => {
+                setExpandedDescriptions(prev => ({
+                    ...prev,
+                    [choreId]: isExpanded
+                }));
+            }, []);
+            
+            // User management handlers
+            const handleAddUser = useCallback(async (userId, name, color, avatar) => {
+                try {
+                    await api.users.addUser(userId, name, color, avatar);
                     await loadData();
                 } catch (err) {
                     handleError(err);
@@ -259,8 +343,6 @@ window.ChoresApp = window.ChoresApp || {};
             }, [api, loadData, handleError]);
             
             const handleDeleteUser = useCallback(async (userId) => {
-                if (!api) return;
-                
                 try {
                     await api.users.deleteUser(userId);
                     await loadData();
@@ -269,30 +351,18 @@ window.ChoresApp = window.ChoresApp || {};
                 }
             }, [api, loadData, handleError]);
             
-            // Theme settings handler
-            const handleThemeChange = useCallback(async (newTheme) => {
-                if (!api) return;
-                
+            // Theme save handler
+            const handleSaveTheme = useCallback(async (colors) => {
                 try {
-                    await api.theme.saveTheme(newTheme);
-                    setThemeSettings(newTheme);
-                    setShowThemeSettings(false);
+                    await api.theme.saveTheme(colors);
+                    setThemeSettings(colors);
+                    await loadData();
                 } catch (err) {
                     handleError(err);
                 }
-            }, [api, handleError]);
+            }, [api, loadData, handleError]);
             
-            // Description toggle handler
-            const handleToggleDescription = useCallback((choreId, isOpen) => {
-                if (isOpen) {
-                    const chore = chores.find(c => c.id === choreId || c.chore_id === choreId);
-                    setSelectedDescription(chore);
-                } else {
-                    setSelectedDescription(null);
-                }
-            }, [chores]);
-            
-            // Task categorization
+            // Filter tasks by status
             const overdueTasks = chores.filter(chore => {
                 if (!chore.last_done || !window.choreUtils.isToday(chore.last_done)) {
                     return window.choreUtils.isDueOrOverdue(chore);
@@ -324,30 +394,41 @@ window.ChoresApp = window.ChoresApp || {};
                 return h(Loading, { message: "Loading application..." });
             }
             
+            // Render error state
+            if (error && !chores.length && !loading) {
+                return h('div', { className: 'max-w-4xl mx-auto p-4' },
+                    h(ErrorMessage, { 
+                        message: error,
+                        onRetry: hasAuthError ? null : loadData
+                    })
+                );
+            }
+            
             // Main render
             return h('div', { className: 'app-container' },
                 // Header
                 h('div', { className: 'bg-white shadow-sm border-b mb-6' },
                     h('div', { className: 'container mx-auto px-4 py-4' },
                         h('div', { className: 'flex items-center justify-between' },
-                            h('h1', { className: 'text-2xl font-bold text-gray-900' }, 'Taken Dashboard'),
-                            h('div', { className: 'flex space-x-2' },
+                            h('h1', { className: 'text-2xl font-bold' }, 'Huishoudelijke Taken'),
+                            h('div', { className: 'flex items-center space-x-2' },
                                 h('button', {
-                                    className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
-                                    onClick: handleAddTask
-                                }, 'Nieuwe Taak'),
+                                    onClick: () => setShowThemeSettings(true),
+                                    className: 'p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors',
+                                    title: 'Thema Instellingen'
+                                }, '🎨'),
                                 h('button', {
-                                    className: 'px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600',
-                                    onClick: () => setShowUserManagement(true)
-                                }, 'Gebruikers'),
+                                    onClick: () => setShowUserManagement(true),
+                                    className: 'p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors',
+                                    title: 'Gebruikers Beheren'
+                                }, '👥'),
                                 h('button', {
-                                    className: 'px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600',
-                                    onClick: () => setShowThemeSettings(true)
-                                }, 'Thema'),
-                                h('button', {
-                                    className: 'px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600',
-                                    onClick: loadData
-                                }, 'Vernieuw')
+                                    onClick: handleAddTask,
+                                    className: 'px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2'
+                                },
+                                    h('span', null, '+'),
+                                    h('span', null, 'Nieuwe Taak')
+                                )
                             )
                         )
                     )
@@ -355,146 +436,151 @@ window.ChoresApp = window.ChoresApp || {};
                 
                 // Main content
                 h('div', { className: 'container mx-auto px-4' },
-                    // Error display
-                    error && h(ErrorMessage, { 
-                        message: error, 
-                        onRetry: hasAuthError ? null : loadData 
-                    }),
+                    // Error banner
+                    error && h('div', { className: 'mb-6' },
+                        h(Alert, { 
+                            type: 'error',
+                            message: error,
+                            onDismiss: () => setError(null)
+                        })
+                    ),
                     
-                    // Last completion notification
-                    lastCompletion && h(Alert, {
-                        type: 'success',
-                        message: `${lastCompletion.chore_name} voltooid door ${lastCompletion.done_by}`,
-                        onClose: () => setLastCompletion(null)
-                    }),
+                    // Stats overview
+                    h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6' },
+                        h(StatsCard, {
+                            title: 'Achterstallig',
+                            value: overdueTasks.length,
+                            color: 'red',
+                            icon: '🚨'
+                        }),
+                        h(StatsCard, {
+                            title: 'Vandaag',
+                            value: todayTasks.length,
+                            color: 'yellow',
+                            icon: '📅'
+                        }),
+                        h(StatsCard, {
+                            title: 'Aankomend',
+                            value: upcomingTasks.length,
+                            color: 'green',
+                            icon: '📋'
+                        }),
+                        h(StatsCard, {
+                            title: 'Voltooid',
+                            value: completedTasks.length,
+                            color: 'blue',
+                            icon: '✅'
+                        })
+                    ),
                     
-                    // Loading state
-                    loading && h(Loading, { message: "Laden..." }),
-                    
-                    // Content when not loading
-                    !loading && h('div', null,
-                        // Overview stats
-                        h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6' },
-                            h(StatsCard, {
-                                title: 'Achterstallig',
-                                value: overdueTasks.length,
-                                color: 'red',
-                                icon: '⚠️'
-                            }),
-                            h(StatsCard, {
-                                title: 'Vandaag',
-                                value: todayTasks.length,
-                                color: 'yellow',
-                                icon: '📅'
-                            }),
-                            h(StatsCard, {
-                                title: 'Aankomend',
-                                value: upcomingTasks.length,
-                                color: 'green',
-                                icon: '📋'
+                    // User stats
+                    assignees.length > 0 && Object.keys(stats).length > 0 && h('div', { className: 'mb-6' },
+                        h('h2', { className: 'text-lg font-semibold mb-4' }, 'Gebruiker Statistieken'),
+                        h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' },
+                            assignees.map(assignee => {
+                                const assigneeName = assignee.name || assignee.id;
+                                const assigneeStats = stats[assigneeName] || {
+                                    tasks_completed: 0,
+                                    total_tasks: 0,
+                                    time_completed: 0,
+                                    total_time: 0,
+                                    streak: 0
+                                };
+                                
+                                return h(UserStatsCard, {
+                                    key: assignee.id || assignee.name,
+                                    assignee: assigneeName,
+                                    stats: assigneeStats,
+                                    assignees: assignees
+                                });
                             })
-                        ),
-                        
-                        // User stats
-                        assignees.length > 0 && Object.keys(stats).length > 0 && h('div', { className: 'mb-6' },
-                            h('h2', { className: 'text-lg font-semibold mb-4' }, 'Gebruiker Statistieken'),
-                            h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' },
-                                assignees.map(assignee => {
-                                    const assigneeName = assignee.name || assignee.id;
-                                    const assigneeStats = stats[assigneeName] || {
-                                        tasks_completed: 0,
-                                        total_tasks: 0,
-                                        time_completed: 0,
-                                        total_time: 0,
-                                        streak: 0
-                                    };
-                                    
-                                    return h(UserStatsCard, {
-                                        key: assignee.id || assignee.name,
-                                        assignee: assigneeName,
-                                        stats: assigneeStats,
-                                        assignees: assignees
-                                    });
-                                })
+                        )
+                    ),
+                    
+                    // Task sections
+                    loading ? h(Loading, { message: "Laden..." }) : h('div', { className: 'space-y-6' },
+                        // Overdue tasks
+                        overdueTasks.length > 0 && h('div', null,
+                            h('h2', { className: 'text-xl font-semibold mb-4 text-red-600' }, 
+                                `🚨 Achterstallige Taken (${overdueTasks.length})`),
+                            h('div', { className: 'grid gap-4' },
+                                overdueTasks.map(chore =>
+                                    h(TaskCard, {
+                                        key: chore.id || chore.chore_id,
+                                        chore: chore,
+                                        onMarkDone: handleMarkDone,
+                                        onEdit: handleEditTask,
+                                        onToggleDescription: handleToggleDescription,
+                                        assignees: assignees,
+                                        onMarkSubtaskDone: handleMarkSubtaskDone
+                                    })
+                                )
                             )
                         ),
                         
-                        // Task sections
-                        loading ? h(Loading, { message: "Laden..." }) : h('div', { className: 'space-y-6' },
-                            // Overdue tasks
-                            overdueTasks.length > 0 && h('div', null,
-                                h('h2', { className: 'text-xl font-semibold mb-4 text-red-600' }, 
-                                    `🚨 Achterstallige Taken (${overdueTasks.length})`),
-                                h('div', { className: 'grid gap-4' },
-                                    overdueTasks.map(chore =>
-                                        h(TaskCard, {
-                                            key: chore.id || chore.chore_id,
-                                            chore: chore,
-                                            onMarkDone: handleMarkDone,
-                                            onEdit: handleEditTask,
-                                            onToggleDescription: handleToggleDescription,
-                                            assignees: assignees,
-                                            onMarkSubtaskDone: handleMarkSubtaskDone
-                                        })
-                                    )
+                        // Today's tasks
+                        todayTasks.length > 0 && h('div', null,
+                            h('h2', { className: 'text-xl font-semibold mb-4 text-orange-600' }, 
+                                `📅 Vandaag (${todayTasks.length})`),
+                            h('div', { className: 'grid gap-4' },
+                                todayTasks.map(chore =>
+                                    h(TaskCard, {
+                                        key: chore.id || chore.chore_id,
+                                        chore: chore,
+                                        onMarkDone: handleMarkDone,
+                                        onEdit: handleEditTask,
+                                        onToggleDescription: handleToggleDescription,
+                                        assignees: assignees,
+                                        onMarkSubtaskDone: handleMarkSubtaskDone
+                                    })
                                 )
-                            ),
-                            
-                            // Today's tasks
-                            todayTasks.length > 0 && h('div', null,
-                                h('h2', { className: 'text-xl font-semibold mb-4 text-orange-600' }, 
-                                    `📅 Vandaag (${todayTasks.length})`),
-                                h('div', { className: 'grid gap-4' },
-                                    todayTasks.map(chore =>
-                                        h(TaskCard, {
-                                            key: chore.id || chore.chore_id,
-                                            chore: chore,
-                                            onMarkDone: handleMarkDone,
-                                            onEdit: handleEditTask,
-                                            onToggleDescription: handleToggleDescription,
-                                            assignees: assignees,
-                                            onMarkSubtaskDone: handleMarkSubtaskDone
-                                        })
-                                    )
+                            )
+                        ),
+                        
+                        // Upcoming tasks
+                        upcomingTasks.length > 0 && h('div', null,
+                            h('h2', { className: 'text-xl font-semibold mb-4 text-blue-600' }, 
+                                `📋 Aankomend (${upcomingTasks.length})`),
+                            h('div', { className: 'grid gap-4' },
+                                upcomingTasks.map(chore =>
+                                    h(TaskCard, {
+                                        key: chore.id || chore.chore_id,
+                                        chore: chore,
+                                        onMarkDone: handleMarkDone,
+                                        onEdit: handleEditTask,
+                                        onToggleDescription: handleToggleDescription,
+                                        assignees: assignees,
+                                        onMarkSubtaskDone: handleMarkSubtaskDone
+                                    })
                                 )
-                            ),
-                            
-                            // Upcoming tasks
-                            upcomingTasks.length > 0 && h('div', null,
-                                h('h2', { className: 'text-xl font-semibold mb-4 text-blue-600' }, 
-                                    `📋 Aankomend (${upcomingTasks.length})`),
-                                h('div', { className: 'grid gap-4' },
-                                    upcomingTasks.map(chore =>
-                                        h(TaskCard, {
-                                            key: chore.id || chore.chore_id,
-                                            chore: chore,
-                                            onMarkDone: handleMarkDone,
-                                            onEdit: handleEditTask,
-                                            onToggleDescription: handleToggleDescription,
-                                            assignees: assignees,
-                                            onMarkSubtaskDone: handleMarkSubtaskDone
-                                        })
-                                    )
+                            )
+                        ),
+                        
+                        // Completed tasks
+                        completedTasks.length > 0 && h('div', null,
+                            h('h2', { className: 'text-xl font-semibold mb-4 text-green-600' }, 
+                                `✅ Voltooid Vandaag (${completedTasks.length})`),
+                            h('div', { className: 'grid gap-4' },
+                                completedTasks.map(chore =>
+                                    h(TaskCard, {
+                                        key: chore.id || chore.chore_id,
+                                        chore: chore,
+                                        onMarkDone: handleMarkDone,
+                                        onEdit: handleEditTask,
+                                        onToggleDescription: handleToggleDescription,
+                                        assignees: assignees,
+                                        onMarkSubtaskDone: handleMarkSubtaskDone
+                                    })
                                 )
-                            ),
-                            
-                            // Completed tasks
-                            completedTasks.length > 0 && h('div', null,
-                                h('h2', { className: 'text-xl font-semibold mb-4 text-green-600' }, 
-                                    `✅ Voltooid Vandaag (${completedTasks.length})`),
-                                h('div', { className: 'grid gap-4' },
-                                    completedTasks.map(chore =>
-                                        h(TaskCard, {
-                                            key: chore.id || chore.chore_id,
-                                            chore: chore,
-                                            onMarkDone: handleMarkDone,
-                                            onEdit: handleEditTask,
-                                            onToggleDescription: handleToggleDescription,
-                                            assignees: assignees,
-                                            onMarkSubtaskDone: handleMarkSubtaskDone
-                                        })
-                                    )
-                                )
+                            )
+                        ),
+                        
+                        // Empty state
+                        chores.length === 0 && !loading && h('div', { 
+                            className: 'text-center py-12 bg-white rounded-lg shadow-sm' 
+                        },
+                            h('p', { className: 'text-gray-500' }, 
+                                'Geen taken gevonden. Klik op "Nieuwe Taak" om te beginnen.'
                             )
                         )
                     )
@@ -503,39 +589,46 @@ window.ChoresApp = window.ChoresApp || {};
                 // Modals
                 showTaskForm && h(Modal, {
                     isOpen: showTaskForm,
-                    onClose: () => setShowTaskForm(false),
+                    onClose: () => {
+                        setShowTaskForm(false);
+                        setEditingTask(null);
+                    },
                     title: editingTask ? 'Taak Bewerken' : 'Nieuwe Taak'
                 },
                     h(TaskForm, {
                         task: editingTask,
-                        assignees: assignees,
-                        onSubmit: handleTaskFormSubmit,
-                        onCancel: () => setShowTaskForm(false)
+                        users: assignees,
+                        onSave: handleTaskFormSubmit,
+                        onCancel: () => {
+                            setShowTaskForm(false);
+                            setEditingTask(null);
+                        }
                     })
                 ),
                 
                 showUserManagement && h(Modal, {
-                    isOpen: showUserManagement,
+                    isOpen: true,
                     onClose: () => setShowUserManagement(false),
-                    title: 'Gebruiker Beheer'
+                    title: 'Gebruikers Beheren'
                 },
                     h(UserManagement, {
-                        assignees: assignees,
+                        users: assignees,
                         onAddUser: handleAddUser,
                         onDeleteUser: handleDeleteUser,
-                        onClose: () => setShowUserManagement(false)
+                        onClose: () => setShowUserManagement(false),
+                        api: api
                     })
                 ),
                 
                 showThemeSettings && h(Modal, {
-                    isOpen: showThemeSettings,
+                    isOpen: true,
                     onClose: () => setShowThemeSettings(false),
                     title: 'Thema Instellingen'
                 },
                     h(ThemeSettings, {
                         currentTheme: themeSettings,
-                        onSave: handleThemeChange,
-                        onCancel: () => setShowThemeSettings(false)
+                        onSave: handleSaveTheme,
+                        onClose: () => setShowThemeSettings(false)
                     })
                 ),
                 
