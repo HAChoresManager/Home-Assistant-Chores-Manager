@@ -48,6 +48,7 @@ window.ChoresApp = window.ChoresApp || {};
             // State management
             const [chores, setChores] = useState([]);
             const [assignees, setAssignees] = useState([]);
+            const [stats, setStats] = useState({}); // Add stats state
             const [loading, setLoading] = useState(true);
             const [error, setError] = useState(null);
             const [showTaskForm, setShowTaskForm] = useState(false);
@@ -64,44 +65,41 @@ window.ChoresApp = window.ChoresApp || {};
             
             // Initialize API on component mount
             useEffect(() => {
-                const initApi = async () => {
+                async function initializeAPI() {
                     try {
-                        // Wait for ChoresAPI to be available and initialized
-                        const checkInterval = setInterval(() => {
-                            if (window.ChoresAPI && window.ChoresAPI._initialized) {
-                                clearInterval(checkInterval);
-                                setApi(window.ChoresAPI);
-                                console.log('API initialized successfully');
-                            }
-                        }, 100);
+                        console.log('Initializing Chores Dashboard App');
                         
-                        // Timeout after 5 seconds
-                        setTimeout(() => {
-                            clearInterval(checkInterval);
-                            if (!api) {
-                                setError('Failed to initialize API');
-                            }
-                        }, 5000);
+                        // Check if all dependencies are loaded
+                        if (!window.ChoresAPI) {
+                            console.error('ChoresAPI not found');
+                            return;
+                        }
+                        
+                        // Create API instance
+                        const apiInstance = new window.ChoresAPI.API();
+                        await apiInstance.initialize();
+                        
+                        console.log('API initialized successfully');
+                        setApi(apiInstance);
+                        setError(null);
+                        
                     } catch (err) {
-                        console.error('Error initializing API:', err);
-                        setError('Failed to initialize API');
+                        console.error('Failed to initialize API:', err);
+                        setError('Failed to initialize application');
                     }
-                };
+                }
                 
-                initApi();
+                initializeAPI();
             }, []);
             
             // Load data when API is ready
             useEffect(() => {
                 if (api) {
                     loadData();
-                    // Set up periodic refresh
-                    const refreshInterval = setInterval(loadData, 30000);
-                    return () => clearInterval(refreshInterval);
                 }
             }, [api]);
             
-            // Apply theme settings
+            // Apply theme changes
             useEffect(() => {
                 if (themeSettings) {
                     document.documentElement.style.setProperty('--theme-primary-color', themeSettings.primary);
@@ -120,11 +118,13 @@ window.ChoresApp = window.ChoresApp || {};
                     if (sensorData.attributes) {
                         setChores(sensorData.attributes.chores || []);
                         setAssignees(sensorData.attributes.assignees || []);
+                        setStats(sensorData.attributes.stats || {}); // Set stats from sensor data
                         setLastCompletion(sensorData.attributes.last_completion || null);
                         setThemeSettings(sensorData.attributes.theme || { primary: '#1a202c', accent: '#3b82f6' });
                     } else {
                         setChores([]);
                         setAssignees([]);
+                        setStats({});
                     }
                     
                     setError(null);
@@ -154,115 +154,85 @@ window.ChoresApp = window.ChoresApp || {};
                 }
             }, []);
             
-            // Task operations
-            const handleAddTask = useCallback(async (taskData) => {
+            // Task completion handler
+            const handleMarkDone = useCallback(async (choreId, selectedUser) => {
                 if (!api) return;
                 
                 try {
-                    await api.chores.addChore(taskData);
+                    // Set processing state
+                    setChores(prevChores => 
+                        prevChores.map(chore => 
+                            (chore.id === choreId || chore.chore_id === choreId) 
+                                ? { ...chore, isProcessing: true }
+                                : chore
+                        )
+                    );
+                    
+                    await api.chores.markComplete(choreId, selectedUser);
                     await loadData();
+                    
+                } catch (err) {
+                    handleError(err);
+                    
+                    // Remove processing state on error
+                    setChores(prevChores => 
+                        prevChores.map(chore => 
+                            (chore.id === choreId || chore.chore_id === choreId) 
+                                ? { ...chore, isProcessing: false }
+                                : chore
+                        )
+                    );
+                }
+            }, [api, loadData, handleError]);
+            
+            // Subtask completion handler
+            const handleMarkSubtaskDone = useCallback(async (choreId, subtaskIndex, selectedUser) => {
+                if (!api) return;
+                
+                try {
+                    await api.chores.completeSubtask(subtaskIndex, selectedUser);
+                    await loadData();
+                } catch (err) {
+                    handleError(err);
+                }
+            }, [api, loadData, handleError]);
+            
+            // Task form handlers
+            const handleAddTask = useCallback(() => {
+                setEditingTask(null);
+                setShowTaskForm(true);
+            }, []);
+            
+            const handleEditTask = useCallback((chore) => {
+                setEditingTask(chore);
+                setShowTaskForm(true);
+            }, []);
+            
+            const handleTaskFormSubmit = useCallback(async (taskData) => {
+                if (!api) return;
+                
+                try {
+                    if (editingTask) {
+                        await api.chores.update(editingTask.id, taskData);
+                    } else {
+                        await api.chores.create(taskData);
+                    }
+                    
                     setShowTaskForm(false);
                     setEditingTask(null);
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            const handleMarkDone = useCallback(async (choreId, assignee) => {
-                if (!api) return;
-                
-                try {
-                    await api.chores.markDone(choreId, assignee);
                     await loadData();
+                    
                 } catch (err) {
                     handleError(err);
                 }
-            }, [api, loadData, handleError]);
+            }, [api, editingTask, loadData, handleError]);
             
-            const handleResetTask = useCallback(async (choreId) => {
-                if (!api) return;
-                
-                try {
-                    await api.chores.resetChore(choreId);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            const handleDeleteTask = useCallback(async (choreId) => {
-                if (!api) return;
-                
-                try {
-                    await api.chores.deleteChore(choreId);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            const handleForceDue = useCallback(async (choreId) => {
-                if (!api) return;
-                
-                try {
-                    await api.chores.forceDue(choreId);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            const handleUpdateDescription = useCallback(async (choreId, description) => {
-                if (!api) return;
-                
-                try {
-                    await api.chores.updateDescription(choreId, description);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            // Subtask operations
-            const handleCompleteSubtask = useCallback(async (choreId, subtaskName, assignee) => {
-                if (!api) return;
-                
-                try {
-                    await api.chores.completeSubtask(choreId, subtaskName, assignee);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            const handleAddSubtask = useCallback(async (choreId, subtaskName) => {
-                if (!api) return;
-                
-                try {
-                    await api.chores.addSubtask(choreId, subtaskName);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            const handleDeleteSubtask = useCallback(async (choreId, subtaskName) => {
-                if (!api) return;
-                
-                try {
-                    await api.chores.deleteSubtask(choreId, subtaskName);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            // User operations
+            // User management handlers
             const handleAddUser = useCallback(async (userData) => {
                 if (!api) return;
                 
                 try {
-                    await api.users.addUser(userData);
+                    await api.users.add(userData.id, userData.name, userData.color, userData.avatar);
                     await loadData();
                 } catch (err) {
                     handleError(err);
@@ -273,106 +243,119 @@ window.ChoresApp = window.ChoresApp || {};
                 if (!api) return;
                 
                 try {
-                    await api.users.deleteUser(userId);
+                    await api.users.delete(userId);
                     await loadData();
                 } catch (err) {
                     handleError(err);
                 }
             }, [api, loadData, handleError]);
             
-            const handleGetHAUsers = useCallback(async () => {
-                if (!api) return [];
-                
-                try {
-                    const users = await api.users.getHAUsers();
-                    return users;
-                } catch (err) {
-                    handleError(err);
-                    return [];
-                }
-            }, [api, handleError]);
-            
-            // Theme operations
-            const handleSaveTheme = useCallback(async (theme) => {
+            // Theme settings handler
+            const handleThemeChange = useCallback(async (newTheme) => {
                 if (!api) return;
                 
                 try {
-                    await api.theme.saveTheme(theme);
-                    setThemeSettings(theme);
-                    await loadData();
+                    await api.theme.save(newTheme);
+                    setThemeSettings(newTheme);
+                    setShowThemeSettings(false);
                 } catch (err) {
                     handleError(err);
                 }
-            }, [api, loadData, handleError]);
+            }, [api, handleError]);
             
-            // Filter overdue tasks
-            const overdueTasks = chores.filter(chore => chore.is_overdue);
-            const todayTasks = chores.filter(chore => chore.due_today && !chore.is_overdue);
-            const upcomingTasks = chores.filter(chore => !chore.is_overdue && !chore.due_today);
+            // Description toggle handler
+            const handleToggleDescription = useCallback((choreId, isOpen) => {
+                if (isOpen) {
+                    const chore = chores.find(c => c.id === choreId || c.chore_id === choreId);
+                    setSelectedDescription(chore);
+                } else {
+                    setSelectedDescription(null);
+                }
+            }, [chores]);
             
-            // Render
-            if (loading && !api) {
-                return h(Loading);
+            // Task categorization
+            const overdueTasks = chores.filter(chore => {
+                if (!chore.last_done || !window.choreUtils.isToday(chore.last_done)) {
+                    return window.choreUtils.isDueOrOverdue(chore);
+                }
+                return false;
+            });
+            
+            const todayTasks = chores.filter(chore => {
+                const isCompletedToday = chore.last_done && window.choreUtils.isToday(chore.last_done);
+                if (!isCompletedToday) {
+                    return window.choreUtils.isDueToday(chore);
+                }
+                return false;
+            });
+            
+            const upcomingTasks = chores.filter(chore => {
+                const isCompletedToday = chore.last_done && window.choreUtils.isToday(chore.last_done);
+                const isDueOrOverdue = window.choreUtils.isDueOrOverdue(chore);
+                const isDueToday = window.choreUtils.isDueToday(chore);
+                return !isCompletedToday && !isDueOrOverdue && !isDueToday;
+            });
+            
+            const completedTasks = chores.filter(chore => 
+                chore.last_done && window.choreUtils.isToday(chore.last_done)
+            );
+            
+            // If still loading API, show loading state
+            if (!api) {
+                return h(Loading, { message: "Loading application..." });
             }
             
-            if (hasAuthError) {
-                return h('div', { className: 'min-h-screen bg-gray-50 p-4' },
-                    h('div', { className: 'max-w-2xl mx-auto' },
-                        h(ErrorMessage, {
-                            title: 'Authentication Error',
-                            message: 'Unable to connect to Home Assistant. Please check your authentication token.',
-                            onRetry: loadData
-                        })
-                    )
-                );
-            }
-            
-            return h('div', { className: 'min-h-screen bg-gray-50' },
+            // Main render
+            return h('div', { className: 'app-container' },
                 // Header
-                h('header', { className: 'bg-white shadow-sm' },
-                    h('div', { className: 'px-4 py-4 sm:px-6 lg:px-8' },
-                        h('div', { className: 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4' },
-                            h('div', { className: 'flex items-center gap-3' },
-                                h('div', { className: 'w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center' },
-                                    h('svg', { className: 'w-6 h-6 text-white', fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor' },
-                                        h('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' })
-                                    )
-                                ),
-                                h('div', null,
-                                    h('h1', { className: 'text-2xl font-bold text-gray-900' }, 'Taken Dashboard'),
-                                    lastCompletion && h('p', { className: 'text-sm text-gray-500' }, 
-                                        `Laatste taak: ${lastCompletion.chore_name} door ${lastCompletion.assigned_to}`
-                                    )
-                                )
-                            ),
-                            h('div', { className: 'flex gap-2' },
+                h('div', { className: 'bg-white shadow-sm border-b mb-6' },
+                    h('div', { className: 'container mx-auto px-4 py-4' },
+                        h('div', { className: 'flex items-center justify-between' },
+                            h('h1', { className: 'text-2xl font-bold text-gray-900' }, 'Taken Dashboard'),
+                            h('div', { className: 'flex space-x-2' },
                                 h('button', {
-                                    onClick: () => setShowThemeSettings(true),
-                                    className: 'px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors'
-                                }, '🎨 Thema'),
+                                    className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
+                                    onClick: handleAddTask
+                                }, 'Nieuwe Taak'),
                                 h('button', {
-                                    onClick: () => setShowUserManagement(true),
-                                    className: 'px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors'
-                                }, '👥 Gebruikers'),
+                                    className: 'px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600',
+                                    onClick: () => setShowUserManagement(true)
+                                }, 'Gebruikers'),
                                 h('button', {
-                                    onClick: () => { setShowTaskForm(true); setEditingTask(null); },
-                                    className: 'px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors'
-                                }, '+ Nieuwe Taak')
+                                    className: 'px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600',
+                                    onClick: () => setShowThemeSettings(true)
+                                }, 'Thema'),
+                                h('button', {
+                                    className: 'px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600',
+                                    onClick: loadData
+                                }, 'Vernieuw')
                             )
                         )
                     )
                 ),
                 
-                // Error message
-                error && h('div', { className: 'px-4 py-2' },
-                    h(Alert, { type: 'error', onClose: () => setError(null) }, error)
-                ),
-                
                 // Main content
-                h('main', { className: 'px-4 py-6 sm:px-6 lg:px-8' },
-                    h('div', { className: 'max-w-7xl mx-auto' },
-                        // Stats cards
-                        h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 mb-6' },
+                h('div', { className: 'container mx-auto px-4' },
+                    // Error display
+                    error && h(ErrorMessage, { 
+                        message: error, 
+                        onRetry: hasAuthError ? null : loadData 
+                    }),
+                    
+                    // Last completion notification
+                    lastCompletion && h(Alert, {
+                        type: 'success',
+                        message: `${lastCompletion.chore_name} voltooid door ${lastCompletion.done_by}`,
+                        onClose: () => setLastCompletion(null)
+                    }),
+                    
+                    // Loading state
+                    loading && h(Loading, { message: "Laden..." }),
+                    
+                    // Content when not loading
+                    !loading && h('div', null,
+                        // Overview stats
+                        h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6' },
                             h(StatsCard, {
                                 title: 'Achterstallig',
                                 value: overdueTasks.length,
@@ -393,41 +376,46 @@ window.ChoresApp = window.ChoresApp || {};
                             })
                         ),
                         
-                        // User stats
-                        assignees.length > 0 && h('div', { className: 'mb-6' },
+                        // User stats - FIXED SECTION
+                        assignees.length > 0 && Object.keys(stats).length > 0 && h('div', { className: 'mb-6' },
                             h('h2', { className: 'text-lg font-semibold mb-4' }, 'Gebruiker Statistieken'),
                             h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' },
-                                assignees.map(assignee => 
-                                    h(UserStatsCard, {
-                                        key: assignee.id,
-                                        assignee: assignee,
-                                        chores: chores
-                                    })
-                                )
+                                assignees.map(assignee => {
+                                    const assigneeName = assignee.name || assignee.id;
+                                    const assigneeStats = stats[assigneeName] || {
+                                        tasks_completed: 0,
+                                        total_tasks: 0,
+                                        time_completed: 0,
+                                        total_time: 0,
+                                        streak: 0
+                                    };
+                                    
+                                    return h(UserStatsCard, {
+                                        key: assignee.id || assignee.name,
+                                        assignee: assigneeName,  // Pass as string
+                                        stats: assigneeStats,    // Pass actual stats object
+                                        assignees: assignees     // Pass full assignees array
+                                    });
+                                })
                             )
                         ),
                         
                         // Task sections
-                        loading ? h(Loading) : h('div', { className: 'space-y-6' },
+                        loading ? h(Loading, { message: "Laden..." }) : h('div', { className: 'space-y-6' },
                             // Overdue tasks
                             overdueTasks.length > 0 && h('div', null,
-                                h('h2', { className: 'text-lg font-semibold mb-4 text-red-600' }, 'Achterstallige Taken'),
+                                h('h2', { className: 'text-xl font-semibold mb-4 text-red-600' }, 
+                                    `🚨 Achterstallige Taken (${overdueTasks.length})`),
                                 h('div', { className: 'grid gap-4' },
-                                    overdueTasks.map(chore => 
+                                    overdueTasks.map(chore =>
                                         h(TaskCard, {
-                                            key: chore.id,
+                                            key: chore.id || chore.chore_id,
                                             chore: chore,
-                                            assignees: assignees,
                                             onMarkDone: handleMarkDone,
-                                            onEdit: (task) => { setEditingTask(task); setShowTaskForm(true); },
-                                            onDelete: handleDeleteTask,
-                                            onReset: handleResetTask,
-                                            onForceDue: handleForceDue,
-                                            onViewDescription: setSelectedDescription,
-                                            onUpdateDescription: handleUpdateDescription,
-                                            onCompleteSubtask: handleCompleteSubtask,
-                                            onAddSubtask: handleAddSubtask,
-                                            onDeleteSubtask: handleDeleteSubtask
+                                            onEdit: handleEditTask,
+                                            onToggleDescription: handleToggleDescription,
+                                            assignees: assignees,
+                                            onMarkSubtaskDone: handleMarkSubtaskDone
                                         })
                                     )
                                 )
@@ -435,23 +423,18 @@ window.ChoresApp = window.ChoresApp || {};
                             
                             // Today's tasks
                             todayTasks.length > 0 && h('div', null,
-                                h('h2', { className: 'text-lg font-semibold mb-4 text-yellow-600' }, 'Vandaag Te Doen'),
+                                h('h2', { className: 'text-xl font-semibold mb-4 text-orange-600' }, 
+                                    `📅 Vandaag (${todayTasks.length})`),
                                 h('div', { className: 'grid gap-4' },
-                                    todayTasks.map(chore => 
+                                    todayTasks.map(chore =>
                                         h(TaskCard, {
-                                            key: chore.id,
+                                            key: chore.id || chore.chore_id,
                                             chore: chore,
-                                            assignees: assignees,
                                             onMarkDone: handleMarkDone,
-                                            onEdit: (task) => { setEditingTask(task); setShowTaskForm(true); },
-                                            onDelete: handleDeleteTask,
-                                            onReset: handleResetTask,
-                                            onForceDue: handleForceDue,
-                                            onViewDescription: setSelectedDescription,
-                                            onUpdateDescription: handleUpdateDescription,
-                                            onCompleteSubtask: handleCompleteSubtask,
-                                            onAddSubtask: handleAddSubtask,
-                                            onDeleteSubtask: handleDeleteSubtask
+                                            onEdit: handleEditTask,
+                                            onToggleDescription: handleToggleDescription,
+                                            assignees: assignees,
+                                            onMarkSubtaskDone: handleMarkSubtaskDone
                                         })
                                     )
                                 )
@@ -459,126 +442,102 @@ window.ChoresApp = window.ChoresApp || {};
                             
                             // Upcoming tasks
                             upcomingTasks.length > 0 && h('div', null,
-                                h('h2', { className: 'text-lg font-semibold mb-4 text-green-600' }, 'Aankomende Taken'),
+                                h('h2', { className: 'text-xl font-semibold mb-4 text-blue-600' }, 
+                                    `📋 Aankomend (${upcomingTasks.length})`),
                                 h('div', { className: 'grid gap-4' },
-                                    upcomingTasks.map(chore => 
+                                    upcomingTasks.map(chore =>
                                         h(TaskCard, {
-                                            key: chore.id,
+                                            key: chore.id || chore.chore_id,
                                             chore: chore,
-                                            assignees: assignees,
                                             onMarkDone: handleMarkDone,
-                                            onEdit: (task) => { setEditingTask(task); setShowTaskForm(true); },
-                                            onDelete: handleDeleteTask,
-                                            onReset: handleResetTask,
-                                            onForceDue: handleForceDue,
-                                            onViewDescription: setSelectedDescription,
-                                            onUpdateDescription: handleUpdateDescription,
-                                            onCompleteSubtask: handleCompleteSubtask,
-                                            onAddSubtask: handleAddSubtask,
-                                            onDeleteSubtask: handleDeleteSubtask
+                                            onEdit: handleEditTask,
+                                            onToggleDescription: handleToggleDescription,
+                                            assignees: assignees,
+                                            onMarkSubtaskDone: handleMarkSubtaskDone
                                         })
                                     )
                                 )
                             ),
                             
-                            // No tasks
-                            chores.length === 0 && !loading && h('div', { className: 'text-center py-12' },
-                                h('p', { className: 'text-gray-500' }, 'Geen taken gevonden. Klik op "Nieuwe Taak" om te beginnen.')
+                            // Completed tasks
+                            completedTasks.length > 0 && h('div', null,
+                                h('h2', { className: 'text-xl font-semibold mb-4 text-green-600' }, 
+                                    `✅ Voltooid Vandaag (${completedTasks.length})`),
+                                h('div', { className: 'grid gap-4' },
+                                    completedTasks.map(chore =>
+                                        h(TaskCard, {
+                                            key: chore.id || chore.chore_id,
+                                            chore: chore,
+                                            onMarkDone: handleMarkDone,
+                                            onEdit: handleEditTask,
+                                            onToggleDescription: handleToggleDescription,
+                                            assignees: assignees,
+                                            onMarkSubtaskDone: handleMarkSubtaskDone
+                                        })
+                                    )
+                                )
                             )
                         )
                     )
                 ),
                 
                 // Modals
-                showTaskForm && h(Modal, { onClose: () => { setShowTaskForm(false); setEditingTask(null); } },
+                showTaskForm && h(Modal, {
+                    isOpen: showTaskForm,
+                    onClose: () => setShowTaskForm(false),
+                    title: editingTask ? 'Taak Bewerken' : 'Nieuwe Taak'
+                },
                     h(TaskForm, {
                         task: editingTask,
                         assignees: assignees,
-                        onSave: handleAddTask,
-                        onCancel: () => { setShowTaskForm(false); setEditingTask(null); }
+                        onSubmit: handleTaskFormSubmit,
+                        onCancel: () => setShowTaskForm(false)
                     })
                 ),
                 
-                showUserManagement && h(Modal, { onClose: () => setShowUserManagement(false) },
+                showUserManagement && h(Modal, {
+                    isOpen: showUserManagement,
+                    onClose: () => setShowUserManagement(false),
+                    title: 'Gebruiker Beheer'
+                },
                     h(UserManagement, {
                         assignees: assignees,
                         onAddUser: handleAddUser,
                         onDeleteUser: handleDeleteUser,
-                        onGetHAUsers: handleGetHAUsers,
                         onClose: () => setShowUserManagement(false)
                     })
                 ),
                 
-                showThemeSettings && h(Modal, { onClose: () => setShowThemeSettings(false) },
+                showThemeSettings && h(Modal, {
+                    isOpen: showThemeSettings,
+                    onClose: () => setShowThemeSettings(false),
+                    title: 'Thema Instellingen'
+                },
                     h(ThemeSettings, {
                         currentTheme: themeSettings,
-                        onSave: handleSaveTheme,
-                        onClose: () => setShowThemeSettings(false)
+                        onSave: handleThemeChange,
+                        onCancel: () => setShowThemeSettings(false)
                     })
                 ),
                 
-                selectedDescription && h(Modal, { onClose: () => setSelectedDescription(null) },
-                    h('div', { className: 'p-6' },
-                        h('h3', { className: 'text-lg font-semibold mb-4' }, 'Taak Beschrijving'),
-                        h('div', { className: 'prose max-w-none' },
-                            h('p', { className: 'whitespace-pre-wrap' }, selectedDescription.description || 'Geen beschrijving beschikbaar')
-                        ),
-                        h('button', {
-                            onClick: () => setSelectedDescription(null),
-                            className: 'mt-4 px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600'
-                        }, 'Sluiten')
-                    )
+                selectedDescription && h(Modal, {
+                    isOpen: !!selectedDescription,
+                    onClose: () => setSelectedDescription(null),
+                    title: `Beschrijving: ${selectedDescription.name}`
+                },
+                    h(TaskDescription, {
+                        description: selectedDescription.description,
+                        onClose: () => setSelectedDescription(null)
+                    })
                 )
             );
         }
         
-        return App;
+        return h(App);
     }
     
-    // Initialize the app
-    function initApp() {
-        console.log('Initializing Chores Dashboard App');
-        
-        // Check dependencies
-        if (!window.React || !window.ReactDOM) {
-            console.error('React not loaded');
-            return;
-        }
-        
-        if (!window.choreComponents) {
-            console.error('Components not loaded');
-            return;
-        }
-        
-        // Get root element
-        const root = document.getElementById('root');
-        if (!root) {
-            console.error('Root element not found');
-            return;
-        }
-        
-        // Create React root and render app
-        const reactRoot = ReactDOM.createRoot(root);
-        const App = ChoresApp();
-        reactRoot.render(React.createElement(App));
-        
-        console.log('Chores Dashboard App initialized successfully');
-    }
+    // Export for global access
+    window.ChoresApp.ChoresApp = ChoresApp;
     
-    // Export
-    window.ChoresApp = {
-        ChoresApp: ChoresApp,
-        initApp: initApp
-    };
-    
-    console.log('App component loaded successfully');
-    
-    // Auto-initialize if dependencies are ready
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        setTimeout(() => {
-            if (window.choreComponents && window.React && window.ReactDOM) {
-                console.log('App loaded successfully (on event)');
-            }
-        }, 100);
-    }
+    console.log('Chores Dashboard App initialized successfully');
 })();
