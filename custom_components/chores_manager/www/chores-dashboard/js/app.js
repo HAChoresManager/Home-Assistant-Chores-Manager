@@ -48,14 +48,19 @@ window.ChoresApp = window.ChoresApp || {};
             // State management
             const [chores, setChores] = useState([]);
             const [assignees, setAssignees] = useState([]);
-            const [stats, setStats] = useState({}); // Add stats state
+            const [stats, setStats] = useState({});
             const [loading, setLoading] = useState(true);
             const [error, setError] = useState(null);
             const [showTaskForm, setShowTaskForm] = useState(false);
             const [editingTask, setEditingTask] = useState(null);
             const [showUserManagement, setShowUserManagement] = useState(false);
             const [lastCompletion, setLastCompletion] = useState(null);
-            const [themeSettings, setThemeSettings] = useState({ primary: '#1a202c', accent: '#3b82f6' });
+            const [themeSettings, setThemeSettings] = useState({
+                backgroundColor: '#ffffff',
+                cardColor: '#f8f8f8', 
+                primaryTextColor: '#000000',
+                secondaryTextColor: '#333333'
+            });
             const [showThemeSettings, setShowThemeSettings] = useState(false);
             const [selectedDescription, setSelectedDescription] = useState(null);
             const [hasAuthError, setHasAuthError] = useState(false);
@@ -75,9 +80,13 @@ window.ChoresApp = window.ChoresApp || {};
                             return;
                         }
                         
-                        // Create API instance
-                        const apiInstance = new window.ChoresAPI.API();
-                        await apiInstance.initialize();
+                        // Use the API instance directly (it's already initialized)
+                        const apiInstance = window.ChoresAPI;
+                        
+                        // Initialize if it has an initialize method
+                        if (typeof apiInstance.initialize === 'function') {
+                            await apiInstance.initialize();
+                        }
                         
                         console.log('API initialized successfully');
                         setApi(apiInstance);
@@ -102,8 +111,16 @@ window.ChoresApp = window.ChoresApp || {};
             // Apply theme changes
             useEffect(() => {
                 if (themeSettings) {
-                    document.documentElement.style.setProperty('--theme-primary-color', themeSettings.primary);
-                    document.documentElement.style.setProperty('--theme-accent-color', themeSettings.accent);
+                    // Apply theme CSS variables
+                    const root = document.documentElement;
+                    root.style.setProperty('--theme-background', themeSettings.backgroundColor || '#ffffff');
+                    root.style.setProperty('--theme-card-color', themeSettings.cardColor || '#f8f8f8');
+                    root.style.setProperty('--theme-primary-text', themeSettings.primaryTextColor || '#000000');
+                    root.style.setProperty('--theme-secondary-text', themeSettings.secondaryTextColor || '#333333');
+                    
+                    // Apply to body for immediate effect
+                    document.body.style.backgroundColor = themeSettings.backgroundColor || '#ffffff';
+                    document.body.style.color = themeSettings.primaryTextColor || '#000000';
                 }
             }, [themeSettings]);
             
@@ -113,14 +130,19 @@ window.ChoresApp = window.ChoresApp || {};
                 
                 try {
                     setLoading(true);
-                    const sensorData = await api.getSensorState();  // Fixed: was api.sensor.getState()
+                    const sensorData = await api.getSensorState();
                     
                     if (sensorData.attributes) {
-                        setChores(sensorData.attributes.chores || []);
+                        setChores(sensorData.attributes.overdue_tasks || []);
                         setAssignees(sensorData.attributes.assignees || []);
-                        setStats(sensorData.attributes.stats || {}); // Set stats from sensor data
+                        setStats(sensorData.attributes.stats || {});
                         setLastCompletion(sensorData.attributes.last_completion || null);
-                        setThemeSettings(sensorData.attributes.theme || { primary: '#1a202c', accent: '#3b82f6' });
+                        setThemeSettings(sensorData.attributes.theme_settings || { 
+                            backgroundColor: '#ffffff',
+                            cardColor: '#f8f8f8',
+                            primaryTextColor: '#000000',
+                            secondaryTextColor: '#333333'
+                        });
                     } else {
                         setChores([]);
                         setAssignees([]);
@@ -168,7 +190,7 @@ window.ChoresApp = window.ChoresApp || {};
                         )
                     );
                     
-                    await api.chores.markComplete(choreId, selectedUser);
+                    await api.chores.markDone(choreId, selectedUser);
                     await loadData();
                     
                 } catch (err) {
@@ -212,11 +234,8 @@ window.ChoresApp = window.ChoresApp || {};
                 if (!api) return;
                 
                 try {
-                    if (editingTask) {
-                        await api.chores.update(editingTask.id, taskData);
-                    } else {
-                        await api.chores.create(taskData);
-                    }
+                    // Use addChore for both create and update
+                    await api.chores.addChore(taskData);
                     
                     setShowTaskForm(false);
                     setEditingTask(null);
@@ -232,7 +251,7 @@ window.ChoresApp = window.ChoresApp || {};
                 if (!api) return;
                 
                 try {
-                    await api.users.add(userData.id, userData.name, userData.color, userData.avatar);
+                    await api.users.addUser(userData);
                     await loadData();
                 } catch (err) {
                     handleError(err);
@@ -243,7 +262,7 @@ window.ChoresApp = window.ChoresApp || {};
                 if (!api) return;
                 
                 try {
-                    await api.users.delete(userId);
+                    await api.users.deleteUser(userId);
                     await loadData();
                 } catch (err) {
                     handleError(err);
@@ -255,7 +274,7 @@ window.ChoresApp = window.ChoresApp || {};
                 if (!api) return;
                 
                 try {
-                    await api.theme.save(newTheme);
+                    await api.theme.saveTheme(newTheme);
                     setThemeSettings(newTheme);
                     setShowThemeSettings(false);
                 } catch (err) {
@@ -376,7 +395,7 @@ window.ChoresApp = window.ChoresApp || {};
                             })
                         ),
                         
-                        // User stats - FIXED SECTION
+                        // User stats
                         assignees.length > 0 && Object.keys(stats).length > 0 && h('div', { className: 'mb-6' },
                             h('h2', { className: 'text-lg font-semibold mb-4' }, 'Gebruiker Statistieken'),
                             h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' },
@@ -392,9 +411,9 @@ window.ChoresApp = window.ChoresApp || {};
                                     
                                     return h(UserStatsCard, {
                                         key: assignee.id || assignee.name,
-                                        assignee: assigneeName,  // Pass as string
-                                        stats: assigneeStats,    // Pass actual stats object
-                                        assignees: assignees     // Pass full assignees array
+                                        assignee: assigneeName,
+                                        stats: assigneeStats,
+                                        assignees: assignees
                                     });
                                 })
                             )
@@ -538,6 +557,61 @@ window.ChoresApp = window.ChoresApp || {};
     
     // Export for global access
     window.ChoresApp.ChoresApp = ChoresApp;
+    
+    /**
+     * Initialize the React application
+     * This function is called from index.html once all dependencies are loaded
+     */
+    window.ChoresApp.initApp = function() {
+        console.log('Initializing Chores Dashboard React App...');
+        
+        try {
+            // Get the root element
+            const rootElement = document.getElementById('root');
+            if (!rootElement) {
+                throw new Error('Root element not found');
+            }
+            
+            // Check if ReactDOM is available
+            if (!window.ReactDOM) {
+                throw new Error('ReactDOM not available');
+            }
+            
+            // Create and render the app
+            const app = React.createElement(ChoresApp);
+            
+            // Use ReactDOM.render for React 18 compatibility
+            if (window.ReactDOM.createRoot) {
+                // React 18 way
+                const root = window.ReactDOM.createRoot(rootElement);
+                root.render(app);
+            } else {
+                // React 17 way (fallback)
+                window.ReactDOM.render(app, rootElement);
+            }
+            
+            console.log('Chores Dashboard initialized successfully');
+            
+        } catch (error) {
+            console.error('Failed to initialize React app:', error);
+            
+            // Show error in the root element
+            const rootElement = document.getElementById('root');
+            if (rootElement) {
+                rootElement.innerHTML = `
+                    <div class="error-container">
+                        <h2>Initialization Error</h2>
+                        <p>Failed to initialize the React application: ${error.message}</p>
+                        <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">
+                            Reload Page
+                        </button>
+                    </div>
+                `;
+            }
+            
+            throw error;
+        }
+    };
     
     console.log('Chores Dashboard App initialized successfully');
 })();
