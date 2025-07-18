@@ -16,51 +16,6 @@ window.ChoresAPI = window.ChoresAPI || {};
                window.ChoresAPI.ENDPOINTS;
     }
     
-    // Main API class that combines all API modules
-    class API {
-        constructor() {
-            // Only create instances if classes are available
-            if (!checkAPIDependencies()) {
-                throw new Error('API dependencies not loaded');
-            }
-            
-            this.chores = new window.ChoresAPI.ChoresAPI();
-            this.users = new window.ChoresAPI.UsersAPI();
-            this.theme = new window.ChoresAPI.ThemeAPI();
-            
-            // Expose getSensorState from base API
-            this.getSensorState = this.chores.getSensorState.bind(this.chores);
-            
-            // Add backward compatibility for sensor.getState()
-            this.sensor = {
-                getState: this.getSensorState.bind(this)
-            };
-            
-            // Mark as initialized
-            this._initialized = true;
-        }
-        
-        /**
-         * Initialize the API
-         */
-        async initialize() {
-            // Check authentication - use BaseAPI method through chores instance
-            const token = this.chores.getAuthToken ? this.chores.getAuthToken() : null;
-            if (!token) {
-                console.warn('API initialized without authentication token');
-            }
-            
-            return true;
-        }
-        
-        /**
-         * Get authentication token (delegate to BaseAPI)
-         */
-        getAuthToken() {
-            return this.chores.getAuthToken ? this.chores.getAuthToken() : null;
-        }
-    }
-    
     // Initialize API when dependencies are ready
     function initializeAPI() {
         if (!checkAPIDependencies()) {
@@ -70,43 +25,81 @@ window.ChoresAPI = window.ChoresAPI || {};
         }
         
         try {
-            // Save references before creating instance
+            // Save references before creating instances
             const ENDPOINTS = window.ChoresAPI.ENDPOINTS;
             const BaseAPI = window.ChoresAPI.BaseAPI;
             const ChoresAPIClass = window.ChoresAPI.ChoresAPI;
             const UsersAPI = window.ChoresAPI.UsersAPI;
             const ThemeAPI = window.ChoresAPI.ThemeAPI;
             
-            // Create singleton instance
-            const apiInstance = new API();
+            // Create instances
+            const choresInstance = new ChoresAPIClass();
+            const usersInstance = new UsersAPI();
+            const themeInstance = new ThemeAPI();
             
-            // Create a new namespace that includes both the instance and the classes
-            const ChoresAPINamespace = {
-                // The main API instance (what app.js will use)
-                instance: apiInstance,
+            // Create a unified API object that exposes all methods
+            const api = {
+                // Store instances
+                chores: choresInstance,
+                users: usersInstance,
+                theme: themeInstance,
                 
-                // Preserve all the class definitions
+                // Expose getSensorState directly from the chores instance (it inherits from BaseAPI)
+                getSensorState: async function() {
+                    // Call the getSensorState method from the BaseAPI through chores instance
+                    if (typeof choresInstance.getSensorState === 'function') {
+                        return await choresInstance.getSensorState();
+                    } else {
+                        // Fallback to using the base API directly
+                        const baseInstance = new BaseAPI();
+                        return await baseInstance.getSensorState();
+                    }
+                },
+                
+                // Add backward compatibility for sensor.getState()
+                sensor: {
+                    getState: async function() {
+                        return await choresInstance.getSensorState();
+                    }
+                },
+                
+                // Initialize method
+                initialize: async function() {
+                    // Check authentication
+                    const token = choresInstance.getAuthToken ? choresInstance.getAuthToken() : null;
+                    if (!token) {
+                        console.warn('API initialized without authentication token');
+                    }
+                    return true;
+                },
+                
+                // Get auth token
+                getAuthToken: function() {
+                    return choresInstance.getAuthToken ? choresInstance.getAuthToken() : null;
+                }
+            };
+            
+            // Replace window.ChoresAPI with the new API object while preserving class definitions
+            window.ChoresAPI = {
+                // The main API object (what app.js will use)
+                ...api,
+                
+                // Preserve all the class definitions and constants
                 ENDPOINTS: ENDPOINTS,
                 BaseAPI: BaseAPI,
                 ChoresAPI: ChoresAPIClass,
                 UsersAPI: UsersAPI,
-                ThemeAPI: ThemeAPI,
-                API: API,
-                
-                // Expose instance methods at the root level for backward compatibility
-                chores: apiInstance.chores,
-                users: apiInstance.users,
-                theme: apiInstance.theme,
-                getSensorState: apiInstance.getSensorState.bind(apiInstance),
-                sensor: apiInstance.sensor,
-                initialize: apiInstance.initialize.bind(apiInstance),
-                getAuthToken: apiInstance.getAuthToken.bind(apiInstance)
+                ThemeAPI: ThemeAPI
             };
             
-            // Replace window.ChoresAPI with the new namespace
-            window.ChoresAPI = ChoresAPINamespace;
-            
             console.log('ChoresAPI initialized successfully with endpoints:', Object.keys(ENDPOINTS || {}));
+            
+            // Verify getSensorState is available
+            if (typeof window.ChoresAPI.getSensorState === 'function') {
+                console.log('getSensorState method confirmed available');
+            } else {
+                console.error('getSensorState method not available after initialization');
+            }
             
             // Dispatch event to signal API is ready
             window.dispatchEvent(new CustomEvent('chores-api-ready'));
