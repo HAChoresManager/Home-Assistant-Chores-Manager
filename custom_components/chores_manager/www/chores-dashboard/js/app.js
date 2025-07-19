@@ -653,7 +653,7 @@ window.ChoresApp = window.ChoresApp || {};
     
     /**
      * Initialize the React application
-     * This function is called from index.html once all dependencies are loaded
+     * FIXED VERSION - Only this function updated to fix React Error #130
      */
     window.ChoresApp.initApp = function() {
         console.log('Initializing Chores Dashboard React App...');
@@ -670,17 +670,50 @@ window.ChoresApp = window.ChoresApp || {};
                 throw new Error('ReactDOM not available');
             }
             
-            // Create and render the app
-            const app = React.createElement(ChoresApp);
+            // Create and render the app with error boundary
+            const AppWithErrorBoundary = React.createElement(
+                class ErrorBoundary extends React.Component {
+                    constructor(props) {
+                        super(props);
+                        this.state = { hasError: false, error: null };
+                    }
+                    
+                    static getDerivedStateFromError(error) {
+                        return { hasError: true, error };
+                    }
+                    
+                    componentDidCatch(error, errorInfo) {
+                        console.error('React Error Boundary caught an error:', error, errorInfo);
+                    }
+                    
+                    render() {
+                        if (this.state.hasError) {
+                            return React.createElement('div', { className: 'error-container', style: { padding: '20px', textAlign: 'center' } },
+                                React.createElement('h2', null, 'Dashboard Error'),
+                                React.createElement('p', null, `Error: ${this.state.error?.message || 'Unknown error'}`),
+                                React.createElement('pre', { style: { textAlign: 'left', background: '#f5f5f5', padding: '10px', borderRadius: '4px' } }, this.state.error?.stack || ''),
+                                React.createElement('button', {
+                                    onClick: () => window.location.reload(),
+                                    style: { marginTop: '10px', padding: '5px 10px' }
+                                }, 'Reload Page')
+                            );
+                        }
+                        return React.createElement(ChoresApp);
+                    }
+                }
+            );
             
-            // Use ReactDOM.render for React 18 compatibility
+            // Clear any existing content
+            rootElement.innerHTML = '';
+            
+            // Use React 18 createRoot if available, otherwise fallback to React 17
             if (window.ReactDOM.createRoot) {
-                // React 18 way
+                console.log('Using React 18 createRoot API...');
                 const root = window.ReactDOM.createRoot(rootElement);
-                root.render(app);
+                root.render(AppWithErrorBoundary);
             } else {
-                // React 17 way (fallback)
-                window.ReactDOM.render(app, rootElement);
+                console.log('Using React 17 render API...');
+                window.ReactDOM.render(AppWithErrorBoundary, rootElement);
             }
             
             console.log('Chores Dashboard initialized successfully');
@@ -688,13 +721,14 @@ window.ChoresApp = window.ChoresApp || {};
         } catch (error) {
             console.error('Failed to initialize React app:', error);
             
-            // Show error in the root element
+            // Show error in the root element as fallback
             const rootElement = document.getElementById('root');
             if (rootElement) {
                 rootElement.innerHTML = `
-                    <div class="error-container">
+                    <div class="error-container" style="padding: 20px; text-align: center;">
                         <h2>Initialization Error</h2>
                         <p>Failed to initialize the React application: ${error.message}</p>
+                        <pre style="text-align: left; background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px;">${error.stack || ''}</pre>
                         <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">
                             Reload Page
                         </button>
