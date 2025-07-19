@@ -193,7 +193,7 @@
             console.log('DOM loaded, waiting for dependencies...');
 
             let initAttempts = 0;
-            const maxAttempts = 50; // 5 seconds timeout
+            const maxAttempts = 100; // Increased timeout for slower connections
             
             function checkDependenciesAndInit() {
                 initAttempts++;
@@ -212,39 +212,54 @@
                 if (missing.length === 0) {
                     console.log('All dependencies loaded, initializing app...');
                     try {
-                        window.ChoresApp.initApp();
+                        // Add small delay to ensure DOM is fully ready
+                        setTimeout(() => {
+                            window.ChoresApp.initApp();
+                        }, 50);
                     } catch (error) {
                         console.error('Error initializing app:', error);
-                        document.getElementById('root').innerHTML = `
-                            <div class="error-container">
-                                <h2>Initialization Error</h2>
-                                <p>Failed to initialize the dashboard: ${error.message}</p>
-                                <pre>${error.stack}</pre>
-                                <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
-                            </div>`;
+                        const rootElement = document.getElementById('root');
+                        if (rootElement) {
+                            rootElement.innerHTML = `
+                                <div class="error-container" style="padding: 20px; text-align: center;">
+                                    <h2>Initialization Error</h2>
+                                    <p>Failed to initialize the dashboard: ${error.message}</p>
+                                    <pre style="text-align: left; background: #f5f5f5; padding: 10px; border-radius: 4px;">${error.stack}</pre>
+                                    <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
+                                </div>`;
+                        }
                     }
                 } else if (initAttempts < maxAttempts) {
                     console.log(`Attempt ${initAttempts}/${maxAttempts} - Waiting for dependencies:`, missing);
                     setTimeout(checkDependenciesAndInit, 100);
                 } else {
                     console.error(`Failed to load dependencies after ${maxAttempts} attempts; missing:`, missing);
-                    document.getElementById('root').innerHTML = `
-                        <div class="error-container">
-                            <h2>Loading Error</h2>
-                            <p>Failed to load required dependencies.</p>
-                            <p>Missing: ${missing.join(', ')}</p>
-                            <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
-                        </div>`;
+                    const rootElement = document.getElementById('root');
+                    if (rootElement) {
+                        rootElement.innerHTML = `
+                            <div class="error-container" style="padding: 20px; text-align: center;">
+                                <h2>Loading Error</h2>
+                                <p>Failed to load required dependencies after ${maxAttempts} attempts.</p>
+                                <p>Missing: ${missing.join(', ')}</p>
+                                <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
+                            </div>`;
+                    }
                 }
             }
 
             // Start checking after a short delay to allow scripts to load
-            setTimeout(checkDependenciesAndInit, 100);
+            setTimeout(checkDependenciesAndInit, 200); // Increased initial delay
         });
 
         // Add event listener for components ready
         window.addEventListener('componentsReady', function() {
             console.log('Components ready event received');
+        });
+        
+        // Enhanced error handling for unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Unhandled promise rejection:', event.reason);
+            event.preventDefault(); // Prevent default browser behavior
         });
     </script>
 </body>
