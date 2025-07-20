@@ -1,14 +1,19 @@
-/**
+h('div', { className: "flex justify-end space-x-2 mt-4" },
+                    h('button', {
+                        onClick: onClose,
+                        className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                    }, "Sluiten")
+                )/**
  * Form components for the Chores Manager
- * Includes TaskForm, UserForm, and form-related utilities
+ * This module contains all form-related components
  */
 
 (function() {
     'use strict';
 
     // Check dependencies
-    if (!window.React || !window.choreUtils) {
-        console.error('Form components require React and choreUtils');
+    if (!window.React) {
+        console.error('Form components require React');
         return;
     }
 
@@ -18,29 +23,45 @@
      * Icon selector component
      */
     const IconSelector = ({ value, onChange }) => {
+        const icons = [
+            '🧹', '🧽', '🚿', '🛁', '🚽', '🪣',
+            '🧻', '🧴', '🧯', '🪟', '🛏️', '🛋️',
+            '🪑', '🚪', '🪜', '🧺', '👕', '🩳',
+            '🧦', '🥾', '🍽️', '🥄', '🥢', '🍳',
+            '🌿', '🌱', '🌾', '🌻', '💡', '🔌',
+            '🔋', '🔧', '🔨', '🪛', '🗑️', '📦',
+            '📋', '✅', '📅', '⏰', '🎯', '💼'
+        ];
+
         const [showPicker, setShowPicker] = React.useState(false);
-        const icons = ['📋', '🧹', '🍽️', '🧺', '🛁', '🚿', '🪟', '🗑️', '📦', '🧽', '🧴', '🪣'];
 
         return h('div', { className: "relative" },
             h('button', {
                 type: "button",
-                className: "px-3 py-2 border rounded flex items-center justify-center text-2xl hover:bg-gray-50",
-                onClick: () => setShowPicker(!showPicker)
-            }, value || '📋'),
+                onClick: () => setShowPicker(!showPicker),
+                className: "w-full p-2 border rounded-md flex items-center justify-between"
+            },
+                h('span', { className: "text-2xl" }, value || '📋'),
+                h('span', { className: "text-gray-400" }, "▼")
+            ),
 
             showPicker && h('div', {
-                className: "absolute z-10 mt-1 p-2 bg-white border rounded shadow-lg grid grid-cols-4 gap-2"
+                className: "absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg p-2"
             },
-                icons.map(icon =>
-                    h('button', {
-                        key: icon,
-                        type: "button",
-                        className: "p-2 hover:bg-gray-100 rounded text-2xl",
-                        onClick: () => {
-                            onChange(icon);
-                            setShowPicker(false);
-                        }
-                    }, icon)
+                h('div', { className: "grid grid-cols-6 gap-2" },
+                    icons.map(icon =>
+                        h('button', {
+                            key: icon,
+                            type: "button",
+                            onClick: () => {
+                                onChange(icon);
+                                setShowPicker(false);
+                            },
+                            className: `p-2 hover:bg-gray-100 rounded cursor-pointer text-2xl ${
+                                icon === value ? 'bg-blue-100' : ''
+                            }`
+                        }, icon)
+                    )
                 )
             )
         );
@@ -60,11 +81,11 @@
             { key: 'sun', label: 'Zo' }
         ];
 
-        return h('div', { className: "flex space-x-2" },
+        return h('div', { className: "flex gap-2" },
             days.map(day =>
                 h('label', {
                     key: day.key,
-                    className: `flex flex-col items-center cursor-pointer ${
+                    className: `cursor-pointer ${
                         selectedDays[day.key] ? 'text-blue-600' : 'text-gray-600'
                     }`
                 },
@@ -293,31 +314,19 @@
 
                 // Custom frequency days
                 formData.frequency_type === 'Custom' && h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Om de hoeveel dagen"),
+                    h('label', { className: "block text-sm font-medium mb-1" }, "Aantal dagen"),
                     h('input', {
                         type: "number",
-                        min: "1",
                         value: formData.frequency_days,
                         onChange: (e) => setFormData({ ...formData, frequency_days: parseInt(e.target.value) || 1 }),
-                        className: "w-full p-2 border rounded-md"
+                        className: "w-full p-2 border rounded-md",
+                        min: 1,
+                        max: 365
                     })
                 ),
 
-                // Weekday selection for weekly tasks
-                formData.frequency_type === 'Weekly' && h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Selecteer dag(en)"),
-                    h(WeekDayPicker, {
-                        selectedDays: formData.selected_weekdays,
-                        onChange: (day, checked) => setFormData({
-                            ...formData,
-                            selected_weekdays: { ...formData.selected_weekdays, [day]: checked }
-                        })
-                    })
-                ),
-
-                // Assignment and priority row
+                // Assignment section
                 h('div', { className: "grid grid-cols-2 gap-4" },
-                    // Assigned to
                     h('div', null,
                         h('label', { className: "block text-sm font-medium mb-1" }, "Toegewezen aan"),
                         h('select', {
@@ -325,13 +334,12 @@
                             onChange: (e) => setFormData({ ...formData, assigned_to: e.target.value }),
                             className: "w-full p-2 border rounded-md"
                         },
-                            assigneeOptions.map(assignee =>
-                                h('option', { key: assignee, value: assignee }, assignee)
+                            assigneeOptions.map(name =>
+                                h('option', { key: name, value: name }, name)
                             )
                         )
                     ),
 
-                    // Priority
                     h('div', null,
                         h('label', { className: "block text-sm font-medium mb-1" }, "Prioriteit"),
                         h('select', {
@@ -351,63 +359,36 @@
                     h('label', { className: "block text-sm font-medium mb-1" }, "Geschatte duur (minuten)"),
                     h('input', {
                         type: "number",
-                        min: "1",
                         value: formData.duration,
                         onChange: (e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 15 }),
-                        className: "w-full p-2 border rounded-md"
+                        className: "w-full p-2 border rounded-md",
+                        min: 1,
+                        max: 480
                     })
-                ),
-
-                // Alternating assignment
-                formData.assigned_to !== "Samen" && assigneeOptions.length > 1 && h('div', null,
-                    h('label', { className: "flex items-center" },
-                        h('input', {
-                            type: "checkbox",
-                            checked: formData.use_alternating || false,
-                            onChange: (e) => setFormData({ ...formData, use_alternating: e.target.checked }),
-                            className: "mr-2"
-                        }),
-                        h('span', { className: "text-sm font-medium" }, "Wissel toewijzing af met andere gebruiker")
-                    ),
-
-                    formData.use_alternating && h('div', { className: "mt-2" },
-                        h('label', { className: "block text-sm font-medium mb-1" }, "Afwisselen met"),
-                        h('select', {
-                            value: formData.alternate_with,
-                            onChange: (e) => setFormData({ ...formData, alternate_with: e.target.value }),
-                            className: "w-full p-2 border rounded-md"
-                        },
-                            assigneeOptions
-                                .filter(a => a !== formData.assigned_to && a !== "Wie kan")
-                                .map(assignee =>
-                                    h('option', { key: assignee, value: assignee }, assignee)
-                                )
-                        )
-                    )
                 ),
 
                 // Description
                 h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Beschrijving (optioneel)"),
+                    h('label', { className: "block text-sm font-medium mb-1" }, "Beschrijving"),
                     h('textarea', {
-                        value: formData.description || '',
+                        value: formData.description,
                         onChange: (e) => setFormData({ ...formData, description: e.target.value }),
                         className: "w-full p-2 border rounded-md",
-                        rows: 3,
-                        placeholder: "Voeg instructies of details toe..."
+                        rows: 3
                     })
                 ),
 
-                // Subtasks
+                // Subtasks section
                 h('div', null,
-                    h('label', { className: "flex items-center mb-3" },
+                    h('label', { className: "flex items-center mb-2" },
                         h('input', {
                             type: "checkbox",
-                            checked: formData.has_subtasks || false,
+                            checked: formData.has_subtasks,
                             onChange: (e) => setFormData({
                                 ...formData,
                                 has_subtasks: e.target.checked,
-                                subtasks: e.target.checked ? (formData.subtasks || [{ name: "", completed: false }]) : []
+                                subtasks: e.target.checked ? 
+                                    (formData.subtasks && formData.subtasks.length > 0 ? formData.subtasks : [{ name: "", completed: false }]) : []
                             }),
                             className: "mr-2"
                         }),
@@ -510,73 +491,136 @@
     };
 
     /**
-     * UserManagement component
+     * UserManagement component - FIXED VERSION
      */
     const UserManagement = function({ users = [], onSave, onClose }) {
         const [editingUser, setEditingUser] = React.useState(null);
         const [newUser, setNewUser] = React.useState({ name: '', color: '#CCCCCC' });
+        const [localUsers, setLocalUsers] = React.useState(users);
+
+        // Update local users when props change
+        React.useEffect(() => {
+            setLocalUsers(users);
+        }, [users]);
 
         const isDefaultUser = (name) => {
             return ['Laura', 'Martijn', 'Samen', 'Wie kan'].includes(name);
         };
 
-        const handleSubmit = (e) => {
+        const handleSubmit = async (e) => {
             e.preventDefault();
-            if (newUser.name.trim()) {
-                onSave({ ...newUser, id: Date.now().toString() });
-                setNewUser({ name: '', color: '#CCCCCC' });
+            if (!newUser.name.trim()) return;
+
+            try {
+                // Add user via API
+                const api = window.ChoresAPI;
+                if (api && api.UsersAPI) {
+                    await api.UsersAPI.add(newUser.name.trim(), newUser.color);
+                    
+                    // Update local state
+                    const updatedUsers = [...localUsers, { name: newUser.name.trim(), color: newUser.color }];
+                    setLocalUsers(updatedUsers);
+                    
+                    // Call parent's onSave to trigger data reload
+                    if (onSave) {
+                        await onSave(updatedUsers);
+                    }
+                    
+                    // Reset form
+                    setNewUser({ name: '', color: '#CCCCCC' });
+                }
+            } catch (error) {
+                console.error('Failed to add user:', error);
+                alert('Fout bij toevoegen gebruiker: ' + error.message);
             }
         };
 
-        const handleEditClick = (user) => {
-            setEditingUser(user);
-        };
-
-        const handleDeleteClick = (user) => {
-            if (!isDefaultUser(user.name) && confirm(`Weet je zeker dat je ${user.name} wilt verwijderen?`)) {
-                onSave(user, 'delete');
+        const handleDelete = async (name) => {
+            if (isDefaultUser(name)) return;
+            
+            if (confirm(`Weet je zeker dat je "${name}" wilt verwijderen?`)) {
+                try {
+                    const api = window.ChoresAPI;
+                    if (api && api.UsersAPI) {
+                        await api.UsersAPI.delete(name);
+                        
+                        // Update local state
+                        const updatedUsers = localUsers.filter(u => u.name !== name);
+                        setLocalUsers(updatedUsers);
+                        
+                        // Call parent's onSave to trigger data reload
+                        if (onSave) {
+                            await onSave(updatedUsers);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to delete user:', error);
+                    alert('Fout bij verwijderen gebruiker: ' + error.message);
+                }
             }
         };
 
-        const handleColorUpdate = (user, newColor) => {
-            onSave({ ...user, color: newColor }, 'update');
-            setEditingUser(null);
+        const handleColorSave = async () => {
+            if (!editingUser) return;
+            
+            try {
+                const api = window.ChoresAPI;
+                if (api && api.UsersAPI) {
+                    // API doesn't have update method, so we need to delete and re-add
+                    await api.UsersAPI.delete(editingUser.name);
+                    await api.UsersAPI.add(editingUser.name, editingUser.color);
+                    
+                    // Update local state
+                    const updatedUsers = localUsers.map(u => 
+                        u.name === editingUser.name ? editingUser : u
+                    );
+                    setLocalUsers(updatedUsers);
+                    
+                    // Call parent's onSave to trigger data reload
+                    if (onSave) {
+                        await onSave(updatedUsers);
+                    }
+                    
+                    setEditingUser(null);
+                }
+            } catch (error) {
+                console.error('Failed to update user color:', error);
+                alert('Fout bij bijwerken kleur: ' + error.message);
+            }
         };
 
         return h('div', { className: "bg-white rounded-lg p-6 shadow-lg max-w-md mx-auto" },
-            h('div', { className: "flex justify-between items-center mb-4" },
-                h('h2', { className: "text-xl font-bold" }, "Gebruikers beheren"),
-                h('button', {
-                    onClick: onClose,
-                    className: "text-gray-400 hover:text-gray-600"
-                }, "✕")
-            ),
-
+            h('h2', { className: "text-xl font-bold mb-4" }, "Gebruikers beheren"),
+            
             h('div', { className: "space-y-4" },
-                h('h3', { className: "text-lg font-medium mb-2" }, "Huidige gebruikers"),
-                h('div', { className: "border rounded divide-y" },
-                    users.map(user =>
+                h('div', { className: "space-y-2" },
+                    localUsers.map(user =>
                         h('div', {
-                            key: user.id || user.name,
-                            className: "flex items-center justify-between p-3"
+                            key: user.name,
+                            className: "flex items-center justify-between p-2 border rounded"
                         },
-                            h('div', { className: "flex items-center" },
+                            h('div', { className: "flex items-center space-x-3" },
                                 h('div', {
-                                    className: "w-4 h-4 rounded-full mr-3",
-                                    style: { backgroundColor: user.color }
+                                    className: "w-8 h-8 rounded-full border-2",
+                                    style: { 
+                                        backgroundColor: `${user.color}30`,
+                                        borderColor: user.color
+                                    }
                                 }),
-                                h('span', null, user.name)
+                                h('span', { className: "font-medium" }, user.name),
+                                isDefaultUser(user.name) && h('span', { 
+                                    className: "text-xs text-gray-500" 
+                                }, "(standaard)")
                             ),
                             h('div', { className: "flex space-x-2" },
                                 h('button', {
-                                    onClick: () => handleEditClick(user),
-                                    className: "text-blue-500 hover:text-blue-700"
-                                }, "Bewerken"),
-                                h('button', {
-                                    onClick: () => handleDeleteClick(user),
-                                    className: "text-red-500 hover:text-red-700",
-                                    disabled: isDefaultUser(user.name)
-                                }, isDefaultUser(user.name) ? "Standaard" : "Verwijderen")
+                                    onClick: () => setEditingUser(user),
+                                    className: "px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                                }, "Kleur"),
+                                !isDefaultUser(user.name) && h('button', {
+                                    onClick: () => handleDelete(user.name),
+                                    className: "px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
+                                }, "Verwijderen")
                             )
                         )
                     )
@@ -627,17 +671,29 @@
                     h('h3', { className: "text-lg font-medium mb-4" }, `Kleur wijzigen voor ${editingUser.name}`),
                     h('input', {
                         type: "color",
-                        value: editingUser.color || '#CCCCCC',
-                        onChange: (e) => handleColorUpdate(editingUser, e.target.value),
-                        className: "w-full h-12 cursor-pointer"
+                        className: "w-full h-20 mb-4",
+                        value: editingUser.color,
+                        onChange: (e) => setEditingUser({ ...editingUser, color: e.target.value })
                     }),
-                    h('div', { className: "flex justify-end mt-4 space-x-2" },
+                    h('div', { className: "flex justify-end space-x-2" },
                         h('button', {
                             onClick: () => setEditingUser(null),
                             className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-                        }, "Annuleren")
+                        }, "Annuleren"),
+                        h('button', {
+                            onClick: handleColorSave,
+                            className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                        }, "Opslaan")
                     )
                 )
+            ),
+            
+            // Close button at bottom
+            h('div', { className: "flex justify-end mt-4" },
+                h('button', {
+                    onClick: onClose,
+                    className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                }, "Sluiten")
             )
         );
     };
@@ -645,11 +701,11 @@
     // Export components
     window.choreComponents = window.choreComponents || {};
     Object.assign(window.choreComponents, {
+        TaskForm,
+        UserManagement,
         IconSelector,
         WeekDayPicker,
-        MonthDayPicker,
-        TaskForm,
-        UserManagement
+        MonthDayPicker
     });
 
     console.log('Form components loaded successfully');

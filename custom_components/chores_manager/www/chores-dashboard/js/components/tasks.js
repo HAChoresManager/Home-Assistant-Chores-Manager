@@ -54,7 +54,7 @@
     };
 
     /**
-     * Main TaskCard component
+     * Main TaskCard component - FIXED VERSION
      */
     const TaskCard = function({
         chore,
@@ -190,7 +190,7 @@
                                 className: "flex items-center justify-between text-sm" 
                             },
                                 h('span', { 
-                                    className: `flex-1 ${subtask.completed ? "completed line-through text-gray-500" : ""}` 
+                                    className: `flex-1 ${subtask.completed ? "line-through text-gray-500" : ""}` 
                                 }, subtask.name),
                                 !subtask.completed && h('button', {
                                     className: "ml-2 px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600",
@@ -203,9 +203,9 @@
                 )
             ),
 
-            // Description section (expanded)
-            hasDescription && h('div', {
-                className: `task-description ${showDescription ? 'expanded' : ''}`,
+            // Description section (expanded) - ensure no stray content
+            hasDescription && showDescription && h('div', {
+                className: `task-description expanded`,
                 "data-chore-id": id,
                 style: { marginLeft: '1rem', marginRight: '1rem' }
             },

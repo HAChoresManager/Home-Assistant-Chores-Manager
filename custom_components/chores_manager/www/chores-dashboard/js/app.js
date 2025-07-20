@@ -73,166 +73,136 @@ window.ChoresApp = window.ChoresApp || {};
             // Initialize API on component mount
             useEffect(() => {
                 async function initializeAPI() {
+                    console.log('Initializing Chores Dashboard App');
+                    
                     try {
-                        console.log('Initializing Chores Dashboard App');
-                        
-                        // Wait for ChoresAPI to be ready
-                        let attempts = 0;
-                        while (!window.ChoresAPI || !window.ChoresAPI.getSensorState) {
-                            if (attempts > 20) { // 2 seconds timeout
-                                throw new Error('ChoresAPI not properly initialized after timeout');
-                            }
-                            console.log('Waiting for ChoresAPI to be ready...');
-                            await new Promise(resolve => setTimeout(resolve, 100));
-                            attempts++;
-                        }
-                        
-                        // Check if all dependencies are loaded
+                        // Wait for dependencies
                         if (!window.ChoresAPI) {
-                            console.error('ChoresAPI not found');
-                            return;
+                            throw new Error('ChoresAPI not loaded');
                         }
                         
-                        // Log what's available on ChoresAPI
-                        console.log('ChoresAPI available methods:', Object.keys(window.ChoresAPI).filter(key => typeof window.ChoresAPI[key] === 'function'));
+                        // Get available APIs
+                        const availableMethods = Object.keys(window.ChoresAPI);
+                        console.log('ChoresAPI available methods:', availableMethods);
                         
-                        // Use the API instance directly (it's already initialized)
-                        const apiInstance = window.ChoresAPI;
+                        // Initialize the API
+                        await window.ChoresAPI.initialize();
                         
-                        // Verify critical methods exist
-                        if (typeof apiInstance.getSensorState !== 'function') {
-                            console.error('getSensorState method not found on ChoresAPI');
-                            console.log('Available ChoresAPI properties:', Object.keys(apiInstance));
-                            throw new Error('API method getSensorState not available');
-                        }
-                        
-                        // Initialize if it has an initialize method
-                        if (typeof apiInstance.initialize === 'function') {
-                            await apiInstance.initialize();
-                        }
+                        // Create API object with all available methods
+                        const apiObject = {
+                            chores: window.ChoresAPI.ChoresAPI,
+                            users: window.ChoresAPI.UsersAPI,
+                            theme: window.ChoresAPI.ThemeAPI,
+                            sensor: window.ChoresAPI.BaseAPI,
+                            getSensorState: window.ChoresAPI.getSensorState,
+                            initialize: window.ChoresAPI.initialize,
+                            getAuthToken: window.ChoresAPI.getAuthToken
+                        };
                         
                         console.log('API initialized successfully');
-                        setApi(apiInstance);
-                        setError(null);
+                        setApi(apiObject);
                         
                     } catch (err) {
                         console.error('Failed to initialize API:', err);
-                        setError('Failed to initialize application: ' + err.message);
+                        setError(err.message);
                     }
                 }
                 
                 initializeAPI();
             }, []);
             
+            // Error handler
+            const handleError = useCallback((err) => {
+                console.error('App error:', err);
+                if (err.message && err.message.includes('401')) {
+                    setHasAuthError(true);
+                }
+                setError(err.message || 'Er is een fout opgetreden');
+            }, []);
+            
+            // Data loading
+            const loadData = useCallback(async () => {
+                if (!api || !api.getSensorState) return;
+                
+                console.log('Loading data with API:', api);
+                console.log('getSensorState type:', typeof api.getSensorState);
+                
+                setLoading(true);
+                setError(null);
+                
+                try {
+                    const state = await api.getSensorState();
+                    console.log('Loaded state:', state);
+                    
+                    if (state) {
+                        setChores(state.chores || []);
+                        setStats(state.stats || {});
+                        
+                        // Extract unique assignees from state
+                        const uniqueAssignees = new Set();
+                        
+                        // Add assignees from stats
+                        Object.keys(state.stats || {}).forEach(name => {
+                            if (name !== 'Wie kan') {
+                                uniqueAssignees.add(name);
+                            }
+                        });
+                        
+                        // Add assignees from chores
+                        (state.chores || []).forEach(chore => {
+                            if (chore.assigned_to && chore.assigned_to !== 'Wie kan') {
+                                uniqueAssignees.add(chore.assigned_to);
+                            }
+                        });
+                        
+                        // Convert to array format
+                        const assigneesList = Array.from(uniqueAssignees).map(name => ({
+                            name,
+                            color: state.stats[name]?.color || '#cccccc'
+                        }));
+                        
+                        setAssignees(assigneesList);
+                    }
+                } catch (err) {
+                    handleError(err);
+                } finally {
+                    setLoading(false);
+                }
+            }, [api, handleError]);
+            
+            // Theme loading
+            const loadTheme = useCallback(async () => {
+                if (!api?.theme) return;
+                
+                try {
+                    const settings = await api.theme.get();
+                    if (settings) {
+                        setThemeSettings(settings);
+                        // Apply theme to CSS variables
+                        const root = document.documentElement;
+                        root.style.setProperty('--theme-background', settings.backgroundColor);
+                        root.style.setProperty('--theme-card', settings.cardColor);
+                        root.style.setProperty('--theme-primary-text', settings.primaryTextColor);
+                        root.style.setProperty('--theme-secondary-text', settings.secondaryTextColor);
+                    }
+                } catch (err) {
+                    console.error('Failed to load theme:', err);
+                }
+            }, [api]);
+            
             // Load data when API is ready
             useEffect(() => {
                 if (api) {
                     loadData();
-                    // Set up auto-refresh every 30 seconds
-                    const interval = setInterval(loadData, 30000);
-                    return () => clearInterval(interval);
+                    loadTheme();
                 }
-            }, [api]);
-            
-            // Apply theme changes
-            useEffect(() => {
-                if (themeSettings) {
-                    // Apply theme CSS variables
-                    const root = document.documentElement;
-                    root.style.setProperty('--theme-background', themeSettings.backgroundColor || '#ffffff');
-                    root.style.setProperty('--theme-card-color', themeSettings.cardColor || '#f8f8f8');
-                    root.style.setProperty('--theme-primary-text', themeSettings.primaryTextColor || '#000000');
-                    root.style.setProperty('--theme-secondary-text', themeSettings.secondaryTextColor || '#333333');
-                    
-                    // Apply to body for immediate effect
-                    document.body.style.backgroundColor = themeSettings.backgroundColor || '#ffffff';
-                    document.body.style.color = themeSettings.primaryTextColor || '#000000';
-                }
-            }, [themeSettings]);
-            
-            // Data loading function
-            const loadData = useCallback(async () => {
-                if (!api) return;
-                
-                try {
-                    setLoading(true);
-                    
-                    // Debug log
-                    console.log('Loading data with API:', api);
-                    console.log('getSensorState type:', typeof api.getSensorState);
-                    
-                    // Call the API method
-                    const sensorData = await api.getSensorState();
-                    
-                    if (sensorData && sensorData.attributes) {
-                        setChores(sensorData.attributes.overdue_tasks || []);
-                        setAssignees(sensorData.attributes.assignees || []);
-                        setStats(sensorData.attributes.stats || {});
-                        setLastCompletion(sensorData.attributes.last_completion || null);
-                        setThemeSettings(sensorData.attributes.theme_settings || { 
-                            backgroundColor: '#ffffff',
-                            cardColor: '#f8f8f8',
-                            primaryTextColor: '#000000',
-                            secondaryTextColor: '#333333'
-                        });
-                    } else {
-                        console.warn('No attributes in sensor data:', sensorData);
-                        setChores([]);
-                        setAssignees([]);
-                        setStats({});
-                    }
-                    
-                    setError(null);
-                    setHasAuthError(false);
-                } catch (err) {
-                    console.error('Error loading data:', err);
-                    
-                    if (err.message && err.message.includes('401')) {
-                        setHasAuthError(true);
-                        setError('Authentication error. Please check your Home Assistant token.');
-                    } else {
-                        setError('Failed to load data: ' + err.message);
-                    }
-                } finally {
-                    setLoading(false);
-                }
-            }, [api]);
-            
-            // Error handler
-            const handleError = useCallback((err) => {
-                console.error('Operation error:', err);
-                if (err.message && err.message.includes('401')) {
-                    setHasAuthError(true);
-                    setError('Authentication error. Please check your Home Assistant token.');
-                } else {
-                    setError(err.message || 'An error occurred');
-                }
-            }, []);
+            }, [api, loadData, loadTheme]);
             
             // Task completion handler
-            const handleTaskComplete = useCallback(async (choreId, userId, subtaskIndex = null) => {
-                try {
-                    if (subtaskIndex !== null && subtaskIndex !== undefined) {
-                        await api.chores.completeSubtask(choreId, subtaskIndex);
-                    } else {
-                        await api.chores.markDone(choreId, userId);
-                    }
-                    setLastCompletion({
-                        choreId,
-                        userId,
-                        timestamp: new Date().toISOString()
-                    });
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            // Mark done handler
             const handleMarkDone = useCallback(async (choreId, userId) => {
                 if (!api) return;
                 
-                // Mark chore as processing
+                // Add processing state to provide immediate feedback
                 setChores(chores => 
                     chores.map(chore => 
                         (chore.chore_id === choreId || chore.id === choreId)
@@ -287,44 +257,129 @@ window.ChoresApp = window.ChoresApp || {};
                 try {
                     if (editingTask) {
                         // Update existing task
+                        // For now, we can only update the name/description via API
                         if (taskData.name !== editingTask.name) {
                             await api.chores.updateDescription(editingTask.chore_id, taskData.name);
                         }
-                        // Note: Other updates would need additional API methods
+                        // Full update would require updating the chore completely
+                        // So we'll do a delete and re-add for now
+                        await api.chores.deleteChore(editingTask.chore_id);
+                        
+                        // Add as new with same ID
+                        const updateData = {
+                            ...taskData,
+                            chore_id: editingTask.chore_id
+                        };
+                        await api.chores.addChore(updateData);
                     } else {
-                        // Add new task
-                        await api.chores.addChore(
-                            taskData.name,
-                            taskData.description,
-                            taskData.frequency,
-                            taskData.frequency_unit,
-                            taskData.assignee,
-                            taskData.priority,
-                            taskData.duration,
-                            taskData.icon
-                        );
+                        // Add new task - generate unique ID
+                        const newChoreId = `chore_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                        
+                        // Map form data to API expected format
+                        const choreData = {
+                            chore_id: newChoreId,
+                            name: taskData.name,
+                            description: taskData.description || '',
+                            frequency_type: taskData.frequency_type || 'Wekelijks',
+                            frequency_days: taskData.frequency_days || 7,
+                            frequency_times: taskData.frequency_times || 1,
+                            assigned_to: taskData.assigned_to || 'Wie kan',
+                            priority: taskData.priority || 'Middel',
+                            duration: taskData.duration || 15,
+                            icon: taskData.icon || '📋',
+                            use_alternating: taskData.use_alternating || false,
+                            alternate_with: taskData.alternate_with || '',
+                            weekday: taskData.weekday !== undefined ? taskData.weekday : -1,
+                            monthday: taskData.monthday || -1,
+                            active_days: taskData.active_days || null,
+                            active_monthdays: taskData.active_monthdays || null,
+                            selected_weekdays: taskData.selected_weekdays || null,
+                            has_subtasks: taskData.has_subtasks || false,
+                            subtasks: taskData.has_subtasks ? taskData.subtasks : null
+                        };
+                        
+                        await api.chores.addChore(choreData);
                     }
                     
                     setShowTaskForm(false);
                     setEditingTask(null);
                     await loadData();
-                    
                 } catch (err) {
                     handleError(err);
                 }
             }, [api, editingTask, loadData, handleError]);
             
-            // Task deletion handler
             const handleDeleteTask = useCallback(async (choreId) => {
+                if (!api) return;
+                
                 try {
                     await api.chores.deleteChore(choreId);
+                    setShowTaskForm(false);
+                    setEditingTask(null);
                     await loadData();
                 } catch (err) {
                     handleError(err);
                 }
             }, [api, loadData, handleError]);
             
-            // Toggle description handler
+            const handleResetCompletion = useCallback(async (choreId) => {
+                if (!api) return;
+                
+                try {
+                    await api.chores.resetChore(choreId);
+                    setShowTaskForm(false);
+                    setEditingTask(null);
+                    await loadData();
+                } catch (err) {
+                    handleError(err);
+                }
+            }, [api, loadData, handleError]);
+            
+            // User management handlers
+            const handleAddUser = useCallback(async (userData) => {
+                if (!api) return;
+                
+                try {
+                    await api.users.add(userData.name, userData.color);
+                    await loadData();
+                } catch (err) {
+                    handleError(err);
+                }
+            }, [api, loadData, handleError]);
+            
+            const handleDeleteUser = useCallback(async (name) => {
+                if (!api) return;
+                
+                try {
+                    await api.users.delete(name);
+                    await loadData();
+                } catch (err) {
+                    handleError(err);
+                }
+            }, [api, loadData, handleError]);
+            
+            // Theme handler
+            const handleSaveTheme = useCallback(async (themeData) => {
+                if (!api) return;
+                
+                try {
+                    await api.theme.save(themeData);
+                    setThemeSettings(themeData);
+                    
+                    // Apply theme immediately
+                    const root = document.documentElement;
+                    root.style.setProperty('--theme-background', themeData.backgroundColor);
+                    root.style.setProperty('--theme-card', themeData.cardColor);
+                    root.style.setProperty('--theme-primary-text', themeData.primaryTextColor);
+                    root.style.setProperty('--theme-secondary-text', themeData.secondaryTextColor);
+                    
+                    setShowThemeSettings(false);
+                } catch (err) {
+                    handleError(err);
+                }
+            }, [api, handleError]);
+            
+            // Description toggle handler
             const handleToggleDescription = useCallback((choreId, isExpanded) => {
                 setExpandedDescriptions(prev => ({
                     ...prev,
@@ -332,172 +387,97 @@ window.ChoresApp = window.ChoresApp || {};
                 }));
             }, []);
             
-            // User management handlers
-            const handleAddUser = useCallback(async (userId, name, color, avatar) => {
-                try {
-                    await api.users.addUser(userId, name, color, avatar);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
+            // Chore filtering
+            const overdueTasks = chores.filter(c => c.is_overdue && (!c.last_done || !window.choreUtils.isToday(c.last_done)));
+            const todayTasks = chores.filter(c => c.is_due_today && !c.is_overdue && (!c.last_done || !window.choreUtils.isToday(c.last_done)));
+            const upcomingTasks = chores.filter(c => !c.is_due_today && !c.is_overdue && (!c.last_done || !window.choreUtils.isToday(c.last_done)));
+            const completedTasks = chores.filter(c => c.last_done && window.choreUtils.isToday(c.last_done));
             
-            const handleDeleteUser = useCallback(async (userId) => {
-                try {
-                    await api.users.deleteUser(userId);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            // Theme save handler
-            const handleSaveTheme = useCallback(async (colors) => {
-                try {
-                    await api.theme.saveTheme(colors);
-                    setThemeSettings(colors);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            // Filter tasks by status
-            const overdueTasks = chores.filter(chore => {
-                if (!chore.last_done || !window.choreUtils.isToday(chore.last_done)) {
-                    return window.choreUtils.isDueOrOverdue(chore);
-                }
-                return false;
-            });
-            
-            const todayTasks = chores.filter(chore => {
-                const isCompletedToday = chore.last_done && window.choreUtils.isToday(chore.last_done);
-                if (!isCompletedToday) {
-                    return window.choreUtils.isDueToday(chore);
-                }
-                return false;
-            });
-            
-            const upcomingTasks = chores.filter(chore => {
-                const isCompletedToday = chore.last_done && window.choreUtils.isToday(chore.last_done);
-                const isDueOrOverdue = window.choreUtils.isDueOrOverdue(chore);
-                const isDueToday = window.choreUtils.isDueToday(chore);
-                return !isCompletedToday && !isDueOrOverdue && !isDueToday;
-            });
-            
-            const completedTasks = chores.filter(chore => 
-                chore.last_done && window.choreUtils.isToday(chore.last_done)
-            );
-            
-            // If still loading API, show loading state
-            if (!api) {
-                return h(Loading, { message: "Loading application..." });
-            }
-            
-            // Render error state
-            if (error && !chores.length && !loading) {
-                return h('div', { className: 'max-w-4xl mx-auto p-4' },
-                    h(ErrorMessage, { 
-                        message: error,
-                        onRetry: hasAuthError ? null : loadData
-                    })
-                );
-            }
-            
-            // Main render
-            return h('div', { className: 'app-container' },
+            // Render
+            return h('div', { className: 'chores-app' },
                 // Header
-                h('div', { className: 'bg-white shadow-sm border-b mb-6' },
-                    h('div', { className: 'container mx-auto px-4 py-4' },
-                        h('div', { className: 'flex items-center justify-between' },
-                            h('h1', { className: 'text-2xl font-bold' }, 'Huishoudelijke Taken'),
-                            h('div', { className: 'flex items-center space-x-2' },
-                                h('button', {
-                                    onClick: () => setShowThemeSettings(true),
-                                    className: 'p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors',
-                                    title: 'Thema Instellingen'
-                                }, '🎨'),
-                                h('button', {
-                                    onClick: () => setShowUserManagement(true),
-                                    className: 'p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors',
-                                    title: 'Gebruikers Beheren'
-                                }, '👥'),
-                                h('button', {
-                                    onClick: handleAddTask,
-                                    className: 'px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2'
-                                },
-                                    h('span', null, '+'),
-                                    h('span', null, 'Nieuwe Taak')
-                                )
-                            )
+                h('header', { className: 'app-header' },
+                    h('div', { className: 'header-content' },
+                        h('h1', { className: 'app-title' }, 'Huishoudelijke Taken'),
+                        h('div', { className: 'header-actions' },
+                            h('button', {
+                                onClick: loadData,
+                                className: 'btn-refresh',
+                                disabled: loading
+                            }, loading ? 'Laden...' : '↻ Vernieuwen'),
+                            h('button', {
+                                onClick: handleAddTask,
+                                className: 'btn-primary'
+                            }, '+ Nieuwe Taak'),
+                            h('button', {
+                                onClick: () => setShowUserManagement(true),
+                                className: 'btn-secondary'
+                            }, '👥 Gebruikers'),
+                            h('button', {
+                                onClick: () => setShowThemeSettings(true),
+                                className: 'btn-secondary'
+                            }, '🎨 Thema')
                         )
                     )
                 ),
                 
-                // Main content
-                h('div', { className: 'container mx-auto px-4' },
-                    // Error banner
-                    error && h('div', { className: 'mb-6' },
-                        h(Alert, { 
-                            type: 'error',
-                            message: error,
-                            onDismiss: () => setError(null)
-                        })
-                    ),
-                    
-                    // Stats overview
-                    h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6' },
-                        h(StatsCard, {
-                            title: 'Achterstallig',
-                            value: overdueTasks.length,
-                            color: 'red',
-                            icon: '🚨'
-                        }),
-                        h(StatsCard, {
-                            title: 'Vandaag',
-                            value: todayTasks.length,
-                            color: 'yellow',
-                            icon: '📅'
-                        }),
-                        h(StatsCard, {
-                            title: 'Aankomend',
-                            value: upcomingTasks.length,
-                            color: 'green',
-                            icon: '📋'
-                        }),
-                        h(StatsCard, {
-                            title: 'Voltooid',
-                            value: completedTasks.length,
-                            color: 'blue',
-                            icon: '✅'
-                        })
-                    ),
-                    
-                    // User stats
-                    assignees.length > 0 && Object.keys(stats).length > 0 && h('div', { className: 'mb-6' },
-                        h('h2', { className: 'text-lg font-semibold mb-4' }, 'Gebruiker Statistieken'),
-                        h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' },
-                            assignees.map(assignee => {
-                                const assigneeName = assignee.name || assignee.id;
-                                const assigneeStats = stats[assigneeName] || {
-                                    tasks_completed: 0,
-                                    total_tasks: 0,
-                                    time_completed: 0,
-                                    total_time: 0,
-                                    streak: 0
-                                };
-                                
-                                return h(UserStatsCard, {
-                                    key: assignee.id || assignee.name,
-                                    assignee: assigneeName,
-                                    stats: assigneeStats,
-                                    assignees: assignees
-                                });
+                // Error display
+                error && h(Alert, {
+                    type: 'error',
+                    message: error,
+                    onClose: () => setError(null)
+                }),
+                
+                // Auth error
+                hasAuthError && h('div', { className: 'auth-error' },
+                    h('p', null, 'Authentication error. Please refresh the page to re-authenticate.')
+                ),
+                
+                // Statistics overview cards
+                !loading && h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6' },
+                    h(StatsCard, {
+                        title: 'Achterstallig',
+                        value: overdueTasks.length,
+                        color: '#ef4444',
+                        desc: '🚨'
+                    }),
+                    h(StatsCard, {
+                        title: 'Vandaag',
+                        value: todayTasks.length,
+                        color: '#f59e0b',
+                        desc: '📅'
+                    }),
+                    h(StatsCard, {
+                        title: 'Aankomend',
+                        value: upcomingTasks.length,
+                        color: '#10b981',
+                        desc: '📋'
+                    }),
+                    h(StatsCard, {
+                        title: 'Voltooid',
+                        value: completedTasks.length,
+                        color: '#3b82f6',
+                        desc: '✅'
+                    })
+                ),
+                
+                // User statistics section
+                !loading && Object.keys(stats).length > 0 && h('section', { className: 'stats-section mb-6' },
+                    h('h2', { className: 'text-xl font-semibold mb-4' }, 'Gebruiker Statistieken'),
+                    h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' },
+                        Object.entries(stats).map(([user, userStats]) =>
+                            h(UserStatsCard, {
+                                key: user,
+                                assignee: user,  // Changed from userName to assignee
+                                stats: userStats,
+                                assignees: assignees
                             })
                         )
-                    ),
-                    
-                    // Task sections
+                    )
+                ),
+                
+                // Tasks section
+                h('section', { className: 'tasks-section' },
                     loading ? h(Loading, { message: "Laden..." }) : h('div', { className: 'space-y-6' },
                         // Overdue tasks
                         overdueTasks.length > 0 && h('div', null,
@@ -596,13 +576,15 @@ window.ChoresApp = window.ChoresApp || {};
                     title: editingTask ? 'Taak Bewerken' : 'Nieuwe Taak'
                 },
                     h(TaskForm, {
-                        task: editingTask,
-                        users: assignees,
-                        onSave: handleTaskFormSubmit,
+                        onSubmit: handleTaskFormSubmit,
+                        onDelete: handleDeleteTask,
                         onCancel: () => {
                             setShowTaskForm(false);
                             setEditingTask(null);
-                        }
+                        },
+                        onResetCompletion: handleResetCompletion,
+                        initialData: editingTask,
+                        assignees: assignees
                     })
                 ),
                 
@@ -613,10 +595,11 @@ window.ChoresApp = window.ChoresApp || {};
                 },
                     h(UserManagement, {
                         users: assignees,
-                        onAddUser: handleAddUser,
-                        onDeleteUser: handleDeleteUser,
-                        onClose: () => setShowUserManagement(false),
-                        api: api
+                        onSave: async (users) => {
+                            // Handle batch user updates if needed
+                            await loadData();
+                        },
+                        onClose: () => setShowUserManagement(false)
                     })
                 ),
                 
@@ -633,7 +616,7 @@ window.ChoresApp = window.ChoresApp || {};
                 ),
                 
                 selectedDescription && h(Modal, {
-                    isOpen: !!selectedDescription,
+                    isOpen: true,  // Fixed: was !selectedDescription
                     onClose: () => setSelectedDescription(null),
                     title: `Beschrijving: ${selectedDescription.name}`
                 },
@@ -683,60 +666,76 @@ window.ChoresApp = window.ChoresApp || {};
                     }
                     
                     componentDidCatch(error, errorInfo) {
-                        console.error('React Error Boundary caught an error:', error, errorInfo);
+                        console.error('React Error Boundary caught:', error, errorInfo);
                     }
                     
                     render() {
                         if (this.state.hasError) {
-                            return React.createElement('div', { className: 'error-container', style: { padding: '20px', textAlign: 'center' } },
-                                React.createElement('h2', null, 'Dashboard Error'),
-                                React.createElement('p', null, `Error: ${this.state.error?.message || 'Unknown error'}`),
-                                React.createElement('pre', { style: { textAlign: 'left', background: '#f5f5f5', padding: '10px', borderRadius: '4px' } }, this.state.error?.stack || ''),
+                            return React.createElement('div', {
+                                style: {
+                                    padding: '20px',
+                                    background: '#fee',
+                                    border: '1px solid #fcc',
+                                    borderRadius: '4px',
+                                    margin: '20px'
+                                }
+                            },
+                                React.createElement('h2', null, 'Er is een fout opgetreden'),
+                                React.createElement('p', null, this.state.error?.message || 'Onbekende fout'),
                                 React.createElement('button', {
                                     onClick: () => window.location.reload(),
-                                    style: { marginTop: '10px', padding: '5px 10px' }
-                                }, 'Reload Page')
+                                    style: {
+                                        padding: '10px 20px',
+                                        background: '#007bff',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer'
+                                    }
+                                }, 'Pagina herladen')
                             );
                         }
-                        return React.createElement(ChoresApp);
+                        
+                        return this.props.children;
                     }
-                }
+                },
+                null,
+                React.createElement(window.ChoresApp.ChoresApp)
             );
             
-            // Clear any existing content
-            rootElement.innerHTML = '';
+            // Check React version and use appropriate API
+            const reactVersion = React.version;
+            console.log('Using React ' + reactVersion);
             
-            // Use React 18 createRoot if available, otherwise fallback to React 17
-            if (window.ReactDOM.createRoot) {
+            if (reactVersion && reactVersion.startsWith('18')) {
+                // React 18 with createRoot
                 console.log('Using React 18 createRoot API...');
-                const root = window.ReactDOM.createRoot(rootElement);
-                root.render(AppWithErrorBoundary);
+                if (window.ReactDOM.createRoot) {
+                    const root = window.ReactDOM.createRoot(rootElement);
+                    root.render(AppWithErrorBoundary);
+                    console.log('Chores Dashboard initialized successfully');
+                } else {
+                    // Fallback if createRoot is not available
+                    window.ReactDOM.render(AppWithErrorBoundary, rootElement);
+                    console.log('Chores Dashboard initialized successfully (fallback mode)');
+                }
             } else {
-                console.log('Using React 17 render API...');
+                // React 17 or older
                 window.ReactDOM.render(AppWithErrorBoundary, rootElement);
+                console.log('Chores Dashboard initialized successfully');
             }
-            
-            console.log('Chores Dashboard initialized successfully');
             
         } catch (error) {
-            console.error('Failed to initialize React app:', error);
-            
-            // Show error in the root element as fallback
-            const rootElement = document.getElementById('root');
-            if (rootElement) {
-                rootElement.innerHTML = `
-                    <div class="error-container" style="padding: 20px; text-align: center;">
-                        <h2>Initialization Error</h2>
-                        <p>Failed to initialize the React application: ${error.message}</p>
-                        <pre style="text-align: left; background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px;">${error.stack || ''}</pre>
-                        <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">
-                            Reload Page
-                        </button>
-                    </div>
-                `;
-            }
-            
-            throw error;
+            console.error('Failed to initialize Chores Dashboard:', error);
+            document.getElementById('root').innerHTML = `
+                <div style="padding: 20px; background: #fee; border: 1px solid #fcc; border-radius: 4px; margin: 20px;">
+                    <h2>Initialization Error</h2>
+                    <p>${error.message}</p>
+                    <button onclick="window.location.reload()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        Reload Page
+                    </button>
+                </div>
+            `;
         }
     };
     
