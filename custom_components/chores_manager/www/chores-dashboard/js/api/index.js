@@ -42,7 +42,12 @@ window.ChoresAPI = window.ChoresAPI || {};
                 // Store instances
                 chores: choresInstance,
                 users: usersInstance,
-                theme: themeInstance,
+                theme: {
+                    // Properly expose theme methods
+                    get: themeInstance.get.bind(themeInstance),
+                    save: themeInstance.save.bind(themeInstance),
+                    reset: themeInstance.reset.bind(themeInstance)
+                },
                 
                 // Expose getSensorState directly from the chores instance (it inherits from BaseAPI)
                 getSensorState: async function() {
@@ -94,11 +99,17 @@ window.ChoresAPI = window.ChoresAPI || {};
             
             console.log('ChoresAPI initialized successfully with endpoints:', Object.keys(ENDPOINTS || {}));
             
-            // Verify getSensorState is available
+            // Verify key methods are available
             if (typeof window.ChoresAPI.getSensorState === 'function') {
                 console.log('getSensorState method confirmed available');
             } else {
                 console.error('getSensorState method not available after initialization');
+            }
+            
+            if (typeof window.ChoresAPI.theme.get === 'function') {
+                console.log('theme.get method confirmed available');
+            } else {
+                console.error('theme.get method not available after initialization');
             }
             
             // Dispatch event to signal API is ready

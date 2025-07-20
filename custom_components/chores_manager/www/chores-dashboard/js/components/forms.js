@@ -1,9 +1,4 @@
-h('div', { className: "flex justify-end space-x-2 mt-4" },
-                    h('button', {
-                        onClick: onClose,
-                        className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-                    }, "Sluiten")
-                )/**
+/**
  * Form components for the Chores Manager
  * This module contains all form-related components
  */
@@ -18,6 +13,7 @@ h('div', { className: "flex justify-end space-x-2 mt-4" },
     }
 
     const h = React.createElement;
+    const { useState, useEffect } = React;
 
     /**
      * Icon selector component
@@ -33,7 +29,7 @@ h('div', { className: "flex justify-end space-x-2 mt-4" },
             '📋', '✅', '📅', '⏰', '🎯', '💼'
         ];
 
-        const [showPicker, setShowPicker] = React.useState(false);
+        const [showPicker, setShowPicker] = useState(false);
 
         return h('div', { className: "relative" },
             h('button', {
@@ -70,39 +66,37 @@ h('div', { className: "flex justify-end space-x-2 mt-4" },
     /**
      * Week day picker component
      */
-    const WeekDayPicker = ({ selectedDays, onChange }) => {
+    const WeekDayPicker = ({ value = [], onChange }) => {
         const days = [
-            { key: 'mon', label: 'Ma' },
-            { key: 'tue', label: 'Di' },
-            { key: 'wed', label: 'Wo' },
-            { key: 'thu', label: 'Do' },
-            { key: 'fri', label: 'Vr' },
-            { key: 'sat', label: 'Za' },
-            { key: 'sun', label: 'Zo' }
+            { value: 0, label: 'Ma', fullLabel: 'Maandag' },
+            { value: 1, label: 'Di', fullLabel: 'Dinsdag' },
+            { value: 2, label: 'Wo', fullLabel: 'Woensdag' },
+            { value: 3, label: 'Do', fullLabel: 'Donderdag' },
+            { value: 4, label: 'Vr', fullLabel: 'Vrijdag' },
+            { value: 5, label: 'Za', fullLabel: 'Zaterdag' },
+            { value: 6, label: 'Zo', fullLabel: 'Zondag' }
         ];
 
-        return h('div', { className: "flex gap-2" },
+        const handleToggleDay = (dayValue) => {
+            const newValue = value.includes(dayValue)
+                ? value.filter(d => d !== dayValue)
+                : [...value, dayValue];
+            onChange(newValue);
+        };
+
+        return h('div', { className: "grid grid-cols-7 gap-2" },
             days.map(day =>
-                h('label', {
-                    key: day.key,
-                    className: `cursor-pointer ${
-                        selectedDays[day.key] ? 'text-blue-600' : 'text-gray-600'
-                    }`
-                },
-                    h('input', {
-                        type: "checkbox",
-                        checked: selectedDays[day.key] || false,
-                        onChange: (e) => onChange(day.key, e.target.checked),
-                        className: "sr-only"
-                    }),
-                    h('span', {
-                        className: `w-10 h-10 flex items-center justify-center rounded-full border-2 ${
-                            selectedDays[day.key] 
-                                ? 'bg-blue-500 text-white border-blue-500' 
-                                : 'border-gray-300 hover:border-gray-400'
-                        }`
-                    }, day.label)
-                )
+                h('button', {
+                    key: day.value,
+                    type: "button",
+                    onClick: () => handleToggleDay(day.value),
+                    className: `p-2 rounded border ${
+                        value.includes(day.value)
+                            ? 'bg-blue-500 text-white border-blue-600'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`,
+                    title: day.fullLabel
+                }, day.label)
             )
         );
     };
@@ -110,136 +104,84 @@ h('div', { className: "flex justify-end space-x-2 mt-4" },
     /**
      * Month day picker component
      */
-    const MonthDayPicker = ({ selectedDays, onChange, maxDays = 31 }) => {
-        const days = Array.from({ length: maxDays }, (_, i) => i + 1);
+    const MonthDayPicker = ({ value = [], onChange }) => {
+        const handleToggleDay = (day) => {
+            const newValue = value.includes(day)
+                ? value.filter(d => d !== day)
+                : [...value, day];
+            onChange(newValue);
+        };
 
-        return h('div', { className: "grid grid-cols-7 gap-2" },
-            days.map(day =>
-                h('label', {
-                    key: day,
-                    className: `cursor-pointer ${selectedDays[day] ? 'text-blue-600' : 'text-gray-600'}`
-                },
-                    h('input', {
-                        type: "checkbox",
-                        checked: selectedDays[day] || false,
-                        onChange: (e) => onChange(day, e.target.checked),
-                        className: "sr-only"
-                    }),
-                    h('span', {
-                        className: `w-10 h-10 flex items-center justify-center rounded border-2 ${
-                            selectedDays[day]
-                                ? 'bg-blue-500 text-white border-blue-500'
-                                : 'border-gray-300 hover:border-gray-400'
-                        }`
-                    }, day)
+        const dayRows = [];
+        for (let week = 0; week < 5; week++) {
+            const weekDays = [];
+            for (let day = 0; day < 7; day++) {
+                const dayNumber = week * 7 + day + 1;
+                if (dayNumber <= 31) {
+                    weekDays.push(dayNumber);
+                }
+            }
+            dayRows.push(weekDays);
+        }
+
+        return h('div', { className: "space-y-2" },
+            dayRows.map((week, weekIndex) =>
+                h('div', { key: weekIndex, className: "grid grid-cols-7 gap-2" },
+                    week.map(day =>
+                        h('button', {
+                            key: day,
+                            type: "button",
+                            onClick: () => handleToggleDay(day),
+                            className: `p-2 rounded border text-sm ${
+                                value.includes(day)
+                                    ? 'bg-blue-500 text-white border-blue-600'
+                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                            }`
+                        }, day)
+                    )
                 )
             )
         );
     };
 
     /**
-     * Main TaskForm component
+     * Task form component
      */
-    const TaskForm = function({ onSubmit, onDelete, onCancel, onResetCompletion, initialData = null, assignees = [] }) {
-        const isEditing = !!initialData;
-
-        // Filter out "Wie kan" from assignee options
-        const assigneeOptions = assignees.length > 0
-            ? assignees.map(a => a.name)
-            : ["Laura", "Martijn", "Wie kan"];
-
-        // Add default options if none from server
-        if (assigneeOptions.length === 0) {
-            assigneeOptions.push("Laura", "Martijn", "Samen");
-        }
-
-        const [formData, setFormData] = React.useState({
-            chore_id: '',
+    const TaskForm = ({ task, users, onSave, onDelete, onClose, onResetCompletion }) => {
+        const defaultFormData = {
             name: '',
-            frequency_type: 'Weekly',
+            description: '',
+            frequency_type: 'Wekelijks',
             frequency_days: 7,
             frequency_times: 1,
-            assigned_to: 'Laura',
+            selected_weekdays: [],
+            monthday: -1,
+            active_monthdays: [],
+            assigned_to: 'Wie kan',
             priority: 'Middel',
             duration: 15,
             icon: '📋',
-            description: '',
             use_alternating: false,
-            alternate_with: 'Martijn',
-            selected_weekdays: { mon: false, tue: false, wed: false, thu: false, fri: false, sat: false, sun: false },
-            selected_monthdays: {},
-            specific_date: { month: 0, day: 1 },
+            alternate_with: '',
+            notify_when_due: false,
             has_subtasks: false,
-            subtasks: [],
-            ...(initialData || {})
-        });
-
-        const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
-        const [showResetConfirm, setShowResetConfirm] = React.useState(false);
-
-        // Initialize selected days from existing data when editing
-        React.useEffect(() => {
-            if (isEditing && initialData) {
-                const newFormData = { ...formData, ...initialData };
-                
-                // Convert old frequency types to new simplified system
-                if (initialData.frequency_type === 'Wekelijks' && initialData.weekday >= 0) {
-                    const dayNames = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-                    newFormData.frequency_type = 'Weekly';
-                    newFormData.selected_weekdays = {};
-                    dayNames.forEach(day => newFormData.selected_weekdays[day] = false);
-                    if (initialData.weekday >= 0 && initialData.weekday < 7) {
-                        newFormData.selected_weekdays[dayNames[initialData.weekday]] = true;
-                    }
-                }
-
-                setFormData(newFormData);
-            }
-        }, []);
-
-        const handleSubmit = (e) => {
-            e.preventDefault();
-            
-            // Prepare submission data
-            const submissionData = { ...formData };
-            
-            // Convert frequency type to backend format
-            if (formData.frequency_type === 'Weekly') {
-                submissionData.frequency_type = 'Wekelijks';
-                // Find first selected weekday
-                const dayNames = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-                const selectedIndex = dayNames.findIndex(day => formData.selected_weekdays[day]);
-                submissionData.weekday = selectedIndex >= 0 ? selectedIndex : -1;
-            }
-
-            // Clean up subtasks
-            if (submissionData.has_subtasks && submissionData.subtasks) {
-                submissionData.subtasks = submissionData.subtasks
-                    .filter(st => st && st.name && st.name.trim())
-                    .map(st => ({
-                        name: st.name.trim(),
-                        completed: st.completed || false
-                    }));
-            }
-
-            onSubmit(submissionData);
+            subtasks: []
         };
 
-        const confirmDelete = () => {
-            setShowDeleteConfirm(false);
-            onDelete(formData.chore_id);
-        };
+        const [formData, setFormData] = useState(task ? {
+            ...defaultFormData,
+            ...task,
+            frequency_days: task.frequency || task.frequency_days || 7,
+            selected_weekdays: task.selected_weekdays || [],
+            active_monthdays: task.active_monthdays || []
+        } : defaultFormData);
 
-        const confirmReset = () => {
-            setShowResetConfirm(false);
-            onResetCompletion(formData.chore_id);
-        };
+        const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-        const handleFrequencyChange = (newType) => {
-            const updates = { frequency_type: newType };
+        const handleFrequencyChange = (frequencyType) => {
+            const updates = { frequency_type: frequencyType };
             
-            // Set default frequency days based on type
-            switch(newType) {
+            switch(frequencyType) {
                 case 'Daily':
                     updates.frequency_days = 1;
                     break;
@@ -252,22 +194,28 @@ h('div', { className: "flex justify-end space-x-2 mt-4" },
                 case 'Monthly':
                     updates.frequency_days = 30;
                     break;
-                case 'Quarterly':
-                    updates.frequency_days = 90;
-                    break;
-                case 'Yearly':
-                    updates.frequency_days = 365;
-                    break;
-                case 'Custom':
-                    // Keep existing value
-                    break;
             }
             
             setFormData({ ...formData, ...updates });
         };
 
-        return h('div', { className: "bg-white rounded-lg p-6 shadow-lg max-w-2xl mx-auto" },
-            h('h2', { className: "text-xl font-bold mb-4" }, isEditing ? "Taak bewerken" : "Nieuwe taak"),
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            onSave(formData);
+        };
+
+        const handleDelete = () => {
+            setShowDeleteConfirm(true);
+        };
+
+        const confirmDelete = () => {
+            onDelete(task.chore_id || task.id);
+            setShowDeleteConfirm(false);
+        };
+
+        return h('div', { className: "p-4" },
+            h('h2', { className: "text-xl font-semibold mb-4" }, 
+                task ? "Taak bewerken" : "Nieuwe taak"),
 
             h('form', { onSubmit: handleSubmit, className: "space-y-4" },
                 // Basic info row
@@ -306,27 +254,46 @@ h('div', { className: "flex justify-end space-x-2 mt-4" },
                         h('option', { value: "Weekly" }, "Wekelijks"),
                         h('option', { value: "BiWeekly" }, "Tweewekelijks"),
                         h('option', { value: "Monthly" }, "Maandelijks"),
-                        h('option', { value: "Quarterly" }, "Per kwartaal"),
-                        h('option', { value: "Yearly" }, "Jaarlijks"),
                         h('option', { value: "Custom" }, "Aangepast")
                     )
                 ),
 
-                // Custom frequency days
-                formData.frequency_type === 'Custom' && h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Aantal dagen"),
-                    h('input', {
-                        type: "number",
-                        value: formData.frequency_days,
-                        onChange: (e) => setFormData({ ...formData, frequency_days: parseInt(e.target.value) || 1 }),
-                        className: "w-full p-2 border rounded-md",
-                        min: 1,
-                        max: 365
+                // Custom frequency options
+                formData.frequency_type === 'Custom' && h('div', { className: "ml-4 space-y-3" },
+                    h('div', null,
+                        h('label', { className: "block text-sm font-medium mb-1" }, "Elke ... dagen"),
+                        h('input', {
+                            type: "number",
+                            value: formData.frequency_days,
+                            onChange: (e) => setFormData({ ...formData, frequency_days: parseInt(e.target.value) || 1 }),
+                            className: "w-full p-2 border rounded-md",
+                            min: 1,
+                            max: 365
+                        })
+                    )
+                ),
+
+                // Weekly frequency - specific days
+                formData.frequency_type === 'Weekly' && h('div', null,
+                    h('label', { className: "block text-sm font-medium mb-1" }, "Op welke dagen?"),
+                    h(WeekDayPicker, {
+                        value: formData.selected_weekdays,
+                        onChange: (days) => setFormData({ ...formData, selected_weekdays: days })
                     })
                 ),
 
-                // Assignment section
+                // Monthly frequency - specific days
+                formData.frequency_type === 'Monthly' && h('div', null,
+                    h('label', { className: "block text-sm font-medium mb-1" }, "Op welke dagen van de maand?"),
+                    h(MonthDayPicker, {
+                        value: formData.active_monthdays,
+                        onChange: (days) => setFormData({ ...formData, active_monthdays: days })
+                    })
+                ),
+
+                // Assignment row
                 h('div', { className: "grid grid-cols-2 gap-4" },
+                    // Assigned to
                     h('div', null,
                         h('label', { className: "block text-sm font-medium mb-1" }, "Toegewezen aan"),
                         h('select', {
@@ -334,12 +301,16 @@ h('div', { className: "flex justify-end space-x-2 mt-4" },
                             onChange: (e) => setFormData({ ...formData, assigned_to: e.target.value }),
                             className: "w-full p-2 border rounded-md"
                         },
-                            assigneeOptions.map(name =>
-                                h('option', { key: name, value: name }, name)
+                            h('option', { value: "Wie kan" }, "Wie kan"),
+                            h('option', { value: "Allemaal" }, "Allemaal"),
+                            h('option', { value: "Afwisselend" }, "Afwisselend"),
+                            users.map(user =>
+                                h('option', { key: user.name, value: user.name }, user.name)
                             )
                         )
                     ),
 
+                    // Priority
                     h('div', null,
                         h('label', { className: "block text-sm font-medium mb-1" }, "Prioriteit"),
                         h('select', {
@@ -354,22 +325,47 @@ h('div', { className: "flex justify-end space-x-2 mt-4" },
                     )
                 ),
 
+                // Alternating assignment
+                formData.assigned_to === 'Afwisselend' && h('div', null,
+                    h('label', { className: "flex items-center space-x-2" },
+                        h('input', {
+                            type: "checkbox",
+                            checked: formData.use_alternating,
+                            onChange: (e) => setFormData({ ...formData, use_alternating: e.target.checked }),
+                            className: "rounded"
+                        }),
+                        h('span', { className: "text-sm" }, "Afwisselen met andere gebruiker")
+                    ),
+                    formData.use_alternating && h('select', {
+                        value: formData.alternate_with,
+                        onChange: (e) => setFormData({ ...formData, alternate_with: e.target.value }),
+                        className: "w-full mt-2 p-2 border rounded-md"
+                    },
+                        h('option', { value: "" }, "Selecteer gebruiker"),
+                        users.filter(u => u.name !== formData.assigned_to).map(user =>
+                            h('option', { key: user.name, value: user.name }, user.name)
+                        )
+                    )
+                ),
+
                 // Duration
                 h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Geschatte duur (minuten)"),
+                    h('label', { className: "block text-sm font-medium mb-1" }, 
+                        `Geschatte duur: ${formData.duration} minuten`),
                     h('input', {
-                        type: "number",
+                        type: "range",
                         value: formData.duration,
-                        onChange: (e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 15 }),
-                        className: "w-full p-2 border rounded-md",
-                        min: 1,
-                        max: 480
+                        onChange: (e) => setFormData({ ...formData, duration: parseInt(e.target.value) }),
+                        className: "w-full",
+                        min: 5,
+                        max: 120,
+                        step: 5
                     })
                 ),
 
                 // Description
                 h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Beschrijving"),
+                    h('label', { className: "block text-sm font-medium mb-1" }, "Beschrijving (optioneel)"),
                     h('textarea', {
                         value: formData.description,
                         onChange: (e) => setFormData({ ...formData, description: e.target.value }),
@@ -378,322 +374,268 @@ h('div', { className: "flex justify-end space-x-2 mt-4" },
                     })
                 ),
 
-                // Subtasks section
-                h('div', null,
-                    h('label', { className: "flex items-center mb-2" },
-                        h('input', {
-                            type: "checkbox",
-                            checked: formData.has_subtasks,
-                            onChange: (e) => setFormData({
-                                ...formData,
-                                has_subtasks: e.target.checked,
-                                subtasks: e.target.checked ? 
-                                    (formData.subtasks && formData.subtasks.length > 0 ? formData.subtasks : [{ name: "", completed: false }]) : []
-                            }),
-                            className: "mr-2"
-                        }),
-                        h('span', { className: "text-sm font-medium" }, "Deze taak heeft subtaken")
-                    ),
-
-                    formData.has_subtasks && h('div', null,
-                        h('label', { className: "block text-sm font-medium mb-2" }, "Subtaken:"),
-                        h('div', { className: "space-y-2 mb-3" },
-                            (formData.subtasks || []).map((subtask, index) =>
-                                h('div', { key: index, className: "flex items-center" },
-                                    h('input', {
-                                        type: "text",
-                                        value: (subtask && subtask.name) || '',
-                                        placeholder: "Naam van subtaak",
-                                        onChange: e => {
-                                            const newSubtasks = [...(formData.subtasks || [])];
-                                            if (!newSubtasks[index]) {
-                                                newSubtasks[index] = { name: '', completed: false };
-                                            }
-                                            newSubtasks[index].name = e.target.value;
-                                            setFormData({ ...formData, subtasks: newSubtasks });
-                                        },
-                                        className: "flex-1 p-2 border rounded-md"
-                                    }),
-                                    index > 0 && h('button', {
-                                        type: "button",
-                                        onClick: () => {
-                                            const newSubtasks = [...(formData.subtasks || [])];
-                                            newSubtasks.splice(index, 1);
-                                            setFormData({ ...formData, subtasks: newSubtasks });
-                                        },
-                                        className: "ml-2 p-2 text-red-500 hover:bg-red-100 rounded-full"
-                                    }, "×")
-                                )
-                            )
-                        ),
-
-                        h('button', {
-                            type: "button",
-                            onClick: () => {
-                                setFormData({
-                                    ...formData,
-                                    subtasks: [...(formData.subtasks || []), { name: "", completed: false }]
-                                });
-                            },
-                            className: "px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200"
-                        }, "+ Subtaak toevoegen")
-                    )
-                ),
-
-                // Action buttons
-                h('div', { className: "flex justify-between mt-6" },
+                // Actions
+                h('div', { className: "flex justify-between pt-4" },
                     h('div', { className: "space-x-2" },
-                        isEditing && h('button', {
+                        task && h('button', {
                             type: "button",
-                            onClick: () => setShowDeleteConfirm(true),
+                            onClick: handleDelete,
                             className: "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
                         }, "Verwijderen"),
-
-                        isEditing && formData.last_done && h('button', {
+                        task && task.last_done && h('button', {
                             type: "button",
-                            onClick: () => setShowResetConfirm(true),
+                            onClick: () => onResetCompletion(task.chore_id || task.id),
                             className: "px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600"
                         }, "Reset voltooiing")
                     ),
-
                     h('div', { className: "space-x-2" },
                         h('button', {
                             type: "button",
-                            onClick: onCancel,
+                            onClick: onClose,
                             className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
                         }, "Annuleren"),
-
                         h('button', {
                             type: "submit",
                             className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                        }, isEditing ? "Opslaan" : "Toevoegen")
+                        }, task ? "Opslaan" : "Toevoegen")
                     )
                 )
             ),
 
-            // Confirmation dialogs
-            h(window.choreComponents.ConfirmDialog, {
-                isOpen: showDeleteConfirm,
-                title: "Taak verwijderen",
-                message: `Weet je zeker dat je "${formData.name}" wilt verwijderen?`,
-                onConfirm: confirmDelete,
-                onCancel: () => setShowDeleteConfirm(false)
-            }),
-
-            h(window.choreComponents.ConfirmDialog, {
-                isOpen: showResetConfirm,
-                title: "Voltooiing ongedaan maken",
-                message: `Weet je zeker dat je de laatste voltooiing van "${formData.name}" wilt ongedaan maken?`,
-                onConfirm: confirmReset,
-                onCancel: () => setShowResetConfirm(false)
-            })
+            // Delete confirmation dialog
+            showDeleteConfirm && h('div', {
+                className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            },
+                h('div', { className: "bg-white rounded-lg p-6 max-w-sm" },
+                    h('h3', { className: "text-lg font-semibold mb-4" }, "Taak verwijderen?"),
+                    h('p', { className: "mb-6" }, 
+                        `Weet je zeker dat je "${formData.name}" wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`),
+                    h('div', { className: "flex justify-end space-x-2" },
+                        h('button', {
+                            onClick: () => setShowDeleteConfirm(false),
+                            className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                        }, "Annuleren"),
+                        h('button', {
+                            onClick: confirmDelete,
+                            className: "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                        }, "Verwijderen")
+                    )
+                )
+            )
         );
     };
 
     /**
-     * UserManagement component - FIXED VERSION
+     * User management component
      */
-    const UserManagement = function({ users = [], onSave, onClose }) {
-        const [editingUser, setEditingUser] = React.useState(null);
-        const [newUser, setNewUser] = React.useState({ name: '', color: '#CCCCCC' });
-        const [localUsers, setLocalUsers] = React.useState(users);
-
-        // Update local users when props change
-        React.useEffect(() => {
-            setLocalUsers(users);
-        }, [users]);
+    const UserManagement = ({ users, onSave, onClose }) => {
+        const [localUsers, setLocalUsers] = useState(users || []);
+        const [newUserName, setNewUserName] = useState('');
+        const [newUserColor, setNewUserColor] = useState('#3B82F6');
+        const [editingUser, setEditingUser] = useState(null);
 
         const isDefaultUser = (name) => {
-            return ['Laura', 'Martijn', 'Samen', 'Wie kan'].includes(name);
+            return ['Wie kan', 'Allemaal', 'Afwisselend'].includes(name);
         };
 
         const handleSubmit = async (e) => {
             e.preventDefault();
-            if (!newUser.name.trim()) return;
+            
+            if (!newUserName.trim()) return;
+            
+            // Check if user already exists
+            if (localUsers.some(u => u.name === newUserName)) {
+                alert('Deze gebruiker bestaat al!');
+                return;
+            }
 
             try {
-                // Add user via API
-                const api = window.ChoresAPI;
-                if (api && api.UsersAPI) {
-                    await api.UsersAPI.add(newUser.name.trim(), newUser.color);
+                // Call the ChoresAPI to add the user
+                if (window.ChoresAPI && window.ChoresAPI.users) {
+                    await window.ChoresAPI.users.addUser(
+                        newUserName, 
+                        newUserName,
+                        newUserColor
+                    );
                     
                     // Update local state
-                    const updatedUsers = [...localUsers, { name: newUser.name.trim(), color: newUser.color }];
-                    setLocalUsers(updatedUsers);
+                    setLocalUsers([...localUsers, { 
+                        name: newUserName, 
+                        color: newUserColor 
+                    }]);
                     
-                    // Call parent's onSave to trigger data reload
-                    if (onSave) {
-                        await onSave(updatedUsers);
-                    }
+                    // Clear form
+                    setNewUserName('');
+                    setNewUserColor('#3B82F6');
                     
-                    // Reset form
-                    setNewUser({ name: '', color: '#CCCCCC' });
+                    // Notify parent
+                    onSave([...localUsers, { 
+                        name: newUserName, 
+                        color: newUserColor 
+                    }]);
                 }
             } catch (error) {
                 console.error('Failed to add user:', error);
-                alert('Fout bij toevoegen gebruiker: ' + error.message);
+                alert('Er is een fout opgetreden bij het toevoegen van de gebruiker');
             }
         };
 
-        const handleDelete = async (name) => {
-            if (isDefaultUser(name)) return;
+        const handleDelete = async (userName) => {
+            if (isDefaultUser(userName)) return;
             
-            if (confirm(`Weet je zeker dat je "${name}" wilt verwijderen?`)) {
-                try {
-                    const api = window.ChoresAPI;
-                    if (api && api.UsersAPI) {
-                        await api.UsersAPI.delete(name);
-                        
-                        // Update local state
-                        const updatedUsers = localUsers.filter(u => u.name !== name);
-                        setLocalUsers(updatedUsers);
-                        
-                        // Call parent's onSave to trigger data reload
-                        if (onSave) {
-                            await onSave(updatedUsers);
-                        }
-                    }
-                } catch (error) {
-                    console.error('Failed to delete user:', error);
-                    alert('Fout bij verwijderen gebruiker: ' + error.message);
-                }
+            if (!confirm(`Weet je zeker dat je "${userName}" wilt verwijderen?`)) {
+                return;
             }
-        };
 
-        const handleColorSave = async () => {
-            if (!editingUser) return;
-            
             try {
-                const api = window.ChoresAPI;
-                if (api && api.UsersAPI) {
-                    // API doesn't have update method, so we need to delete and re-add
-                    await api.UsersAPI.delete(editingUser.name);
-                    await api.UsersAPI.add(editingUser.name, editingUser.color);
+                // Call the ChoresAPI to delete the user
+                if (window.ChoresAPI && window.ChoresAPI.users) {
+                    await window.ChoresAPI.users.deleteUser(userName);
+                    
+                    // Update local state
+                    const updatedUsers = localUsers.filter(u => u.name !== userName);
+                    setLocalUsers(updatedUsers);
+                    
+                    // Notify parent
+                    onSave(updatedUsers);
+                }
+            } catch (error) {
+                console.error('Failed to delete user:', error);
+                alert('Er is een fout opgetreden bij het verwijderen van de gebruiker');
+            }
+        };
+
+        const handleUpdateColor = async (user) => {
+            try {
+                // Call the ChoresAPI to update the user
+                if (window.ChoresAPI && window.ChoresAPI.users) {
+                    await window.ChoresAPI.users.addUser(
+                        user.name,
+                        user.name,
+                        user.color
+                    );
                     
                     // Update local state
                     const updatedUsers = localUsers.map(u => 
-                        u.name === editingUser.name ? editingUser : u
+                        u.name === user.name ? user : u
                     );
                     setLocalUsers(updatedUsers);
                     
-                    // Call parent's onSave to trigger data reload
-                    if (onSave) {
-                        await onSave(updatedUsers);
-                    }
-                    
-                    setEditingUser(null);
+                    // Notify parent
+                    onSave(updatedUsers);
                 }
+                
+                setEditingUser(null);
             } catch (error) {
                 console.error('Failed to update user color:', error);
-                alert('Fout bij bijwerken kleur: ' + error.message);
+                alert('Er is een fout opgetreden bij het bijwerken van de kleur');
             }
         };
 
-        return h('div', { className: "bg-white rounded-lg p-6 shadow-lg max-w-md mx-auto" },
-            h('h2', { className: "text-xl font-bold mb-4" }, "Gebruikers beheren"),
-            
-            h('div', { className: "space-y-4" },
-                h('div', { className: "space-y-2" },
-                    localUsers.map(user =>
-                        h('div', {
-                            key: user.name,
-                            className: "flex items-center justify-between p-2 border rounded"
-                        },
-                            h('div', { className: "flex items-center space-x-3" },
-                                h('div', {
-                                    className: "w-8 h-8 rounded-full border-2",
-                                    style: { 
-                                        backgroundColor: `${user.color}30`,
-                                        borderColor: user.color
-                                    }
-                                }),
-                                h('span', { className: "font-medium" }, user.name),
-                                isDefaultUser(user.name) && h('span', { 
-                                    className: "text-xs text-gray-500" 
-                                }, "(standaard)")
-                            ),
-                            h('div', { className: "flex space-x-2" },
-                                h('button', {
-                                    onClick: () => setEditingUser(user),
-                                    className: "px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                                }, "Kleur"),
-                                !isDefaultUser(user.name) && h('button', {
-                                    onClick: () => handleDelete(user.name),
-                                    className: "px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
-                                }, "Verwijderen")
-                            )
-                        )
-                    )
-                ),
+        return h('div', { className: "p-4" },
+            h('h2', { className: "text-xl font-semibold mb-4" }, "Gebruikersbeheer"),
 
-                h('h3', { className: "text-lg font-medium mb-2 mt-6" }, "Nieuwe gebruiker toevoegen"),
-                h('form', {
-                    onSubmit: handleSubmit,
-                    className: "space-y-4"
-                },
-                    h('div', null,
-                        h('label', { className: "block text-sm font-medium mb-1" }, "Naam"),
-                        h('input', {
-                            type: "text",
-                            className: "w-full p-2 border rounded",
-                            value: newUser.name,
-                            onChange: (e) => setNewUser({ ...newUser, name: e.target.value }),
-                            required: true
-                        })
-                    ),
-                    h('div', null,
-                        h('label', { className: "block text-sm font-medium mb-1" }, "Kleur"),
-                        h('input', {
-                            type: "color",
-                            className: "p-1 border rounded w-20 h-10",
-                            value: newUser.color,
-                            onChange: (e) => setNewUser({ ...newUser, color: e.target.value })
-                        })
-                    ),
-                    h('div', { className: "flex justify-end" },
-                        h('button', {
-                            type: "submit",
-                            className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                        }, "Toevoegen")
+            h('div', { className: "space-y-2 mb-6" },
+                h('h3', { className: "text-lg font-medium mb-2" }, "Huidige gebruikers"),
+                localUsers.filter(u => !isDefaultUser(u.name)).map(user =>
+                    h('div', {
+                        key: user.name,
+                        className: "flex items-center justify-between p-2 bg-gray-50 rounded"
+                    },
+                        h('div', { className: "flex items-center space-x-2" },
+                            h('div', {
+                                className: "w-6 h-6 rounded-full border",
+                                style: { backgroundColor: user.color || '#3B82F6' }
+                            }),
+                            h('span', { className: "font-medium" }, user.name),
+                            isDefaultUser(user.name) && h('span', { 
+                                className: "text-xs text-gray-500" 
+                            }, "(standaard)")
+                        ),
+                        h('div', { className: "flex space-x-2" },
+                            h('button', {
+                                onClick: () => setEditingUser(user),
+                                className: "px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                            }, "Kleur"),
+                            !isDefaultUser(user.name) && h('button', {
+                                onClick: () => handleDelete(user.name),
+                                className: "px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
+                            }, "Verwijderen")
+                        )
                     )
                 )
             ),
 
-            // Edit color dialog
-            editingUser && h('div', {
-                className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50",
-                onClick: () => setEditingUser(null)
+            h('h3', { className: "text-lg font-medium mb-2 mt-6" }, "Nieuwe gebruiker toevoegen"),
+            h('form', {
+                onSubmit: handleSubmit,
+                className: "space-y-4"
             },
-                h('div', {
-                    className: "bg-white rounded-lg p-6 max-w-sm mx-auto",
-                    onClick: (e) => e.stopPropagation()
-                },
-                    h('h3', { className: "text-lg font-medium mb-4" }, `Kleur wijzigen voor ${editingUser.name}`),
+                h('div', null,
+                    h('label', { className: "block text-sm font-medium mb-1" }, "Naam"),
                     h('input', {
-                        type: "color",
-                        className: "w-full h-20 mb-4",
-                        value: editingUser.color,
-                        onChange: (e) => setEditingUser({ ...editingUser, color: e.target.value })
-                    }),
+                        type: "text",
+                        value: newUserName,
+                        onChange: (e) => setNewUserName(e.target.value),
+                        className: "w-full p-2 border rounded-md",
+                        placeholder: "Voer naam in",
+                        required: true
+                    })
+                ),
+                h('div', null,
+                    h('label', { className: "block text-sm font-medium mb-1" }, "Kleur"),
+                    h('div', { className: "flex items-center space-x-2" },
+                        h('input', {
+                            type: "color",
+                            value: newUserColor,
+                            onChange: (e) => setNewUserColor(e.target.value),
+                            className: "h-10 w-20"
+                        }),
+                        h('span', { className: "text-sm text-gray-500" }, newUserColor)
+                    )
+                ),
+                h('button', {
+                    type: "submit",
+                    className: "w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                }, "Gebruiker toevoegen")
+            ),
+
+            h('div', { className: "flex justify-end space-x-2 mt-4" },
+                h('button', {
+                    onClick: onClose,
+                    className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                }, "Sluiten")
+            ),
+
+            // Color edit dialog
+            editingUser && h('div', {
+                className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            },
+                h('div', { className: "bg-white rounded-lg p-6 max-w-sm" },
+                    h('h3', { className: "text-lg font-semibold mb-4" }, 
+                        `Kleur wijzigen voor ${editingUser.name}`),
+                    h('div', { className: "mb-6" },
+                        h('input', {
+                            type: "color",
+                            value: editingUser.color || '#3B82F6',
+                            onChange: (e) => setEditingUser({ 
+                                ...editingUser, 
+                                color: e.target.value 
+                            }),
+                            className: "h-20 w-full"
+                        })
+                    ),
                     h('div', { className: "flex justify-end space-x-2" },
                         h('button', {
                             onClick: () => setEditingUser(null),
                             className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
                         }, "Annuleren"),
                         h('button', {
-                            onClick: handleColorSave,
+                            onClick: () => handleUpdateColor(editingUser),
                             className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
                         }, "Opslaan")
                     )
                 )
-            ),
-            
-            // Close button at bottom
-            h('div', { className: "flex justify-end mt-4" },
-                h('button', {
-                    onClick: onClose,
-                    className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-                }, "Sluiten")
             )
         );
     };
