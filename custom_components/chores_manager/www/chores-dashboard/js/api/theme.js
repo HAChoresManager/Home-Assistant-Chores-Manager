@@ -13,9 +13,46 @@ window.ChoresAPI = window.ChoresAPI || {};
         }
         
         /**
-         * Save theme settings
+         * Get current theme settings
+         * Returns theme settings or null if not set
          */
-        async saveTheme(themeData) {
+        async get() {
+            try {
+                // Try to get theme from sensor state
+                const sensorState = await this.getSensorState();
+                
+                if (sensorState && sensorState.attributes && sensorState.attributes.theme_settings) {
+                    return sensorState.attributes.theme_settings;
+                }
+                
+                // Return default theme if no settings found
+                return {
+                    backgroundColor: '#f3f4f6',
+                    cardColor: '#ffffff',
+                    primaryTextColor: '#1f2937',
+                    secondaryTextColor: '#6b7280'
+                };
+            } catch (error) {
+                console.error('Failed to get theme settings:', error);
+                // Return default theme on error
+                return {
+                    backgroundColor: '#f3f4f6',
+                    cardColor: '#ffffff',
+                    primaryTextColor: '#1f2937',
+                    secondaryTextColor: '#6b7280'
+                };
+            }
+        }
+        
+        /**
+         * Save theme settings
+         * @param {Object} themeData - Theme configuration object
+         * @param {string} themeData.backgroundColor - Background color hex
+         * @param {string} themeData.cardColor - Card background color hex
+         * @param {string} themeData.primaryTextColor - Primary text color hex
+         * @param {string} themeData.secondaryTextColor - Secondary text color hex
+         */
+        async save(themeData) {
             // Validate required fields
             const required = ['backgroundColor', 'cardColor', 'primaryTextColor', 'secondaryTextColor'];
             const missing = required.filter(field => !themeData[field]);
@@ -36,6 +73,20 @@ window.ChoresAPI = window.ChoresAPI || {};
                 window.ChoresAPI.ENDPOINTS.SAVE_THEME,
                 themeData
             );
+        }
+        
+        /**
+         * Reset theme to defaults
+         */
+        async reset() {
+            const defaultTheme = {
+                backgroundColor: '#f3f4f6',
+                cardColor: '#ffffff',
+                primaryTextColor: '#1f2937',
+                secondaryTextColor: '#6b7280'
+            };
+            
+            return await this.save(defaultTheme);
         }
     }
     
