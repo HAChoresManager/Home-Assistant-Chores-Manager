@@ -76,28 +76,47 @@ window.ChoresApp = window.ChoresApp || {};
                     console.log('Initializing Chores Dashboard App');
                     
                     try {
-                        // Wait for dependencies
-                        if (!window.ChoresAPI) {
-                            throw new Error('ChoresAPI not loaded');
+                        // Wait for ChoresAPI to be ready
+                        let attempts = 0;
+                        while (!window.ChoresAPI || !window.ChoresAPI.getSensorState) {
+                            if (attempts > 20) { // 2 seconds timeout
+                                throw new Error('ChoresAPI not properly initialized after timeout');
+                            }
+                            console.log('Waiting for ChoresAPI to be ready...');
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                            attempts++;
                         }
                         
                         // Get available APIs
                         const availableMethods = Object.keys(window.ChoresAPI);
                         console.log('ChoresAPI available methods:', availableMethods);
                         
-                        // Initialize the API
-                        await window.ChoresAPI.initialize();
-                        
-                        // Create API object with all available methods
+                        // The API is already initialized by api/index.js
+                        // Get the instances that were created
                         const apiObject = {
-                            chores: window.ChoresAPI.ChoresAPI,
-                            users: window.ChoresAPI.UsersAPI,
-                            theme: window.ChoresAPI.ThemeAPI,
-                            sensor: window.ChoresAPI.BaseAPI,
+                            chores: window.ChoresAPI.chores,
+                            users: window.ChoresAPI.users,
+                            theme: window.ChoresAPI.theme,
+                            sensor: window.ChoresAPI.sensor,
                             getSensorState: window.ChoresAPI.getSensorState,
-                            initialize: window.ChoresAPI.initialize,
                             getAuthToken: window.ChoresAPI.getAuthToken
                         };
+                        
+                        // If instances aren't available, create them
+                        if (!apiObject.chores && window.ChoresAPI.ChoresAPI) {
+                            apiObject.chores = new window.ChoresAPI.ChoresAPI();
+                        }
+                        if (!apiObject.users && window.ChoresAPI.UsersAPI) {
+                            apiObject.users = new window.ChoresAPI.UsersAPI();
+                        }
+                        if (!apiObject.theme && window.ChoresAPI.ThemeAPI) {
+                            apiObject.theme = new window.ChoresAPI.ThemeAPI();
+                        }
+                        
+                        // Verify critical methods exist
+                        if (typeof apiObject.getSensorState !== 'function') {
+                            throw new Error('getSensorState method not available');
+                        }
                         
                         console.log('API initialized successfully');
                         setApi(apiObject);
@@ -233,6 +252,7 @@ window.ChoresApp = window.ChoresApp || {};
                 if (!api) return;
                 
                 try {
+                    // Note: subtaskIndex might actually be the subtask_id
                     await api.chores.completeSubtask(subtaskIndex, selectedUser);
                     await loadData();
                 } catch (err) {
@@ -336,27 +356,11 @@ window.ChoresApp = window.ChoresApp || {};
             }, [api, loadData, handleError]);
             
             // User management handlers
-            const handleAddUser = useCallback(async (userData) => {
-                if (!api) return;
-                
-                try {
-                    await api.users.add(userData.name, userData.color);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            const handleDeleteUser = useCallback(async (name) => {
-                if (!api) return;
-                
-                try {
-                    await api.users.delete(name);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
+            const handleSaveUsers = useCallback(async (users) => {
+                // This is called after UserManagement handles add/delete internally
+                // We just need to reload data
+                await loadData();
+            }, [loadData]);
             
             // Theme handler
             const handleSaveTheme = useCallback(async (themeData) => {
@@ -595,10 +599,7 @@ window.ChoresApp = window.ChoresApp || {};
                 },
                     h(UserManagement, {
                         users: assignees,
-                        onSave: async (users) => {
-                            // Handle batch user updates if needed
-                            await loadData();
-                        },
+                        onSave: handleSaveUsers,
                         onClose: () => setShowUserManagement(false)
                     })
                 ),
