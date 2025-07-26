@@ -1,100 +1,67 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Huishoudelijke Taken</title>
-    <!-- Force cache refresh with timestamp -->
-    <link rel="stylesheet" href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" type="text/css">
-    <link rel="stylesheet" href="css/styles.css?v=20250415-modular" type="text/css">
+    <title>Chores Dashboard</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="css/styles.css?v=20250415-refactored">
+    
     <style>
-        /* Base styling for better readability */
-        html, body {
-            background-color: transparent !important;
-        }
-        
-        #root {
-            background-color: rgba(255, 255, 255, 0.85);
-            border-radius: 8px;
-            max-width: 1024px !important;
-            margin: 0 auto !important;
-            width: 100% !important;
-        }
-        
-        /* Special override for Achterstallig text */
-        span:contains("Achterstallig"), .text-red-600 {
-            color: #ef4444 !important;
-            font-weight: bold !important;
-        }
-        
-        /* Apply light theme by default */
-        body {
-            background-color: #ffffff !important;
-        }
-
-        /* Loading spinner */
+        /* Initial loading state styles */
         .loading-container {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            min-height: 400px;
-            padding: 20px;
+            height: 100vh;
+            background-color: #f3f4f6;
         }
-
+        
         .loading-spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
+            border: 3px solid #e5e7eb;
+            border-top: 3px solid #3b82f6;
             border-radius: 50%;
             width: 40px;
             height: 40px;
             animation: spin 1s linear infinite;
-            margin-bottom: 20px;
         }
-
+        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-
+        
         .loading-text {
-            color: #666;
-            font-size: 16px;
-            text-align: center;
+            margin-top: 16px;
+            color: #6b7280;
+            font-size: 14px;
         }
-
+        
         .error-container {
             background-color: #fee;
             border: 1px solid #fcc;
-            border-radius: 8px;
+            border-radius: 4px;
             padding: 20px;
             margin: 20px;
-            color: #c00;
-        }
-
-        .error-container h2 {
-            margin-top: 0;
-            color: #900;
-        }
-
-        .error-container pre {
-            background-color: #fdd;
-            padding: 10px;
-            border-radius: 4px;
-            overflow-x: auto;
-            font-size: 12px;
+            text-align: center;
         }
     </style>
-    <script>
-        // Global error handler for better debugging
+    
+    <script type="text/javascript">
+        // Enhanced error handling for the entire application
         window.addEventListener('error', function(event) {
-            console.error('Global error caught:', event.error);
-            const rootEl = document.getElementById('root');
-            if (rootEl && !rootEl.querySelector('.error-container')) {
-                rootEl.innerHTML = `
+            console.error('Global error:', event.error);
+            const rootElement = document.getElementById('root');
+            if (rootElement && !rootElement.querySelector('.error-container')) {
+                rootElement.innerHTML = `
                     <div class="error-container">
-                        <h2>Dashboard Error</h2>
-                        <p>Error: ${event.error ? event.error.message : 'Unknown error'}</p>
+                        <h2>JavaScript Error</h2>
+                        <p>${event.error ? event.error.message : 'Unknown error'}</p>
                         <pre>${event.error ? event.error.stack : ''}</pre>
                         <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
                     </div>`;
@@ -102,7 +69,7 @@
         });
 
         // Add version info to global object
-        window.CHORES_APP_VERSION = "1.4.0-20250415-modular";
+        window.CHORES_APP_VERSION = "1.4.0-20250415-refactored";
         console.log('Chores Dashboard Version:', window.CHORES_APP_VERSION);
     </script>
 </head>
@@ -119,12 +86,12 @@
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
 
     <!-- Load core utilities and helpers -->
-    <script src="js/auth-helper.js?v=20250415-modular" type="text/javascript"></script>
-    <script src="js/utils.js?v=20250415-modular" type="text/javascript"></script>
-    <script src="js/theme-integration.js?v=20250415-modular" type="text/javascript"></script>
+    <script src="js/auth-helper.js?v=20250415-refactored" type="text/javascript"></script>
+    <script src="js/utils.js?v=20250415-refactored" type="text/javascript"></script>
+    <script src="js/theme-integration.js?v=20250415-refactored" type="text/javascript"></script>
 
-    <!-- Load new modular API layer with deferred execution -->
-    <script src="js/api/base.js?v=20250415-modular" type="text/javascript"></script>
+    <!-- Load modular API layer with deferred execution -->
+    <script src="js/api/base.js?v=20250415-refactored" type="text/javascript"></script>
     
     <!-- Wait for base.js to load completely before loading other API modules -->
     <script type="text/javascript">
@@ -158,10 +125,10 @@
                     console.log('BaseAPI confirmed loaded, loading dependent modules...');
                     
                     // Load API modules in sequence
-                    await loadScript('js/api/chores.js?v=20250415-modular');
-                    await loadScript('js/api/users.js?v=20250415-modular');
-                    await loadScript('js/api/theme.js?v=20250415-modular');
-                    await loadScript('js/api/index.js?v=20250415-modular');
+                    await loadScript('js/api/chores.js?v=20250415-refactored');
+                    await loadScript('js/api/users.js?v=20250415-refactored');
+                    await loadScript('js/api/theme.js?v=20250415-refactored');
+                    await loadScript('js/api/index.js?v=20250415-refactored');
                     
                     console.log('All API modules loaded successfully');
                     
@@ -182,10 +149,15 @@
     </script>
 
     <!-- Load component loader which will load all components -->
-    <script src="js/components/index.js?v=20250415-modular" type="text/javascript"></script>
+    <script src="js/components/index.js?v=20250415-refactored" type="text/javascript"></script>
+
+    <!-- Load app modules in correct order -->
+    <script src="js/app-state.js?v=20250415-refactored" type="text/javascript"></script>
+    <script src="js/app-handlers.js?v=20250415-refactored" type="text/javascript"></script>
+    <script src="js/app-init.js?v=20250415-refactored" type="text/javascript"></script>
 
     <!-- Load the main app last -->
-    <script src="js/app.js?v=20250415-modular" type="text/javascript"></script>
+    <script src="js/app.js?v=20250415-refactored" type="text/javascript"></script>
 
     <script type="text/javascript">
         // Initialize app when all dependencies are loaded
@@ -207,6 +179,9 @@
                 if (!window.ChoresApp) missing.push('ChoresApp');
                 if (!window.ChoresAPI) missing.push('ChoresAPI');
                 if (window.ChoresAPI && !window.ChoresAPI.ENDPOINTS) missing.push('ChoresAPI.ENDPOINTS');
+                if (!window.ChoresApp.useAppState) missing.push('ChoresApp.useAppState');
+                if (!window.ChoresApp.useEventHandlers) missing.push('ChoresApp.useEventHandlers');
+                if (!window.ChoresApp.initApp) missing.push('ChoresApp.initApp');
 
                 // If nothing is missing, initialize
                 if (missing.length === 0) {
