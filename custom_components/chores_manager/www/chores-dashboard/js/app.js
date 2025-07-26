@@ -157,46 +157,54 @@ window.ChoresApp = window.ChoresApp || {};
             
             // Theme loading - RESTORED
             const loadTheme = useCallback(async () => {
-                if (!api?.theme) return;
+                if (!api || !api.theme) return;
                 
                 try {
-                    const settings = await api.theme.get();
-                    if (settings) {
-                        setThemeSettings(settings);
-                        // Apply theme to CSS variables
+                    const theme = await api.theme.get();
+                    if (theme) {
+                        setThemeSettings(theme);
+                        
+                        // Apply theme
                         const root = document.documentElement;
-                        root.style.setProperty('--theme-background', settings.backgroundColor);
-                        root.style.setProperty('--theme-card', settings.cardColor);
-                        root.style.setProperty('--theme-primary-text', settings.primaryTextColor);
-                        root.style.setProperty('--theme-secondary-text', settings.secondaryTextColor);
+                        if (theme.backgroundColor) root.style.setProperty('--theme-background', theme.backgroundColor);
+                        if (theme.cardColor) root.style.setProperty('--theme-card', theme.cardColor);
+                        if (theme.primaryTextColor) root.style.setProperty('--theme-primary-text', theme.primaryTextColor);
+                        if (theme.secondaryTextColor) root.style.setProperty('--theme-secondary-text', theme.secondaryTextColor);
                     }
                 } catch (err) {
-                    console.error('Failed to load theme:', err);
+                    console.error('Theme loading error:', err);
                 }
             }, [api]);
             
-            // Load data when API is ready
+            // Initial data load - RESTORED
             useEffect(() => {
                 if (api) {
                     loadData();
                     loadTheme();
+                    
+                    // Set up refresh interval
+                    const interval = setInterval(loadData, 30000);
+                    return () => clearInterval(interval);
                 }
             }, [api, loadData, loadTheme]);
             
-            // Task completion handler - RESTORED: With dialog logic
+            // Task mark done handler - RESTORED
             const handleMarkDone = useCallback(async (choreId, userId) => {
                 if (!api) return;
                 
-                // If no userId provided and multiple assignees, show selection dialog
+                // If userId not provided and multiple assignees, show dialog
                 if (!userId && assignees.length > 1) {
-                    setSelectedCompletion({ choreId, defaultUser: assignees[0]?.name || 'Wie kan' });
+                    setSelectedCompletion({ 
+                        choreId, 
+                        defaultUser: assignees[0]?.name || 'Wie kan' 
+                    });
                     return;
                 }
                 
-                // Add processing state to provide immediate feedback
-                setChores(chores => 
-                    chores.map(chore => 
-                        (chore.chore_id === choreId || chore.id === choreId)
+                // Set processing state
+                setChores(prevChores => 
+                    prevChores.map(chore => 
+                        (chore.id || chore.chore_id) === choreId 
                             ? { ...chore, isProcessing: true }
                             : chore
                     )
@@ -206,17 +214,16 @@ window.ChoresApp = window.ChoresApp || {};
                     await api.chores.markDone(choreId, userId || assignees[0]?.name || 'Wie kan');
                     setLastCompletion({ 
                         choreId, 
-                        person: userId || assignees[0]?.name || 'Wie kan', 
-                        time: Date.now() 
+                        person: userId || assignees[0]?.name || 'Wie kan' 
                     });
                     await loadData();
                 } catch (err) {
                     handleError(err);
                 } finally {
-                    // Remove processing state
-                    setChores(chores => 
-                        chores.map(chore => 
-                            (chore.chore_id === choreId || chore.id === choreId)
+                    // Clear processing state
+                    setChores(prevChores => 
+                        prevChores.map(chore => 
+                            (chore.id || chore.chore_id) === choreId 
                                 ? { ...chore, isProcessing: false }
                                 : chore
                         )
@@ -267,7 +274,7 @@ window.ChoresApp = window.ChoresApp || {};
                 }
             }, [selectedSubtaskCompletion, handleMarkSubtaskDone]);
             
-            // Task form submission - RESTORED
+            // Task form submission - FIXED: Updated to match expected props
             const handleTaskFormSubmit = useCallback(async (formData) => {
                 if (!api) return;
                 
@@ -486,73 +493,113 @@ window.ChoresApp = window.ChoresApp || {};
                         // Success message for completed tasks - RESTORED
                         lastCompletion && h(Alert, {
                             type: "success",
-                            message: `Taak voltooid door ${lastCompletion.person}! 🎉`,
+                            message: `Taak voltooid door ${lastCompletion.person}!`,
                             onDismiss: clearLastCompletion
                         }),
                         
-                        // Statistics
-                        !loading && !error && stats && Object.keys(stats).length > 0 && h('div', { className: "grid grid-cols-1 md:grid-cols-3 gap-6 mb-8" },
+                        // Statistics - RESTORED
+                        !loading && !error && h('div', { className: "grid grid-cols-1 md:grid-cols-3 gap-4 mb-8" },
                             h(StatsCard, {
-                                title: "Vandaag Voltooid",
-                                value: stats.completed_today || 0,
+                                title: "Vandaag te doen",
+                                value: pendingTasks.filter(c => c.is_due || c.status === 'due').length,
+                                icon: "📅",
+                                color: "blue"
+                            }),
+                            h(StatsCard, {
+                                title: "Voltooid vandaag",
+                                value: completedTasks.length,
                                 icon: "✅",
                                 color: "green"
                             }),
                             h(StatsCard, {
-                                title: "Nog Te Doen",
-                                value: stats.pending_today || 0,
-                                icon: "⏰",
-                                color: "orange"
-                            }),
-                            h(StatsCard, {
-                                title: "Deze Week",
-                                value: stats.completed_this_week || 0,
-                                icon: "📅",
-                                color: "blue"
+                                title: "Totaal taken",
+                                value: chores.length,
+                                icon: "📊",
+                                color: "purple"
                             })
                         ),
                         
-                        // User stats - RESTORED
-                        !loading && !error && assignees.length > 0 && h('div', { className: "mb-8" },
-                            h('h2', { className: "text-xl font-semibold mb-4" }, "Statistieken per Gebruiker"),
-                            h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" },
-                                assignees.filter(assignee => assignee !== 'Wie kan').map(assignee =>
-                                    h(UserStatsCard, {
-                                        key: assignee,
-                                        user: assignee,
-                                        stats: stats.user_stats?.[assignee] || {},
-                                        color: themeSettings.primaryColor || '#3B82F6'
-                                    })
-                                )
-                            )
-                        ),
-                        
-                        // Tasks
+                        // Task sections
                         !loading && !error && h('div', { className: "space-y-8" },
-                            // Pending tasks
-                            pendingTasks.length > 0 && h('div', null,
-                                h('h2', { className: 'text-xl font-semibold mb-4' }, 
-                                    `📋 Te Doen Vandaag (${pendingTasks.length})`),
-                                h('div', { className: 'grid gap-4' },
-                                    pendingTasks.map(chore =>
-                                        h(TaskCard, {
-                                            key: chore.id || chore.chore_id,
-                                            chore: chore,
-                                            onMarkDone: handleMarkDone,
-                                            onEdit: handleEditTask,
-                                            onToggleDescription: handleToggleDescription,
-                                            assignees: assignees,
-                                            onMarkSubtaskDone: handleMarkSubtaskDone
-                                        })
+                            // Overdue tasks - RESTORED
+                            (() => {
+                                const overdueTasks = pendingTasks.filter(c => c.overdue_days > 0);
+                                return overdueTasks.length > 0 && h('div', null,
+                                    h('h2', { className: "text-xl font-semibold mb-4 text-red-600" }, 
+                                        `⚠️ Achterstallig (${overdueTasks.length})`),
+                                    h('div', { className: "grid gap-4 mb-8" },
+                                        overdueTasks.map(chore =>
+                                            h(TaskCard, {
+                                                key: chore.id || chore.chore_id,
+                                                chore: chore,
+                                                onMarkDone: handleMarkDone,
+                                                onEdit: handleEditTask,
+                                                onToggleDescription: handleToggleDescription,
+                                                isExpanded: expandedDescriptions[chore.id || chore.chore_id],
+                                                assignees: assignees,
+                                                onMarkSubtaskDone: handleMarkSubtaskDone
+                                            })
+                                        )
                                     )
-                                )
-                            ),
+                                );
+                            })(),
                             
-                            // Completed tasks
+                            // Today's tasks - RESTORED
+                            (() => {
+                                const todayTasks = pendingTasks.filter(c => 
+                                    (c.is_due || c.status === 'due') && c.overdue_days === 0
+                                );
+                                return h('div', null,
+                                    h('h2', { className: "text-xl font-semibold mb-4" }, 
+                                        `📋 Vandaag (${todayTasks.length})`),
+                                    h('div', { className: "grid gap-4 mb-8" },
+                                        todayTasks.length > 0 ? todayTasks.map(chore =>
+                                            h(TaskCard, {
+                                                key: chore.id || chore.chore_id,
+                                                chore: chore,
+                                                onMarkDone: handleMarkDone,
+                                                onEdit: handleEditTask,
+                                                onToggleDescription: handleToggleDescription,
+                                                isExpanded: expandedDescriptions[chore.id || chore.chore_id],
+                                                assignees: assignees,
+                                                onMarkSubtaskDone: handleMarkSubtaskDone
+                                            })
+                                        ) : h('p', { className: "text-gray-500 text-center py-4" }, 
+                                            "Geen taken voor vandaag! 🎉")
+                                    )
+                                );
+                            })(),
+                            
+                            // Upcoming tasks - RESTORED
+                            (() => {
+                                const upcomingTasks = pendingTasks.filter(c => 
+                                    !(c.is_due || c.status === 'due')
+                                );
+                                return upcomingTasks.length > 0 && h('div', null,
+                                    h('h2', { className: "text-xl font-semibold mb-4" }, 
+                                        `📅 Komende taken (${upcomingTasks.length})`),
+                                    h('div', { className: "grid gap-4 mb-8" },
+                                        upcomingTasks.map(chore =>
+                                            h(TaskCard, {
+                                                key: chore.id || chore.chore_id,
+                                                chore: chore,
+                                                onMarkDone: handleMarkDone,
+                                                onEdit: handleEditTask,
+                                                onToggleDescription: handleToggleDescription,
+                                                isExpanded: expandedDescriptions[chore.id || chore.chore_id],
+                                                assignees: assignees,
+                                                onMarkSubtaskDone: handleMarkSubtaskDone
+                                            })
+                                        )
+                                    )
+                                );
+                            })(),
+                            
+                            // Completed tasks - RESTORED
                             completedTasks.length > 0 && h('div', null,
-                                h('h2', { className: 'text-xl font-semibold mb-4 text-green-600' }, 
-                                    `✅ Voltooid Vandaag (${completedTasks.length})`),
-                                h('div', { className: 'grid gap-4' },
+                                h('h2', { className: "text-xl font-semibold mb-4 text-green-600" }, 
+                                    `✅ Voltooid vandaag (${completedTasks.length})`),
+                                h('div', { className: "grid gap-4" },
                                     completedTasks.map(chore =>
                                         h(TaskCard, {
                                             key: chore.id || chore.chore_id,
@@ -560,6 +607,7 @@ window.ChoresApp = window.ChoresApp || {};
                                             onMarkDone: handleMarkDone,
                                             onEdit: handleEditTask,
                                             onToggleDescription: handleToggleDescription,
+                                            isExpanded: expandedDescriptions[chore.id || chore.chore_id],
                                             assignees: assignees,
                                             onMarkSubtaskDone: handleMarkSubtaskDone
                                         })
@@ -567,18 +615,18 @@ window.ChoresApp = window.ChoresApp || {};
                                 )
                             ),
                             
-                            // Empty state
+                            // Empty state - RESTORED
                             chores.length === 0 && !loading && h('div', { 
-                                className: 'text-center py-12 bg-white rounded-lg shadow-sm' 
+                                className: "text-center py-12 bg-white rounded-lg shadow-sm"
                             },
-                                h('p', { className: 'text-gray-500' }, 
-                                    'Geen taken gevonden. Klik op "Nieuwe Taak" om te beginnen.'
+                                h('p', { className: "text-gray-500 text-lg" }, 
+                                    "Geen taken gevonden. Klik op 'Nieuwe Taak' om te beginnen."
                                 )
                             )
                         )
                     ),
                     
-                    // Modals
+                    // Modals - FIXED with correct prop names
                     showTaskForm && h(Modal, {
                         isOpen: showTaskForm,
                         onClose: () => {
@@ -588,14 +636,14 @@ window.ChoresApp = window.ChoresApp || {};
                         title: editingTask ? 'Taak Bewerken' : 'Nieuwe Taak'
                     },
                         h(TaskForm, {
-                            onSubmit: handleTaskFormSubmit,
+                            task: editingTask,  // FIXED: was 'initialData'
+                            onSave: handleTaskFormSubmit,  // FIXED: was 'onSubmit'
                             onDelete: handleDeleteTask,
-                            onCancel: () => {
+                            onClose: () => {  // FIXED: was 'onCancel'
                                 setShowTaskForm(false);
                                 setEditingTask(null);
                             },
                             onResetCompletion: handleResetCompletion,
-                            initialData: editingTask,
                             users: assignees,
                             assignees: assignees
                         })
