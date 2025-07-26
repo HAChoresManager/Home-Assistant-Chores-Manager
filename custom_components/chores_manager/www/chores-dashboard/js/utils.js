@@ -326,7 +326,7 @@ window.choreUtils.getBackgroundColor = function(assignedTo, assigneesList = []) 
     switch (assignedTo) {
         case 'Martijn': return 'bg-yellow-100 border-yellow-400';
         case 'Laura': return 'bg-red-100 border-red-400';
-        case 'Sammen': return 'bg-blue-100 border-blue-400';
+        case 'Samen': return 'bg-blue-100 border-blue-400';
         case 'Wie kan': return 'bg-green-100 border-green-400';
         default: return 'bg-gray-100 border-gray-400';
     }
