@@ -1,7 +1,7 @@
 /**
  * Main App Component for Chores Dashboard
- * This is the root component that manages the entire application state
- * Part of the modular architecture - depends on all component modules
+ * This is the root component that manages the entire application
+ * Refactored to use modular architecture with separate state and handler files
  */
 
 window.ChoresApp = window.ChoresApp || {};
@@ -9,11 +9,10 @@ window.ChoresApp = window.ChoresApp || {};
 (function() {
     'use strict';
     
-    const { useState, useEffect, useCallback } = React;
+    const h = React.createElement;
     
     /**
      * ChoresApp - Main application component
-     * Manages all state and business logic for the dashboard
      */
     function ChoresApp() {
         // Check dependencies
@@ -42,374 +41,20 @@ window.ChoresApp = window.ChoresApp || {};
             TaskDescription
         } = window.choreComponents;
         
-        const h = React.createElement;
-        
         // Main app component
         function App() {
-            // Core State
-            const [chores, setChores] = useState([]);
-            const [assignees, setAssignees] = useState([]);
-            const [stats, setStats] = useState({});
-            const [loading, setLoading] = useState(true);
-            const [error, setError] = useState(null);
+            // Use centralized state management
+            const state = window.ChoresApp.useAppState();
+            const { core, ui, dialogs, status, helpers } = state;
             
-            // UI State
-            const [showTaskForm, setShowTaskForm] = useState(false);
-            const [editingTask, setEditingTask] = useState(null);
-            const [showUserManagement, setShowUserManagement] = useState(false);
-            const [showThemeSettings, setShowThemeSettings] = useState(false);
-            const [selectedDescription, setSelectedDescription] = useState(null);
-            const [expandedDescriptions, setExpandedDescriptions] = useState({});
+            // Use event handlers
+            const handlers = window.ChoresApp.useEventHandlers(state);
             
-            // Dialog States - RESTORED: These were missing
-            const [selectedCompletion, setSelectedCompletion] = useState(null);
-            const [selectedSubtaskCompletion, setSelectedSubtaskCompletion] = useState(null);
-            const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-            const [confirmDialogData, setConfirmDialogData] = useState(null);
+            // Use computed values
+            const computed = window.ChoresApp.useComputedValues(core.chores, core.assignees);
             
-            // Success/Error States - RESTORED
-            const [lastCompletion, setLastCompletion] = useState(null);
-            const [hasAuthError, setHasAuthError] = useState(false);
-            
-            // Theme State
-            const [themeSettings, setThemeSettings] = useState({
-                backgroundColor: '#ffffff',
-                cardColor: '#f8f8f8', 
-                primaryTextColor: '#000000',
-                secondaryTextColor: '#333333'
-            });
-            
-            // API State
-            const [api, setApi] = useState(null);
-            
-            // Error handler - RESTORED
-            const handleError = useCallback((err) => {
-                console.error('App error:', err);
-                setError(err.message || 'Er is een onbekende fout opgetreden');
-                
-                // Check for auth errors
-                if (err.message?.includes('401') || err.message?.includes('authentication')) {
-                    setHasAuthError(true);
-                }
-            }, []);
-            
-            // Initialize API
-            useEffect(() => {
-                const initializeAPI = async () => {
-                    try {
-                        if (window.ChoresAPI && window.ChoresAPI.initialize) {
-                            console.log('Initializing Chores Dashboard App');
-                            
-                            // Check what's available in ChoresAPI
-                            const apiMethods = Object.keys(window.ChoresAPI);
-                            console.log('ChoresAPI available methods:', apiMethods);
-                            
-                            await window.ChoresAPI.initialize();
-                            console.log('API initialized successfully');
-                            
-                            setApi(window.ChoresAPI);
-                        } else {
-                            throw new Error('ChoresAPI not available');
-                        }
-                    } catch (error) {
-                        console.error('Failed to initialize API:', error);
-                        handleError(error);
-                        setLoading(false);
-                    }
-                };
-                
-                initializeAPI();
-            }, [handleError]);
-            
-            // Load data - RESTORED: More comprehensive version
-            const loadData = useCallback(async () => {
-                if (!api) return;
-                
-                try {
-                    setLoading(true);
-                    console.log('Loading data with API:', api);
-                    console.log('getSensorState type:', typeof api.getSensorState);
-                    
-                    // Load sensor state
-                    const state = await api.getSensorState('sensor.chores_overview');
-                    console.log('Loaded state:', state);
-                    
-                    if (state && state.attributes) {
-                        const { chores = [], assignees = [], stats = {} } = state.attributes;
-                        
-                        // Update chores with processing flags reset
-                        const processedChores = chores.map(chore => ({
-                            ...chore,
-                            isProcessing: false
-                        }));
-                        
-                        setChores(processedChores);
-                        setAssignees(assignees);
-                        setStats(stats);
-                    }
-                    
-                } catch (err) {
-                    handleError(err);
-                } finally {
-                    setLoading(false);
-                }
-            }, [api, handleError]);
-            
-            // Theme loading - RESTORED
-            const loadTheme = useCallback(async () => {
-                if (!api || !api.theme) return;
-                
-                try {
-                    const theme = await api.theme.get();
-                    if (theme) {
-                        setThemeSettings(theme);
-                        
-                        // Apply theme
-                        const root = document.documentElement;
-                        if (theme.backgroundColor) root.style.setProperty('--theme-background', theme.backgroundColor);
-                        if (theme.cardColor) root.style.setProperty('--theme-card', theme.cardColor);
-                        if (theme.primaryTextColor) root.style.setProperty('--theme-primary-text', theme.primaryTextColor);
-                        if (theme.secondaryTextColor) root.style.setProperty('--theme-secondary-text', theme.secondaryTextColor);
-                    }
-                } catch (err) {
-                    console.error('Theme loading error:', err);
-                }
-            }, [api]);
-            
-            // Initial data load - RESTORED
-            useEffect(() => {
-                if (api) {
-                    loadData();
-                    loadTheme();
-                    
-                    // Set up refresh interval
-                    const interval = setInterval(loadData, 30000);
-                    return () => clearInterval(interval);
-                }
-            }, [api, loadData, loadTheme]);
-            
-            // Task mark done handler - RESTORED
-            const handleMarkDone = useCallback(async (choreId, userId) => {
-                if (!api) return;
-                
-                // If userId not provided and multiple assignees, show dialog
-                if (!userId && assignees.length > 1) {
-                    setSelectedCompletion({ 
-                        choreId, 
-                        defaultUser: assignees[0]?.name || 'Wie kan' 
-                    });
-                    return;
-                }
-                
-                // Set processing state
-                setChores(prevChores => 
-                    prevChores.map(chore => 
-                        (chore.id || chore.chore_id) === choreId 
-                            ? { ...chore, isProcessing: true }
-                            : chore
-                    )
-                );
-                
-                try {
-                    await api.chores.markDone(choreId, userId || assignees[0]?.name || 'Wie kan');
-                    setLastCompletion({ 
-                        choreId, 
-                        person: userId || assignees[0]?.name || 'Wie kan' 
-                    });
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                } finally {
-                    // Clear processing state
-                    setChores(prevChores => 
-                        prevChores.map(chore => 
-                            (chore.id || chore.chore_id) === choreId 
-                                ? { ...chore, isProcessing: false }
-                                : chore
-                        )
-                    );
-                }
-            }, [api, assignees, loadData, handleError]);
-            
-            // Completion confirmation handler - RESTORED
-            const handleCompletionConfirm = useCallback(async (selectedUser) => {
-                if (selectedCompletion) {
-                    await handleMarkDone(selectedCompletion.choreId, selectedUser);
-                    setSelectedCompletion(null);
-                }
-            }, [selectedCompletion, handleMarkDone]);
-            
-            // Subtask completion handler - RESTORED
-            const handleMarkSubtaskDone = useCallback(async (choreId, subtaskIndex, userId) => {
-                if (!api) return;
-                
-                // If no userId provided and multiple assignees, show selection dialog
-                if (!userId && assignees.length > 1) {
-                    const chore = chores.find(c => (c.id || c.chore_id) === choreId);
-                    setSelectedSubtaskCompletion({ 
-                        chore, 
-                        subtaskIndex, 
-                        defaultUser: assignees[0]?.name || 'Wie kan' 
-                    });
-                    return;
-                }
-                
-                try {
-                    await api.chores.completeSubtask(subtaskIndex, userId || assignees[0]?.name || 'Wie kan');
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, assignees, chores, loadData, handleError]);
-            
-            // Subtask completion confirmation handler - RESTORED
-            const handleSubtaskCompletionConfirm = useCallback(async (subtaskIndex, selectedUser) => {
-                if (selectedSubtaskCompletion) {
-                    await handleMarkSubtaskDone(
-                        selectedSubtaskCompletion.chore.id || selectedSubtaskCompletion.chore.chore_id,
-                        subtaskIndex,
-                        selectedUser
-                    );
-                    setSelectedSubtaskCompletion(null);
-                }
-            }, [selectedSubtaskCompletion, handleMarkSubtaskDone]);
-            
-            // Task form submission - FIXED: Updated to match expected props
-            const handleTaskFormSubmit = useCallback(async (formData) => {
-                if (!api) return;
-                
-                try {
-                    if (editingTask) {
-                        await api.chores.updateDescription(editingTask.chore_id || editingTask.id, formData);
-                    } else {
-                        await api.chores.addChore(formData);
-                    }
-                    
-                    setShowTaskForm(false);
-                    setEditingTask(null);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, editingTask, loadData, handleError]);
-            
-            // Task editing - RESTORED
-            const handleEditTask = useCallback((chore) => {
-                setEditingTask(chore);
-                setShowTaskForm(true);
-            }, []);
-            
-            // Task deletion - RESTORED
-            const handleDeleteTask = useCallback(async (choreId) => {
-                if (!api) return;
-                
-                try {
-                    await api.chores.deleteChore(choreId);
-                    setShowTaskForm(false);
-                    setEditingTask(null);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            // Completion reset - RESTORED
-            const handleResetCompletion = useCallback(async (choreId) => {
-                if (!api) return;
-                
-                try {
-                    await api.chores.resetChore(choreId);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, loadData, handleError]);
-            
-            // User management - RESTORED
-            const handleSaveUsers = useCallback(async (users) => {
-                try {
-                    setAssignees(users);
-                    setShowUserManagement(false);
-                    await loadData();
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [loadData, handleError]);
-            
-            // Theme changes - RESTORED
-            const handleSaveTheme = useCallback(async (theme) => {
-                if (!api) return;
-                
-                try {
-                    if (api.theme && api.theme.save) {
-                        await api.theme.save(theme.primaryColor, theme.accentColor);
-                    }
-                    
-                    setThemeSettings(theme);
-                    // Apply theme immediately
-                    const root = document.documentElement;
-                    root.style.setProperty('--theme-background', theme.backgroundColor);
-                    root.style.setProperty('--theme-card', theme.cardColor);
-                    root.style.setProperty('--theme-primary-text', theme.primaryTextColor);
-                    root.style.setProperty('--theme-secondary-text', theme.secondaryTextColor);
-                    
-                    setShowThemeSettings(false);
-                } catch (err) {
-                    handleError(err);
-                }
-            }, [api, handleError]);
-            
-            // Description toggle - RESTORED
-            const handleToggleDescription = useCallback((choreId, expanded) => {
-                setExpandedDescriptions(prev => ({
-                    ...prev,
-                    [choreId]: expanded
-                }));
-                
-                // If expanded, set selected description for modal
-                if (expanded) {
-                    const chore = chores.find(c => (c.id || c.chore_id) === choreId);
-                    if (chore && chore.description) {
-                        setSelectedDescription({
-                            id: choreId,
-                            name: chore.name,
-                            description: chore.description
-                        });
-                    }
-                }
-            }, [chores]);
-            
-            // Clear error - RESTORED
-            const clearError = useCallback(() => {
-                setError(null);
-                setHasAuthError(false);
-            }, []);
-            
-            // Clear success message - RESTORED
-            const clearLastCompletion = useCallback(() => {
-                setLastCompletion(null);
-            }, []);
-            
-            // Cancel dialogs - RESTORED
-            const cancelCompletionDialog = useCallback(() => {
-                setSelectedCompletion(null);
-            }, []);
-            
-            const cancelSubtaskDialog = useCallback(() => {
-                setSelectedSubtaskCompletion(null);
-            }, []);
-            
-            // Separate tasks by completion status
-            const pendingTasks = chores.filter(chore => !chore.completed_today);
-            const completedTasks = chores.filter(chore => chore.completed_today);
-            
-            // Available assignees for dialogs - RESTORED
-            const availableAssignees = assignees.length > 0
-                ? assignees.filter(a => a.name !== "Wie kan").map(a => a.name)
-                : ["Laura", "Martijn", "Samen"];
-            
-            // Error boundary component - RESTORED
-            class ErrorBoundary extends React.Component {
+            // Inner Error Boundary for app content
+            class AppErrorBoundary extends React.Component {
                 constructor(props) {
                     super(props);
                     this.state = { hasError: false, error: null };
@@ -420,7 +65,7 @@ window.ChoresApp = window.ChoresApp || {};
                 }
                 
                 componentDidCatch(error, errorInfo) {
-                    console.error('React Error Boundary caught:', error, errorInfo);
+                    console.error('App Error Boundary caught:', error, errorInfo);
                 }
                 
                 render() {
@@ -439,12 +84,13 @@ window.ChoresApp = window.ChoresApp || {};
                 }
             }
             
-            return h(ErrorBoundary, null,
+            // Render the app
+            return h(AppErrorBoundary, null,
                 h('div', { 
                     className: "min-h-screen bg-gray-100 font-sans",
                     style: { 
-                        backgroundColor: themeSettings.backgroundColor || '#f3f4f6',
-                        color: themeSettings.primaryTextColor || '#111827'
+                        backgroundColor: status.themeSettings.backgroundColor || '#f3f4f6',
+                        color: status.themeSettings.primaryTextColor || '#111827'
                     }
                 },
                     // Header
@@ -453,25 +99,25 @@ window.ChoresApp = window.ChoresApp || {};
                             h('div', { className: "flex justify-between items-center py-4" },
                                 h('div', { className: "flex items-center space-x-4" },
                                     h('h1', { className: "text-2xl font-bold text-gray-900" }, "🏠 Klusjes Dashboard"),
-                                    hasAuthError && h('span', { className: "text-sm bg-yellow-100 text-yellow-800 px-2 py-1 rounded" }, 
+                                    status.hasAuthError && h('span', { className: "text-sm bg-yellow-100 text-yellow-800 px-2 py-1 rounded" }, 
                                         "Auth issue - check config")
                                 ),
                                 h('div', { className: "flex space-x-2" },
                                     h('button', {
                                         className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600",
-                                        onClick: () => setShowTaskForm(true)
+                                        onClick: () => ui.setShowTaskForm(true)
                                     }, "Nieuwe Taak"),
                                     h('button', {
                                         className: "px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600",
-                                        onClick: () => setShowUserManagement(true)
+                                        onClick: () => ui.setShowUserManagement(true)
                                     }, "Gebruikers"),
                                     h('button', {
                                         className: "px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600",
-                                        onClick: () => setShowThemeSettings(true)
+                                        onClick: () => ui.setShowThemeSettings(true)
                                     }, "Thema"),
                                     h('button', {
                                         className: "px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600",
-                                        onClick: loadData
+                                        onClick: handlers.loadData
                                     }, "↻")
                                 )
                             )
@@ -481,142 +127,129 @@ window.ChoresApp = window.ChoresApp || {};
                     // Main content
                     h('main', { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" },
                         // Loading state
-                        loading && h(Loading, { message: "Taken laden..." }),
+                        core.loading && h(Loading, { message: "Taken laden..." }),
                         
                         // Error state
-                        error && h(ErrorMessage, { 
-                            message: error, 
-                            onRetry: loadData,
-                            onDismiss: clearError
+                        core.error && h(ErrorMessage, { 
+                            message: core.error, 
+                            onRetry: handlers.loadData,
+                            onDismiss: helpers.clearError
                         }),
                         
-                        // Success message for completed tasks - RESTORED
-                        lastCompletion && h(Alert, {
+                        // Success message for completed tasks
+                        status.lastCompletion && h(Alert, {
                             type: "success",
-                            message: `Taak voltooid door ${lastCompletion.person}!`,
-                            onDismiss: clearLastCompletion
+                            message: `Taak voltooid door ${status.lastCompletion.person}!`,
+                            onDismiss: helpers.clearLastCompletion
                         }),
                         
-                        // Statistics - RESTORED
-                        !loading && !error && h('div', { className: "grid grid-cols-1 md:grid-cols-3 gap-4 mb-8" },
+                        // Statistics
+                        !core.loading && !core.error && h('div', { className: "grid grid-cols-1 md:grid-cols-3 gap-4 mb-8" },
                             h(StatsCard, {
                                 title: "Vandaag te doen",
-                                value: pendingTasks.filter(c => c.is_due || c.status === 'due').length,
+                                value: computed.pendingTasks.filter(c => c.is_due || c.status === 'due').length,
                                 icon: "📅",
                                 color: "blue"
                             }),
                             h(StatsCard, {
                                 title: "Voltooid vandaag",
-                                value: completedTasks.length,
+                                value: computed.completedTasks.length,
                                 icon: "✅",
                                 color: "green"
                             }),
                             h(StatsCard, {
                                 title: "Totaal taken",
-                                value: chores.length,
+                                value: core.chores.length,
                                 icon: "📊",
                                 color: "purple"
                             })
                         ),
                         
                         // Task sections
-                        !loading && !error && h('div', { className: "space-y-8" },
-                            // Overdue tasks - RESTORED
-                            (() => {
-                                const overdueTasks = pendingTasks.filter(c => c.overdue_days > 0);
-                                return overdueTasks.length > 0 && h('div', null,
-                                    h('h2', { className: "text-xl font-semibold mb-4 text-red-600" }, 
-                                        `⚠️ Achterstallig (${overdueTasks.length})`),
-                                    h('div', { className: "grid gap-4 mb-8" },
-                                        overdueTasks.map(chore =>
-                                            h(TaskCard, {
-                                                key: chore.id || chore.chore_id,
-                                                chore: chore,
-                                                onMarkDone: handleMarkDone,
-                                                onEdit: handleEditTask,
-                                                onToggleDescription: handleToggleDescription,
-                                                isExpanded: expandedDescriptions[chore.id || chore.chore_id],
-                                                assignees: assignees,
-                                                onMarkSubtaskDone: handleMarkSubtaskDone
-                                            })
-                                        )
-                                    )
-                                );
-                            })(),
-                            
-                            // Today's tasks - RESTORED
-                            (() => {
-                                const todayTasks = pendingTasks.filter(c => 
-                                    (c.is_due || c.status === 'due') && c.overdue_days === 0
-                                );
-                                return h('div', null,
-                                    h('h2', { className: "text-xl font-semibold mb-4" }, 
-                                        `📋 Vandaag (${todayTasks.length})`),
-                                    h('div', { className: "grid gap-4 mb-8" },
-                                        todayTasks.length > 0 ? todayTasks.map(chore =>
-                                            h(TaskCard, {
-                                                key: chore.id || chore.chore_id,
-                                                chore: chore,
-                                                onMarkDone: handleMarkDone,
-                                                onEdit: handleEditTask,
-                                                onToggleDescription: handleToggleDescription,
-                                                isExpanded: expandedDescriptions[chore.id || chore.chore_id],
-                                                assignees: assignees,
-                                                onMarkSubtaskDone: handleMarkSubtaskDone
-                                            })
-                                        ) : h('p', { className: "text-gray-500 text-center py-4" }, 
-                                            "Geen taken voor vandaag! 🎉")
-                                    )
-                                );
-                            })(),
-                            
-                            // Upcoming tasks - RESTORED
-                            (() => {
-                                const upcomingTasks = pendingTasks.filter(c => 
-                                    !(c.is_due || c.status === 'due')
-                                );
-                                return upcomingTasks.length > 0 && h('div', null,
-                                    h('h2', { className: "text-xl font-semibold mb-4" }, 
-                                        `📅 Komende taken (${upcomingTasks.length})`),
-                                    h('div', { className: "grid gap-4 mb-8" },
-                                        upcomingTasks.map(chore =>
-                                            h(TaskCard, {
-                                                key: chore.id || chore.chore_id,
-                                                chore: chore,
-                                                onMarkDone: handleMarkDone,
-                                                onEdit: handleEditTask,
-                                                onToggleDescription: handleToggleDescription,
-                                                isExpanded: expandedDescriptions[chore.id || chore.chore_id],
-                                                assignees: assignees,
-                                                onMarkSubtaskDone: handleMarkSubtaskDone
-                                            })
-                                        )
-                                    )
-                                );
-                            })(),
-                            
-                            // Completed tasks - RESTORED
-                            completedTasks.length > 0 && h('div', null,
-                                h('h2', { className: "text-xl font-semibold mb-4 text-green-600" }, 
-                                    `✅ Voltooid vandaag (${completedTasks.length})`),
-                                h('div', { className: "grid gap-4" },
-                                    completedTasks.map(chore =>
+                        !core.loading && !core.error && h('div', { className: "space-y-8" },
+                            // Overdue tasks
+                            computed.overdueTasks.length > 0 && h('div', null,
+                                h('h2', { className: "text-xl font-semibold mb-4 text-red-600" }, 
+                                    `⚠️ Achterstallig (${computed.overdueTasks.length})`),
+                                h('div', { className: "grid gap-4 mb-8" },
+                                    computed.overdueTasks.map(chore =>
                                         h(TaskCard, {
                                             key: chore.id || chore.chore_id,
                                             chore: chore,
-                                            onMarkDone: handleMarkDone,
-                                            onEdit: handleEditTask,
-                                            onToggleDescription: handleToggleDescription,
-                                            isExpanded: expandedDescriptions[chore.id || chore.chore_id],
-                                            assignees: assignees,
-                                            onMarkSubtaskDone: handleMarkSubtaskDone
+                                            onMarkDone: handlers.handleMarkDone,
+                                            onEdit: handlers.handleEditTask,
+                                            onToggleDescription: handlers.handleToggleDescription,
+                                            isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id],
+                                            assignees: core.assignees,
+                                            onMarkSubtaskDone: handlers.handleMarkSubtaskDone
                                         })
                                     )
                                 )
                             ),
                             
-                            // Empty state - RESTORED
-                            chores.length === 0 && !loading && h('div', { 
+                            // Today's tasks
+                            h('div', null,
+                                h('h2', { className: "text-xl font-semibold mb-4" }, 
+                                    `📋 Vandaag (${computed.todayTasks.length})`),
+                                h('div', { className: "grid gap-4 mb-8" },
+                                    computed.todayTasks.length > 0 ? computed.todayTasks.map(chore =>
+                                        h(TaskCard, {
+                                            key: chore.id || chore.chore_id,
+                                            chore: chore,
+                                            onMarkDone: handlers.handleMarkDone,
+                                            onEdit: handlers.handleEditTask,
+                                            onToggleDescription: handlers.handleToggleDescription,
+                                            isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id],
+                                            assignees: core.assignees,
+                                            onMarkSubtaskDone: handlers.handleMarkSubtaskDone
+                                        })
+                                    ) : h('p', { className: "text-gray-500 text-center py-4" }, 
+                                        "Geen taken voor vandaag! 🎉")
+                                )
+                            ),
+                            
+                            // Upcoming tasks
+                            computed.upcomingTasks.length > 0 && h('div', null,
+                                h('h2', { className: "text-xl font-semibold mb-4" }, 
+                                    `📅 Komende taken (${computed.upcomingTasks.length})`),
+                                h('div', { className: "grid gap-4 mb-8" },
+                                    computed.upcomingTasks.map(chore =>
+                                        h(TaskCard, {
+                                            key: chore.id || chore.chore_id,
+                                            chore: chore,
+                                            onMarkDone: handlers.handleMarkDone,
+                                            onEdit: handlers.handleEditTask,
+                                            onToggleDescription: handlers.handleToggleDescription,
+                                            isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id],
+                                            assignees: core.assignees,
+                                            onMarkSubtaskDone: handlers.handleMarkSubtaskDone
+                                        })
+                                    )
+                                )
+                            ),
+                            
+                            // Completed tasks
+                            computed.completedTasks.length > 0 && h('div', null,
+                                h('h2', { className: "text-xl font-semibold mb-4 text-green-600" }, 
+                                    `✅ Voltooid vandaag (${computed.completedTasks.length})`),
+                                h('div', { className: "grid gap-4" },
+                                    computed.completedTasks.map(chore =>
+                                        h(TaskCard, {
+                                            key: chore.id || chore.chore_id,
+                                            chore: chore,
+                                            onMarkDone: handlers.handleMarkDone,
+                                            onEdit: handlers.handleEditTask,
+                                            onToggleDescription: handlers.handleToggleDescription,
+                                            isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id],
+                                            assignees: core.assignees,
+                                            onMarkSubtaskDone: handlers.handleMarkSubtaskDone
+                                        })
+                                    )
+                                )
+                            ),
+                            
+                            // Empty state
+                            core.chores.length === 0 && !core.loading && h('div', { 
                                 className: "text-center py-12 bg-white rounded-lg shadow-sm"
                             },
                                 h('p', { className: "text-gray-500 text-lg" }, 
@@ -626,98 +259,98 @@ window.ChoresApp = window.ChoresApp || {};
                         )
                     ),
                     
-                    // Modals - FIXED with correct prop names
-                    showTaskForm && h(Modal, {
-                        isOpen: showTaskForm,
+                    // Modals
+                    ui.showTaskForm && h(Modal, {
+                        isOpen: ui.showTaskForm,
                         onClose: () => {
-                            setShowTaskForm(false);
-                            setEditingTask(null);
+                            ui.setShowTaskForm(false);
+                            ui.setEditingTask(null);
                         },
-                        title: editingTask ? 'Taak Bewerken' : 'Nieuwe Taak'
+                        title: ui.editingTask ? 'Taak Bewerken' : 'Nieuwe Taak'
                     },
                         h(TaskForm, {
-                            task: editingTask,  // FIXED: was 'initialData'
-                            onSave: handleTaskFormSubmit,  // FIXED: was 'onSubmit'
-                            onDelete: handleDeleteTask,
-                            onClose: () => {  // FIXED: was 'onCancel'
-                                setShowTaskForm(false);
-                                setEditingTask(null);
+                            task: ui.editingTask,
+                            onSave: handlers.handleTaskFormSubmit,
+                            onDelete: handlers.handleDeleteTask,
+                            onClose: () => {
+                                ui.setShowTaskForm(false);
+                                ui.setEditingTask(null);
                             },
-                            onResetCompletion: handleResetCompletion,
-                            users: assignees,
-                            assignees: assignees
+                            onResetCompletion: handlers.handleResetCompletion,
+                            users: core.assignees,
+                            assignees: core.assignees
                         })
                     ),
                     
-                    showUserManagement && h(Modal, {
+                    ui.showUserManagement && h(Modal, {
                         isOpen: true,
-                        onClose: () => setShowUserManagement(false),
+                        onClose: () => ui.setShowUserManagement(false),
                         title: 'Gebruikers Beheren'
                     },
                         h(UserManagement, {
-                            users: assignees,
-                            onSave: handleSaveUsers,
-                            onClose: () => setShowUserManagement(false)
+                            users: core.assignees,
+                            onSave: handlers.handleSaveUsers,
+                            onClose: () => ui.setShowUserManagement(false)
                         })
                     ),
                     
-                    showThemeSettings && h(Modal, {
+                    ui.showThemeSettings && h(Modal, {
                         isOpen: true,
-                        onClose: () => setShowThemeSettings(false),
+                        onClose: () => ui.setShowThemeSettings(false),
                         title: 'Thema Instellingen'
                     },
                         h(ThemeSettings, {
-                            currentTheme: themeSettings,
-                            onSave: handleSaveTheme,
-                            onClose: () => setShowThemeSettings(false)
+                            currentTheme: status.themeSettings,
+                            onSave: handlers.handleSaveTheme,
+                            onClose: () => ui.setShowThemeSettings(false)
                         })
                     ),
                     
-                    selectedDescription && h(Modal, {
+                    ui.selectedDescription && h(Modal, {
                         isOpen: true,
-                        onClose: () => setSelectedDescription(null),
-                        title: `Beschrijving: ${selectedDescription.name}`
+                        onClose: () => ui.setSelectedDescription(null),
+                        title: `Beschrijving: ${ui.selectedDescription.name}`
                     },
                         h(TaskDescription, {
-                            description: selectedDescription.description,
-                            onClose: () => setSelectedDescription(null)
+                            description: ui.selectedDescription.description,
+                            onClose: () => ui.setSelectedDescription(null)
                         })
                     ),
                     
-                    // Completion confirmation dialog - RESTORED
-                    selectedCompletion && h(CompletionConfirmDialog, {
+                    // Completion confirmation dialog
+                    dialogs.selectedCompletion && h(CompletionConfirmDialog, {
                         isOpen: true,
                         title: "Taak voltooien",
                         message: "Wie heeft deze taak voltooid?",
-                        onConfirm: handleCompletionConfirm,
-                        onCancel: cancelCompletionDialog,
-                        assignees: availableAssignees,
-                        defaultUser: selectedCompletion.defaultUser
+                        onConfirm: handlers.handleCompletionConfirm,
+                        onCancel: helpers.cancelCompletionDialog,
+                        assignees: computed.availableAssignees,
+                        defaultUser: dialogs.selectedCompletion.defaultUser
                     }),
                     
-                    // Subtask completion dialog - RESTORED
-                    selectedSubtaskCompletion && h(SubtaskCompletionDialog, {
+                    // Subtask completion dialog
+                    dialogs.selectedSubtaskCompletion && h(SubtaskCompletionDialog, {
                         isOpen: true,
-                        chore: selectedSubtaskCompletion.chore,
-                        onComplete: handleSubtaskCompletionConfirm,
-                        onCancel: cancelSubtaskDialog,
-                        assignees: availableAssignees,
-                        defaultUser: selectedSubtaskCompletion.defaultUser
+                        chore: dialogs.selectedSubtaskCompletion.chore,
+                        onComplete: handlers.handleSubtaskCompletionConfirm,
+                        onCancel: helpers.cancelSubtaskDialog,
+                        assignees: computed.availableAssignees,
+                        defaultUser: dialogs.selectedSubtaskCompletion.defaultUser
                     }),
                     
-                    // Confirm dialog - RESTORED
-                    showConfirmDialog && confirmDialogData && h(ConfirmDialog, {
-                        isOpen: showConfirmDialog,
-                        title: confirmDialogData.title,
-                        message: confirmDialogData.message,
+                    // Confirm dialog
+                    dialogs.showConfirmDialog && dialogs.confirmDialogData && h(ConfirmDialog, {
+                        isOpen: dialogs.showConfirmDialog,
+                        title: dialogs.confirmDialogData.title,
+                        message: dialogs.confirmDialogData.message,
                         onConfirm: () => {
-                            confirmDialogData.onConfirm();
-                            setShowConfirmDialog(false);
-                            setConfirmDialogData(null);
+                            dialogs.confirmDialogData.onConfirm();
+                            dialogs.setShowConfirmDialog(false);
+                            dialogs.setConfirmDialogData(null);
                         },
                         onCancel: () => {
-                            setShowConfirmDialog(false);
-                            setConfirmDialogData(null);
+                            dialogs.setShowConfirmDialog(false);
+                            dialogs.setConfirmDialogData(null);
                         }
                     })
                 )
@@ -730,110 +363,5 @@ window.ChoresApp = window.ChoresApp || {};
     // Export for global access
     window.ChoresApp.ChoresApp = ChoresApp;
     
-    /**
-     * Initialize the React application
-     * RESTORED: Complete initialization function
-     */
-    window.ChoresApp.initApp = function() {
-        console.log('Initializing Chores Dashboard React App...');
-        
-        try {
-            // Get the root element
-            const rootElement = document.getElementById('root');
-            if (!rootElement) {
-                throw new Error('Root element not found');
-            }
-            
-            // Check if ReactDOM is available
-            if (!window.ReactDOM) {
-                throw new Error('ReactDOM not available');
-            }
-            
-            // Create and render the app with error boundary
-            const AppWithErrorBoundary = React.createElement(
-                class ErrorBoundary extends React.Component {
-                    constructor(props) {
-                        super(props);
-                        this.state = { hasError: false, error: null };
-                    }
-                    
-                    static getDerivedStateFromError(error) {
-                        return { hasError: true, error };
-                    }
-                    
-                    componentDidCatch(error, errorInfo) {
-                        console.error('React Error Boundary caught:', error, errorInfo);
-                    }
-                    
-                    render() {
-                        if (this.state.hasError) {
-                            return React.createElement('div', {
-                                style: {
-                                    padding: '20px',
-                                    background: '#fee',
-                                    border: '1px solid #fcc',
-                                    borderRadius: '4px',
-                                    margin: '20px'
-                                }
-                            },
-                                React.createElement('h2', null, 'Er is een fout opgetreden'),
-                                React.createElement('p', null, this.state.error?.message || 'Onbekende fout'),
-                                React.createElement('button', {
-                                    onClick: () => window.location.reload(),
-                                    style: {
-                                        padding: '10px 20px',
-                                        background: '#007bff',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer'
-                                    }
-                                }, 'Pagina herladen')
-                            );
-                        }
-                        
-                        return this.props.children;
-                    }
-                },
-                null,
-                React.createElement(window.ChoresApp.ChoresApp)
-            );
-            
-            // Check React version and use appropriate API
-            const reactVersion = React.version;
-            console.log('Using React ' + reactVersion);
-            
-            if (reactVersion && reactVersion.startsWith('18')) {
-                // React 18 with createRoot
-                console.log('Using React 18 createRoot API...');
-                if (window.ReactDOM.createRoot) {
-                    const root = window.ReactDOM.createRoot(rootElement);
-                    root.render(AppWithErrorBoundary);
-                    console.log('Chores Dashboard initialized successfully');
-                } else {
-                    // Fallback if createRoot is not available
-                    window.ReactDOM.render(AppWithErrorBoundary, rootElement);
-                    console.log('Chores Dashboard initialized successfully (fallback mode)');
-                }
-            } else {
-                // React 17 or older
-                window.ReactDOM.render(AppWithErrorBoundary, rootElement);
-                console.log('Chores Dashboard initialized successfully');
-            }
-            
-        } catch (error) {
-            console.error('Failed to initialize Chores Dashboard:', error);
-            document.getElementById('root').innerHTML = `
-                <div style="padding: 20px; background: #fee; border: 1px solid #fcc; border-radius: 4px; margin: 20px;">
-                    <h2>Initialization Error</h2>
-                    <p>${error.message}</p>
-                    <button onclick="window.location.reload()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                        Reload Page
-                    </button>
-                </div>
-            `;
-        }
-    };
-    
-    console.log('Chores Dashboard App initialized successfully');
+    console.log('Chores Dashboard App loaded successfully');
 })();
