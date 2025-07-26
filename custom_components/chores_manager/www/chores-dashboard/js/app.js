@@ -46,142 +46,108 @@ window.ChoresApp = window.ChoresApp || {};
         
         // Main app component
         function App() {
-            // State management
+            // Core State
             const [chores, setChores] = useState([]);
             const [assignees, setAssignees] = useState([]);
             const [stats, setStats] = useState({});
             const [loading, setLoading] = useState(true);
             const [error, setError] = useState(null);
+            
+            // UI State
             const [showTaskForm, setShowTaskForm] = useState(false);
             const [editingTask, setEditingTask] = useState(null);
             const [showUserManagement, setShowUserManagement] = useState(false);
+            const [showThemeSettings, setShowThemeSettings] = useState(false);
+            const [selectedDescription, setSelectedDescription] = useState(null);
+            const [expandedDescriptions, setExpandedDescriptions] = useState({});
+            
+            // Dialog States - RESTORED: These were missing
+            const [selectedCompletion, setSelectedCompletion] = useState(null);
+            const [selectedSubtaskCompletion, setSelectedSubtaskCompletion] = useState(null);
+            const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+            const [confirmDialogData, setConfirmDialogData] = useState(null);
+            
+            // Success/Error States - RESTORED
             const [lastCompletion, setLastCompletion] = useState(null);
+            const [hasAuthError, setHasAuthError] = useState(false);
+            
+            // Theme State
             const [themeSettings, setThemeSettings] = useState({
                 backgroundColor: '#ffffff',
                 cardColor: '#f8f8f8', 
                 primaryTextColor: '#000000',
                 secondaryTextColor: '#333333'
             });
-            const [showThemeSettings, setShowThemeSettings] = useState(false);
-            const [selectedDescription, setSelectedDescription] = useState(null);
-            const [hasAuthError, setHasAuthError] = useState(false);
-            const [expandedDescriptions, setExpandedDescriptions] = useState({});
             
-            // API instances
+            // API State
             const [api, setApi] = useState(null);
             
-            // Initialize API on component mount
-            useEffect(() => {
-                async function initializeAPI() {
-                    console.log('Initializing Chores Dashboard App');
-                    
-                    try {
-                        // Wait for ChoresAPI to be ready
-                        let attempts = 0;
-                        while (!window.ChoresAPI || !window.ChoresAPI.getSensorState) {
-                            if (attempts > 20) { // 2 seconds timeout
-                                throw new Error('ChoresAPI not properly initialized after timeout');
-                            }
-                            console.log('Waiting for ChoresAPI to be ready...');
-                            await new Promise(resolve => setTimeout(resolve, 100));
-                            attempts++;
-                        }
-                        
-                        // Get available APIs
-                        const availableMethods = Object.keys(window.ChoresAPI);
-                        console.log('ChoresAPI available methods:', availableMethods);
-                        
-                        // The API is already initialized by api/index.js
-                        // Get the instances that were created
-                        const apiObject = {
-                            chores: window.ChoresAPI.chores,
-                            users: window.ChoresAPI.users,
-                            theme: window.ChoresAPI.theme,
-                            sensor: window.ChoresAPI.sensor,
-                            getSensorState: window.ChoresAPI.getSensorState,
-                            getAuthToken: window.ChoresAPI.getAuthToken
-                        };
-                        
-                        // If instances aren't available, create them
-                        if (!apiObject.chores && window.ChoresAPI.ChoresAPI) {
-                            apiObject.chores = new window.ChoresAPI.ChoresAPI();
-                        }
-                        if (!apiObject.users && window.ChoresAPI.UsersAPI) {
-                            apiObject.users = new window.ChoresAPI.UsersAPI();
-                        }
-                        if (!apiObject.theme && window.ChoresAPI.ThemeAPI) {
-                            apiObject.theme = new window.ChoresAPI.ThemeAPI();
-                        }
-                        
-                        // Verify critical methods exist
-                        if (typeof apiObject.getSensorState !== 'function') {
-                            throw new Error('getSensorState method not available');
-                        }
-                        
-                        console.log('API initialized successfully');
-                        setApi(apiObject);
-                        
-                    } catch (err) {
-                        console.error('Failed to initialize API:', err);
-                        setError(err.message);
-                    }
-                }
-                
-                initializeAPI();
-            }, []);
-            
-            // Error handler
+            // Error handler - RESTORED
             const handleError = useCallback((err) => {
                 console.error('App error:', err);
-                if (err.message && err.message.includes('401')) {
+                setError(err.message || 'Er is een onbekende fout opgetreden');
+                
+                // Check for auth errors
+                if (err.message?.includes('401') || err.message?.includes('authentication')) {
                     setHasAuthError(true);
                 }
-                setError(err.message || 'Er is een fout opgetreden');
             }, []);
             
-            // Data loading
+            // Initialize API
+            useEffect(() => {
+                const initializeAPI = async () => {
+                    try {
+                        if (window.ChoresAPI && window.ChoresAPI.initialize) {
+                            console.log('Initializing Chores Dashboard App');
+                            
+                            // Check what's available in ChoresAPI
+                            const apiMethods = Object.keys(window.ChoresAPI);
+                            console.log('ChoresAPI available methods:', apiMethods);
+                            
+                            await window.ChoresAPI.initialize();
+                            console.log('API initialized successfully');
+                            
+                            setApi(window.ChoresAPI);
+                        } else {
+                            throw new Error('ChoresAPI not available');
+                        }
+                    } catch (error) {
+                        console.error('Failed to initialize API:', error);
+                        handleError(error);
+                        setLoading(false);
+                    }
+                };
+                
+                initializeAPI();
+            }, [handleError]);
+            
+            // Load data - RESTORED: More comprehensive version
             const loadData = useCallback(async () => {
-                if (!api || !api.getSensorState) return;
-                
-                console.log('Loading data with API:', api);
-                console.log('getSensorState type:', typeof api.getSensorState);
-                
-                setLoading(true);
-                setError(null);
+                if (!api) return;
                 
                 try {
-                    const state = await api.getSensorState();
+                    setLoading(true);
+                    console.log('Loading data with API:', api);
+                    console.log('getSensorState type:', typeof api.getSensorState);
+                    
+                    // Load sensor state
+                    const state = await api.getSensorState('sensor.chores_overview');
                     console.log('Loaded state:', state);
                     
-                    if (state) {
-                        setChores(state.chores || []);
-                        setStats(state.stats || {});
+                    if (state && state.attributes) {
+                        const { chores = [], assignees = [], stats = {} } = state.attributes;
                         
-                        // Extract unique assignees from state
-                        const uniqueAssignees = new Set();
-                        
-                        // Add assignees from stats
-                        Object.keys(state.stats || {}).forEach(name => {
-                            if (name !== 'Wie kan') {
-                                uniqueAssignees.add(name);
-                            }
-                        });
-                        
-                        // Add assignees from chores
-                        (state.chores || []).forEach(chore => {
-                            if (chore.assigned_to && chore.assigned_to !== 'Wie kan') {
-                                uniqueAssignees.add(chore.assigned_to);
-                            }
-                        });
-                        
-                        // Convert to array format
-                        const assigneesList = Array.from(uniqueAssignees).map(name => ({
-                            name,
-                            color: state.stats[name]?.color || '#cccccc'
+                        // Update chores with processing flags reset
+                        const processedChores = chores.map(chore => ({
+                            ...chore,
+                            isProcessing: false
                         }));
                         
-                        setAssignees(assigneesList);
+                        setChores(processedChores);
+                        setAssignees(assignees);
+                        setStats(stats);
                     }
+                    
                 } catch (err) {
                     handleError(err);
                 } finally {
@@ -189,7 +155,7 @@ window.ChoresApp = window.ChoresApp || {};
                 }
             }, [api, handleError]);
             
-            // Theme loading
+            // Theme loading - RESTORED
             const loadTheme = useCallback(async () => {
                 if (!api?.theme) return;
                 
@@ -217,9 +183,15 @@ window.ChoresApp = window.ChoresApp || {};
                 }
             }, [api, loadData, loadTheme]);
             
-            // Task completion handler
+            // Task completion handler - RESTORED: With dialog logic
             const handleMarkDone = useCallback(async (choreId, userId) => {
                 if (!api) return;
+                
+                // If no userId provided and multiple assignees, show selection dialog
+                if (!userId && assignees.length > 1) {
+                    setSelectedCompletion({ choreId, defaultUser: assignees[0]?.name || 'Wie kan' });
+                    return;
+                }
                 
                 // Add processing state to provide immediate feedback
                 setChores(chores => 
@@ -231,7 +203,12 @@ window.ChoresApp = window.ChoresApp || {};
                 );
                 
                 try {
-                    await api.chores.markDone(choreId, userId);
+                    await api.chores.markDone(choreId, userId || assignees[0]?.name || 'Wie kan');
+                    setLastCompletion({ 
+                        choreId, 
+                        person: userId || assignees[0]?.name || 'Wie kan', 
+                        time: Date.now() 
+                    });
                     await loadData();
                 } catch (err) {
                     handleError(err);
@@ -245,80 +222,60 @@ window.ChoresApp = window.ChoresApp || {};
                         )
                     );
                 }
-            }, [api, loadData, handleError]);
+            }, [api, assignees, loadData, handleError]);
             
-            // Subtask completion handler
-            const handleMarkSubtaskDone = useCallback(async (choreId, subtaskIndex, selectedUser) => {
+            // Completion confirmation handler - RESTORED
+            const handleCompletionConfirm = useCallback(async (selectedUser) => {
+                if (selectedCompletion) {
+                    await handleMarkDone(selectedCompletion.choreId, selectedUser);
+                    setSelectedCompletion(null);
+                }
+            }, [selectedCompletion, handleMarkDone]);
+            
+            // Subtask completion handler - RESTORED
+            const handleMarkSubtaskDone = useCallback(async (choreId, subtaskIndex, userId) => {
                 if (!api) return;
                 
+                // If no userId provided and multiple assignees, show selection dialog
+                if (!userId && assignees.length > 1) {
+                    const chore = chores.find(c => (c.id || c.chore_id) === choreId);
+                    setSelectedSubtaskCompletion({ 
+                        chore, 
+                        subtaskIndex, 
+                        defaultUser: assignees[0]?.name || 'Wie kan' 
+                    });
+                    return;
+                }
+                
                 try {
-                    // Note: subtaskIndex might actually be the subtask_id
-                    await api.chores.completeSubtask(subtaskIndex, selectedUser);
+                    await api.chores.completeSubtask(subtaskIndex, userId || assignees[0]?.name || 'Wie kan');
                     await loadData();
                 } catch (err) {
                     handleError(err);
                 }
-            }, [api, loadData, handleError]);
+            }, [api, assignees, chores, loadData, handleError]);
             
-            // Task form handlers
-            const handleAddTask = useCallback(() => {
-                setEditingTask(null);
-                setShowTaskForm(true);
-            }, []);
+            // Subtask completion confirmation handler - RESTORED
+            const handleSubtaskCompletionConfirm = useCallback(async (subtaskIndex, selectedUser) => {
+                if (selectedSubtaskCompletion) {
+                    await handleMarkSubtaskDone(
+                        selectedSubtaskCompletion.chore.id || selectedSubtaskCompletion.chore.chore_id,
+                        subtaskIndex,
+                        selectedUser
+                    );
+                    setSelectedSubtaskCompletion(null);
+                }
+            }, [selectedSubtaskCompletion, handleMarkSubtaskDone]);
             
-            const handleEditTask = useCallback((chore) => {
-                setEditingTask(chore);
-                setShowTaskForm(true);
-            }, []);
-            
-            const handleTaskFormSubmit = useCallback(async (taskData) => {
+            // Task form submission - RESTORED
+            const handleTaskFormSubmit = useCallback(async (formData) => {
                 if (!api) return;
                 
                 try {
                     if (editingTask) {
-                        // Update existing task
-                        // For now, we can only update the name/description via API
-                        if (taskData.name !== editingTask.name) {
-                            await api.chores.updateDescription(editingTask.chore_id, taskData.name);
-                        }
-                        // Full update would require updating the chore completely
-                        // So we'll do a delete and re-add for now
-                        await api.chores.deleteChore(editingTask.chore_id);
-                        
-                        // Add as new with same ID
-                        const updateData = {
-                            ...taskData,
-                            chore_id: editingTask.chore_id
-                        };
-                        await api.chores.addChore(updateData);
+                        await api.chores.updateDescription(editingTask.chore_id || editingTask.id, formData);
                     } else {
-                        // Add new task - generate unique ID
-                        const newChoreId = `chore_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                        
-                        // Map form data to API expected format
-                        const choreData = {
-                            chore_id: newChoreId,
-                            name: taskData.name,
-                            description: taskData.description || '',
-                            frequency_type: taskData.frequency_type || 'Wekelijks',
-                            frequency_days: taskData.frequency_days || 7,
-                            frequency_times: taskData.frequency_times || 1,
-                            assigned_to: taskData.assigned_to || 'Wie kan',
-                            priority: taskData.priority || 'Middel',
-                            duration: taskData.duration || 15,
-                            icon: taskData.icon || '📋',
-                            use_alternating: taskData.use_alternating || false,
-                            alternate_with: taskData.alternate_with || '',
-                            weekday: taskData.weekday !== undefined ? taskData.weekday : -1,
-                            monthday: taskData.monthday || -1,
-                            active_days: taskData.active_days || null,
-                            active_monthdays: taskData.active_monthdays || null,
-                            selected_weekdays: taskData.selected_weekdays || null,
-                            has_subtasks: taskData.has_subtasks || false,
-                            subtasks: taskData.has_subtasks ? taskData.subtasks : null
-                        };
-                        
-                        await api.chores.addChore(choreData);
+                        await api.chores.addChore(formData);
                     }
                     
                     setShowTaskForm(false);
@@ -329,6 +286,13 @@ window.ChoresApp = window.ChoresApp || {};
                 }
             }, [api, editingTask, loadData, handleError]);
             
+            // Task editing - RESTORED
+            const handleEditTask = useCallback((chore) => {
+                setEditingTask(chore);
+                setShowTaskForm(true);
+            }, []);
+            
+            // Task deletion - RESTORED
             const handleDeleteTask = useCallback(async (choreId) => {
                 if (!api) return;
                 
@@ -342,40 +306,45 @@ window.ChoresApp = window.ChoresApp || {};
                 }
             }, [api, loadData, handleError]);
             
+            // Completion reset - RESTORED
             const handleResetCompletion = useCallback(async (choreId) => {
                 if (!api) return;
                 
                 try {
                     await api.chores.resetChore(choreId);
-                    setShowTaskForm(false);
-                    setEditingTask(null);
                     await loadData();
                 } catch (err) {
                     handleError(err);
                 }
             }, [api, loadData, handleError]);
             
-            // User management handlers
+            // User management - RESTORED
             const handleSaveUsers = useCallback(async (users) => {
-                // This is called after UserManagement handles add/delete internally
-                // We just need to reload data
-                await loadData();
-            }, [loadData]);
+                try {
+                    setAssignees(users);
+                    setShowUserManagement(false);
+                    await loadData();
+                } catch (err) {
+                    handleError(err);
+                }
+            }, [loadData, handleError]);
             
-            // Theme handler
-            const handleSaveTheme = useCallback(async (themeData) => {
+            // Theme changes - RESTORED
+            const handleSaveTheme = useCallback(async (theme) => {
                 if (!api) return;
                 
                 try {
-                    await api.theme.save(themeData);
-                    setThemeSettings(themeData);
+                    if (api.theme && api.theme.save) {
+                        await api.theme.save(theme.primaryColor, theme.accentColor);
+                    }
                     
+                    setThemeSettings(theme);
                     // Apply theme immediately
                     const root = document.documentElement;
-                    root.style.setProperty('--theme-background', themeData.backgroundColor);
-                    root.style.setProperty('--theme-card', themeData.cardColor);
-                    root.style.setProperty('--theme-primary-text', themeData.primaryTextColor);
-                    root.style.setProperty('--theme-secondary-text', themeData.secondaryTextColor);
+                    root.style.setProperty('--theme-background', theme.backgroundColor);
+                    root.style.setProperty('--theme-card', theme.cardColor);
+                    root.style.setProperty('--theme-primary-text', theme.primaryTextColor);
+                    root.style.setProperty('--theme-secondary-text', theme.secondaryTextColor);
                     
                     setShowThemeSettings(false);
                 } catch (err) {
@@ -383,247 +352,325 @@ window.ChoresApp = window.ChoresApp || {};
                 }
             }, [api, handleError]);
             
-            // Description toggle handler
-            const handleToggleDescription = useCallback((choreId, isExpanded) => {
+            // Description toggle - RESTORED
+            const handleToggleDescription = useCallback((choreId, expanded) => {
                 setExpandedDescriptions(prev => ({
                     ...prev,
-                    [choreId]: isExpanded
+                    [choreId]: expanded
                 }));
+                
+                // If expanded, set selected description for modal
+                if (expanded) {
+                    const chore = chores.find(c => (c.id || c.chore_id) === choreId);
+                    if (chore && chore.description) {
+                        setSelectedDescription({
+                            id: choreId,
+                            name: chore.name,
+                            description: chore.description
+                        });
+                    }
+                }
+            }, [chores]);
+            
+            // Clear error - RESTORED
+            const clearError = useCallback(() => {
+                setError(null);
+                setHasAuthError(false);
             }, []);
             
-            // Chore filtering
-            const overdueTasks = chores.filter(c => c.is_overdue && (!c.last_done || !window.choreUtils.isToday(c.last_done)));
-            const todayTasks = chores.filter(c => c.is_due_today && !c.is_overdue && (!c.last_done || !window.choreUtils.isToday(c.last_done)));
-            const upcomingTasks = chores.filter(c => !c.is_due_today && !c.is_overdue && (!c.last_done || !window.choreUtils.isToday(c.last_done)));
-            const completedTasks = chores.filter(c => c.last_done && window.choreUtils.isToday(c.last_done));
+            // Clear success message - RESTORED
+            const clearLastCompletion = useCallback(() => {
+                setLastCompletion(null);
+            }, []);
             
-            // Render
-            return h('div', { className: 'chores-app' },
-                // Header
-                h('header', { className: 'app-header' },
-                    h('div', { className: 'header-content' },
-                        h('h1', { className: 'app-title' }, 'Huishoudelijke Taken'),
-                        h('div', { className: 'header-actions' },
+            // Cancel dialogs - RESTORED
+            const cancelCompletionDialog = useCallback(() => {
+                setSelectedCompletion(null);
+            }, []);
+            
+            const cancelSubtaskDialog = useCallback(() => {
+                setSelectedSubtaskCompletion(null);
+            }, []);
+            
+            // Separate tasks by completion status
+            const pendingTasks = chores.filter(chore => !chore.completed_today);
+            const completedTasks = chores.filter(chore => chore.completed_today);
+            
+            // Available assignees for dialogs - RESTORED
+            const availableAssignees = assignees.length > 0
+                ? assignees.filter(a => a.name !== "Wie kan").map(a => a.name)
+                : ["Laura", "Martijn", "Samen"];
+            
+            // Error boundary component - RESTORED
+            class ErrorBoundary extends React.Component {
+                constructor(props) {
+                    super(props);
+                    this.state = { hasError: false, error: null };
+                }
+                
+                static getDerivedStateFromError(error) {
+                    return { hasError: true, error };
+                }
+                
+                componentDidCatch(error, errorInfo) {
+                    console.error('React Error Boundary caught:', error, errorInfo);
+                }
+                
+                render() {
+                    if (this.state.hasError) {
+                        return h('div', { className: 'error-container p-4' },
+                            h('h2', { className: 'text-xl font-semibold text-red-600' }, 'Er is een fout opgetreden'),
+                            h('p', { className: 'text-gray-600 mt-2' }, this.state.error?.message || 'Er is een onverwachte fout opgetreden'),
                             h('button', {
-                                onClick: loadData,
-                                className: 'btn-refresh',
-                                disabled: loading
-                            }, loading ? 'Laden...' : '↻ Vernieuwen'),
-                            h('button', {
-                                onClick: handleAddTask,
-                                className: 'btn-primary'
-                            }, '+ Nieuwe Taak'),
-                            h('button', {
-                                onClick: () => setShowUserManagement(true),
-                                className: 'btn-secondary'
-                            }, '👥 Gebruikers'),
-                            h('button', {
-                                onClick: () => setShowThemeSettings(true),
-                                className: 'btn-secondary'
-                            }, '🎨 Thema')
-                        )
-                    )
-                ),
-                
-                // Error display
-                error && h(Alert, {
-                    type: 'error',
-                    message: error,
-                    onClose: () => setError(null)
-                }),
-                
-                // Auth error
-                hasAuthError && h('div', { className: 'auth-error' },
-                    h('p', null, 'Authentication error. Please refresh the page to re-authenticate.')
-                ),
-                
-                // Statistics overview cards
-                !loading && h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6' },
-                    h(StatsCard, {
-                        title: 'Achterstallig',
-                        value: overdueTasks.length,
-                        color: '#ef4444',
-                        desc: '🚨'
-                    }),
-                    h(StatsCard, {
-                        title: 'Vandaag',
-                        value: todayTasks.length,
-                        color: '#f59e0b',
-                        desc: '📅'
-                    }),
-                    h(StatsCard, {
-                        title: 'Aankomend',
-                        value: upcomingTasks.length,
-                        color: '#10b981',
-                        desc: '📋'
-                    }),
-                    h(StatsCard, {
-                        title: 'Voltooid',
-                        value: completedTasks.length,
-                        color: '#3b82f6',
-                        desc: '✅'
-                    })
-                ),
-                
-                // User statistics section
-                !loading && Object.keys(stats).length > 0 && h('section', { className: 'stats-section mb-6' },
-                    h('h2', { className: 'text-xl font-semibold mb-4' }, 'Gebruiker Statistieken'),
-                    h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' },
-                        Object.entries(stats).map(([user, userStats]) =>
-                            h(UserStatsCard, {
-                                key: user,
-                                assignee: user,  // Changed from userName to assignee
-                                stats: userStats,
-                                assignees: assignees
-                            })
-                        )
-                    )
-                ),
-                
-                // Tasks section
-                h('section', { className: 'tasks-section' },
-                    loading ? h(Loading, { message: "Laden..." }) : h('div', { className: 'space-y-6' },
-                        // Overdue tasks
-                        overdueTasks.length > 0 && h('div', null,
-                            h('h2', { className: 'text-xl font-semibold mb-4 text-red-600' }, 
-                                `🚨 Achterstallige Taken (${overdueTasks.length})`),
-                            h('div', { className: 'grid gap-4' },
-                                overdueTasks.map(chore =>
-                                    h(TaskCard, {
-                                        key: chore.id || chore.chore_id,
-                                        chore: chore,
-                                        onMarkDone: handleMarkDone,
-                                        onEdit: handleEditTask,
-                                        onToggleDescription: handleToggleDescription,
-                                        assignees: assignees,
-                                        onMarkSubtaskDone: handleMarkSubtaskDone
-                                    })
-                                )
-                            )
-                        ),
-                        
-                        // Today's tasks
-                        todayTasks.length > 0 && h('div', null,
-                            h('h2', { className: 'text-xl font-semibold mb-4 text-orange-600' }, 
-                                `📅 Vandaag (${todayTasks.length})`),
-                            h('div', { className: 'grid gap-4' },
-                                todayTasks.map(chore =>
-                                    h(TaskCard, {
-                                        key: chore.id || chore.chore_id,
-                                        chore: chore,
-                                        onMarkDone: handleMarkDone,
-                                        onEdit: handleEditTask,
-                                        onToggleDescription: handleToggleDescription,
-                                        assignees: assignees,
-                                        onMarkSubtaskDone: handleMarkSubtaskDone
-                                    })
-                                )
-                            )
-                        ),
-                        
-                        // Upcoming tasks
-                        upcomingTasks.length > 0 && h('div', null,
-                            h('h2', { className: 'text-xl font-semibold mb-4 text-blue-600' }, 
-                                `📋 Aankomend (${upcomingTasks.length})`),
-                            h('div', { className: 'grid gap-4' },
-                                upcomingTasks.map(chore =>
-                                    h(TaskCard, {
-                                        key: chore.id || chore.chore_id,
-                                        chore: chore,
-                                        onMarkDone: handleMarkDone,
-                                        onEdit: handleEditTask,
-                                        onToggleDescription: handleToggleDescription,
-                                        assignees: assignees,
-                                        onMarkSubtaskDone: handleMarkSubtaskDone
-                                    })
-                                )
-                            )
-                        ),
-                        
-                        // Completed tasks
-                        completedTasks.length > 0 && h('div', null,
-                            h('h2', { className: 'text-xl font-semibold mb-4 text-green-600' }, 
-                                `✅ Voltooid Vandaag (${completedTasks.length})`),
-                            h('div', { className: 'grid gap-4' },
-                                completedTasks.map(chore =>
-                                    h(TaskCard, {
-                                        key: chore.id || chore.chore_id,
-                                        chore: chore,
-                                        onMarkDone: handleMarkDone,
-                                        onEdit: handleEditTask,
-                                        onToggleDescription: handleToggleDescription,
-                                        assignees: assignees,
-                                        onMarkSubtaskDone: handleMarkSubtaskDone
-                                    })
-                                )
-                            )
-                        ),
-                        
-                        // Empty state
-                        chores.length === 0 && !loading && h('div', { 
-                            className: 'text-center py-12 bg-white rounded-lg shadow-sm' 
-                        },
-                            h('p', { className: 'text-gray-500' }, 
-                                'Geen taken gevonden. Klik op "Nieuwe Taak" om te beginnen.'
-                            )
-                        )
-                    )
-                ),
-                
-                // Modals
-                showTaskForm && h(Modal, {
-                    isOpen: showTaskForm,
-                    onClose: () => {
-                        setShowTaskForm(false);
-                        setEditingTask(null);
-                    },
-                    title: editingTask ? 'Taak Bewerken' : 'Nieuwe Taak'
+                                className: 'mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
+                                onClick: () => window.location.reload()
+                            }, 'Pagina herladen')
+                        );
+                    }
+                    
+                    return this.props.children;
+                }
+            }
+            
+            return h(ErrorBoundary, null,
+                h('div', { 
+                    className: "min-h-screen bg-gray-100 font-sans",
+                    style: { 
+                        backgroundColor: themeSettings.backgroundColor || '#f3f4f6',
+                        color: themeSettings.primaryTextColor || '#111827'
+                    }
                 },
-                    h(TaskForm, {
-                        onSubmit: handleTaskFormSubmit,
-                        onDelete: handleDeleteTask,
-                        onCancel: () => {
+                    // Header
+                    h('header', { className: "bg-white shadow-sm border-b" },
+                        h('div', { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" },
+                            h('div', { className: "flex justify-between items-center py-4" },
+                                h('div', { className: "flex items-center space-x-4" },
+                                    h('h1', { className: "text-2xl font-bold text-gray-900" }, "🏠 Klusjes Dashboard"),
+                                    hasAuthError && h('span', { className: "text-sm bg-yellow-100 text-yellow-800 px-2 py-1 rounded" }, 
+                                        "Auth issue - check config")
+                                ),
+                                h('div', { className: "flex space-x-2" },
+                                    h('button', {
+                                        className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600",
+                                        onClick: () => setShowTaskForm(true)
+                                    }, "Nieuwe Taak"),
+                                    h('button', {
+                                        className: "px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600",
+                                        onClick: () => setShowUserManagement(true)
+                                    }, "Gebruikers"),
+                                    h('button', {
+                                        className: "px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600",
+                                        onClick: () => setShowThemeSettings(true)
+                                    }, "Thema"),
+                                    h('button', {
+                                        className: "px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600",
+                                        onClick: loadData
+                                    }, "↻")
+                                )
+                            )
+                        )
+                    ),
+                    
+                    // Main content
+                    h('main', { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" },
+                        // Loading state
+                        loading && h(Loading, { message: "Taken laden..." }),
+                        
+                        // Error state
+                        error && h(ErrorMessage, { 
+                            message: error, 
+                            onRetry: loadData,
+                            onDismiss: clearError
+                        }),
+                        
+                        // Success message for completed tasks - RESTORED
+                        lastCompletion && h(Alert, {
+                            type: "success",
+                            message: `Taak voltooid door ${lastCompletion.person}! 🎉`,
+                            onDismiss: clearLastCompletion
+                        }),
+                        
+                        // Statistics
+                        !loading && !error && stats && Object.keys(stats).length > 0 && h('div', { className: "grid grid-cols-1 md:grid-cols-3 gap-6 mb-8" },
+                            h(StatsCard, {
+                                title: "Vandaag Voltooid",
+                                value: stats.completed_today || 0,
+                                icon: "✅",
+                                color: "green"
+                            }),
+                            h(StatsCard, {
+                                title: "Nog Te Doen",
+                                value: stats.pending_today || 0,
+                                icon: "⏰",
+                                color: "orange"
+                            }),
+                            h(StatsCard, {
+                                title: "Deze Week",
+                                value: stats.completed_this_week || 0,
+                                icon: "📅",
+                                color: "blue"
+                            })
+                        ),
+                        
+                        // User stats - RESTORED
+                        !loading && !error && assignees.length > 0 && h('div', { className: "mb-8" },
+                            h('h2', { className: "text-xl font-semibold mb-4" }, "Statistieken per Gebruiker"),
+                            h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" },
+                                assignees.filter(assignee => assignee !== 'Wie kan').map(assignee =>
+                                    h(UserStatsCard, {
+                                        key: assignee,
+                                        user: assignee,
+                                        stats: stats.user_stats?.[assignee] || {},
+                                        color: themeSettings.primaryColor || '#3B82F6'
+                                    })
+                                )
+                            )
+                        ),
+                        
+                        // Tasks
+                        !loading && !error && h('div', { className: "space-y-8" },
+                            // Pending tasks
+                            pendingTasks.length > 0 && h('div', null,
+                                h('h2', { className: 'text-xl font-semibold mb-4' }, 
+                                    `📋 Te Doen Vandaag (${pendingTasks.length})`),
+                                h('div', { className: 'grid gap-4' },
+                                    pendingTasks.map(chore =>
+                                        h(TaskCard, {
+                                            key: chore.id || chore.chore_id,
+                                            chore: chore,
+                                            onMarkDone: handleMarkDone,
+                                            onEdit: handleEditTask,
+                                            onToggleDescription: handleToggleDescription,
+                                            assignees: assignees,
+                                            onMarkSubtaskDone: handleMarkSubtaskDone
+                                        })
+                                    )
+                                )
+                            ),
+                            
+                            // Completed tasks
+                            completedTasks.length > 0 && h('div', null,
+                                h('h2', { className: 'text-xl font-semibold mb-4 text-green-600' }, 
+                                    `✅ Voltooid Vandaag (${completedTasks.length})`),
+                                h('div', { className: 'grid gap-4' },
+                                    completedTasks.map(chore =>
+                                        h(TaskCard, {
+                                            key: chore.id || chore.chore_id,
+                                            chore: chore,
+                                            onMarkDone: handleMarkDone,
+                                            onEdit: handleEditTask,
+                                            onToggleDescription: handleToggleDescription,
+                                            assignees: assignees,
+                                            onMarkSubtaskDone: handleMarkSubtaskDone
+                                        })
+                                    )
+                                )
+                            ),
+                            
+                            // Empty state
+                            chores.length === 0 && !loading && h('div', { 
+                                className: 'text-center py-12 bg-white rounded-lg shadow-sm' 
+                            },
+                                h('p', { className: 'text-gray-500' }, 
+                                    'Geen taken gevonden. Klik op "Nieuwe Taak" om te beginnen.'
+                                )
+                            )
+                        )
+                    ),
+                    
+                    // Modals
+                    showTaskForm && h(Modal, {
+                        isOpen: showTaskForm,
+                        onClose: () => {
                             setShowTaskForm(false);
                             setEditingTask(null);
                         },
-                        onResetCompletion: handleResetCompletion,
-                        initialData: editingTask,
-                        assignees: assignees
-                    })
-                ),
-                
-                showUserManagement && h(Modal, {
-                    isOpen: true,
-                    onClose: () => setShowUserManagement(false),
-                    title: 'Gebruikers Beheren'
-                },
-                    h(UserManagement, {
-                        users: assignees,
-                        onSave: handleSaveUsers,
-                        onClose: () => setShowUserManagement(false)
-                    })
-                ),
-                
-                showThemeSettings && h(Modal, {
-                    isOpen: true,
-                    onClose: () => setShowThemeSettings(false),
-                    title: 'Thema Instellingen'
-                },
-                    h(ThemeSettings, {
-                        currentTheme: themeSettings,
-                        onSave: handleSaveTheme,
-                        onClose: () => setShowThemeSettings(false)
-                    })
-                ),
-                
-                selectedDescription && h(Modal, {
-                    isOpen: true,  // Fixed: was !selectedDescription
-                    onClose: () => setSelectedDescription(null),
-                    title: `Beschrijving: ${selectedDescription.name}`
-                },
-                    h(TaskDescription, {
-                        description: selectedDescription.description,
-                        onClose: () => setSelectedDescription(null)
+                        title: editingTask ? 'Taak Bewerken' : 'Nieuwe Taak'
+                    },
+                        h(TaskForm, {
+                            onSubmit: handleTaskFormSubmit,
+                            onDelete: handleDeleteTask,
+                            onCancel: () => {
+                                setShowTaskForm(false);
+                                setEditingTask(null);
+                            },
+                            onResetCompletion: handleResetCompletion,
+                            initialData: editingTask,
+                            users: assignees,
+                            assignees: assignees
+                        })
+                    ),
+                    
+                    showUserManagement && h(Modal, {
+                        isOpen: true,
+                        onClose: () => setShowUserManagement(false),
+                        title: 'Gebruikers Beheren'
+                    },
+                        h(UserManagement, {
+                            users: assignees,
+                            onSave: handleSaveUsers,
+                            onClose: () => setShowUserManagement(false)
+                        })
+                    ),
+                    
+                    showThemeSettings && h(Modal, {
+                        isOpen: true,
+                        onClose: () => setShowThemeSettings(false),
+                        title: 'Thema Instellingen'
+                    },
+                        h(ThemeSettings, {
+                            currentTheme: themeSettings,
+                            onSave: handleSaveTheme,
+                            onClose: () => setShowThemeSettings(false)
+                        })
+                    ),
+                    
+                    selectedDescription && h(Modal, {
+                        isOpen: true,
+                        onClose: () => setSelectedDescription(null),
+                        title: `Beschrijving: ${selectedDescription.name}`
+                    },
+                        h(TaskDescription, {
+                            description: selectedDescription.description,
+                            onClose: () => setSelectedDescription(null)
+                        })
+                    ),
+                    
+                    // Completion confirmation dialog - RESTORED
+                    selectedCompletion && h(CompletionConfirmDialog, {
+                        isOpen: true,
+                        title: "Taak voltooien",
+                        message: "Wie heeft deze taak voltooid?",
+                        onConfirm: handleCompletionConfirm,
+                        onCancel: cancelCompletionDialog,
+                        assignees: availableAssignees,
+                        defaultUser: selectedCompletion.defaultUser
+                    }),
+                    
+                    // Subtask completion dialog - RESTORED
+                    selectedSubtaskCompletion && h(SubtaskCompletionDialog, {
+                        isOpen: true,
+                        chore: selectedSubtaskCompletion.chore,
+                        onComplete: handleSubtaskCompletionConfirm,
+                        onCancel: cancelSubtaskDialog,
+                        assignees: availableAssignees,
+                        defaultUser: selectedSubtaskCompletion.defaultUser
+                    }),
+                    
+                    // Confirm dialog - RESTORED
+                    showConfirmDialog && confirmDialogData && h(ConfirmDialog, {
+                        isOpen: showConfirmDialog,
+                        title: confirmDialogData.title,
+                        message: confirmDialogData.message,
+                        onConfirm: () => {
+                            confirmDialogData.onConfirm();
+                            setShowConfirmDialog(false);
+                            setConfirmDialogData(null);
+                        },
+                        onCancel: () => {
+                            setShowConfirmDialog(false);
+                            setConfirmDialogData(null);
+                        }
                     })
                 )
             );
@@ -637,7 +684,7 @@ window.ChoresApp = window.ChoresApp || {};
     
     /**
      * Initialize the React application
-     * FIXED VERSION - Only this function updated to fix React Error #130
+     * RESTORED: Complete initialization function
      */
     window.ChoresApp.initApp = function() {
         console.log('Initializing Chores Dashboard React App...');
