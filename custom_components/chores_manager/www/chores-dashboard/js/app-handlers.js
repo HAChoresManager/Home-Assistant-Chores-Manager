@@ -27,7 +27,7 @@ window.ChoresApp = window.ChoresApp || {};
             }
         }, [core, status]);
         
-        // Initialize API
+        // Initialize API only once when the component mounts
         useEffect(() => {
             const initializeAPI = async () => {
                 try {
@@ -63,7 +63,8 @@ window.ChoresApp = window.ChoresApp || {};
             return () => {
                 window.removeEventListener('chores-api-ready', onApiReady);
             };
-        }, [handleError, core]);
+        // Empty dependency array prevents re-registration on each render
+        }, []);
         
         // Load data
         const loadData = useCallback(async () => {
