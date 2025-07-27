@@ -84,26 +84,22 @@ window.ChoresApp = window.ChoresApp || {};
                 if (state && state.attributes) {
                     const { chores = [], assignees = [], stats = {} } = state.attributes;
                     
-                    const processedChores = chores.map(chore => ({
-                        ...chore,
-                        isProcessing: false
-                    }));
-                    
-                    core.setChores(processedChores);
+                    core.setChores(chores);
                     core.setAssignees(assignees);
                     core.setStats(stats);
+                    
+                    helpers.clearError();
                 }
-                
             } catch (err) {
                 handleError(err);
             } finally {
                 core.setLoading(false);
             }
-        }, [core.api, core.setLoading, core.setChores, core.setAssignees, core.setStats, handleError]);
+        }, [core, helpers, handleError]);
         
-        // Theme loading
+        // Load theme
         const loadTheme = useCallback(async () => {
-            if (!core.api || !core.api.theme) return;
+            if (!core.api) return;
             
             try {
                 const theme = await core.api.theme.get();
@@ -112,13 +108,14 @@ window.ChoresApp = window.ChoresApp || {};
                     
                     // Apply theme
                     const root = document.documentElement;
-                    if (theme.backgroundColor) root.style.setProperty('--theme-background', theme.backgroundColor);
-                    if (theme.cardColor) root.style.setProperty('--theme-card', theme.cardColor);
-                    if (theme.primaryTextColor) root.style.setProperty('--theme-primary-text', theme.primaryTextColor);
-                    if (theme.secondaryTextColor) root.style.setProperty('--theme-secondary-text', theme.secondaryTextColor);
+                    root.style.setProperty('--theme-background', theme.backgroundColor);
+                    root.style.setProperty('--theme-card', theme.cardColor);
+                    root.style.setProperty('--theme-primary-text', theme.primaryTextColor);
+                    root.style.setProperty('--theme-secondary-text', theme.secondaryTextColor);
                 }
             } catch (err) {
-                console.error('Theme loading error:', err);
+                console.error('Failed to load theme:', err);
+                // Don't show error to user for theme loading
             }
         }, [core.api, status.setThemeSettings]);
         
@@ -224,14 +221,21 @@ window.ChoresApp = window.ChoresApp || {};
             }
         }, [core.api, dialogs, status, handleError, loadData]);
         
-        // Task form handlers
+        // Task form handlers - FIXED: Use correct API method names
         const handleTaskFormSubmit = useCallback(async (task) => {
             if (!core.api) return;
             
             try {
+                // addChore handles both add and update based on whether chore_id exists
                 if (ui.editingTask) {
-                    await core.api.chores.update(ui.editingTask.id || ui.editingTask.chore_id, task);
+                    // Include the chore_id in the task data for updating
+                    const taskData = {
+                        ...task,
+                        chore_id: ui.editingTask.id || ui.editingTask.chore_id
+                    };
+                    await core.api.chores.addChore(taskData);
                 } else {
+                    // For new tasks, just pass the task data without chore_id
                     await core.api.chores.add(task);
                 }
                 
@@ -268,12 +272,12 @@ window.ChoresApp = window.ChoresApp || {};
             dialogs.setShowConfirmDialog(true);
         }, [core.api, dialogs, handleError, loadData]);
         
-        // Reset completion handler
+        // Reset completion handler - FIXED: Use correct method name
         const handleResetCompletion = useCallback(async (choreId) => {
             if (!core.api) return;
             
             try {
-                await core.api.chores.resetCompletion(choreId);
+                await core.api.chores.reset(choreId);
                 await loadData();
             } catch (err) {
                 handleError(err);
@@ -288,9 +292,9 @@ window.ChoresApp = window.ChoresApp || {};
                 // Process user updates
                 for (const user of users) {
                     if (user.deleted) {
-                        await core.api.users.deleteUser(user.id);
+                        await core.api.users.delete(user.id);
                     } else if (user.isNew || user.modified) {
-                        await core.api.users.addUser(user);
+                        await core.api.users.add(user);
                     }
                 }
                 
