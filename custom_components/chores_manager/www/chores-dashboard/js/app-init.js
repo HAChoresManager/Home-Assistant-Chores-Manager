@@ -80,7 +80,8 @@ window.ChoresApp = window.ChoresApp || {};
             const AppWithErrorBoundary = React.createElement(
                 window.ChoresApp.ErrorBoundary,
                 null,
-                React.createElement(window.ChoresApp.ChoresApp)
+                // Use the exported App component from app.js
+                React.createElement(window.ChoresApp.App)
             );
             
             // Check React version and use appropriate API
