@@ -8,13 +8,17 @@ window.ChoresApp = window.ChoresApp || {};
 (function() {
     'use strict';
     
-    const { useCallback, useEffect } = React;
+    const { useCallback, useEffect, useRef } = React;
     
     /**
      * Hook that provides all event handlers for the app
      */
     window.ChoresApp.useEventHandlers = function(state) {
         const { core, ui, dialogs, status, helpers } = state;
+        
+        // Use refs to store the latest versions of functions without causing re-renders
+        const loadDataRef = useRef();
+        const loadThemeRef = useRef();
         
         // Error handler
         const handleError = useCallback((err) => {
@@ -27,7 +31,7 @@ window.ChoresApp = window.ChoresApp || {};
             }
         }, [core, status]);
         
-        // Initialize API only once when the component mounts
+        // Initialize API
         useEffect(() => {
             const initializeAPI = async () => {
                 try {
@@ -63,8 +67,7 @@ window.ChoresApp = window.ChoresApp || {};
             return () => {
                 window.removeEventListener('chores-api-ready', onApiReady);
             };
-        // Empty dependency array prevents re-registration on each render
-        }, []);
+        }, [handleError, core]);
         
         // Load data
         const loadData = useCallback(async () => {
@@ -96,7 +99,7 @@ window.ChoresApp = window.ChoresApp || {};
             } finally {
                 core.setLoading(false);
             }
-        }, [core, handleError]);
+        }, [core.api, core.setLoading, core.setChores, core.setAssignees, core.setStats, handleError]);
         
         // Theme loading
         const loadTheme = useCallback(async () => {
@@ -117,19 +120,29 @@ window.ChoresApp = window.ChoresApp || {};
             } catch (err) {
                 console.error('Theme loading error:', err);
             }
-        }, [core.api, status]);
+        }, [core.api, status.setThemeSettings]);
         
-        // Initial data load
+        // Update refs with latest function versions
+        useEffect(() => {
+            loadDataRef.current = loadData;
+            loadThemeRef.current = loadTheme;
+        });
+        
+        // Initial data load and refresh interval - FIXED: No dependencies on functions
         useEffect(() => {
             if (core.api) {
-                loadData();
-                loadTheme();
+                // Initial load
+                loadDataRef.current();
+                loadThemeRef.current();
                 
-                // Set up refresh interval
-                const interval = setInterval(loadData, 30000);
+                // Set up refresh interval using refs to avoid dependency issues
+                const interval = setInterval(() => {
+                    loadDataRef.current();
+                }, 30000);
+                
                 return () => clearInterval(interval);
             }
-        }, [core.api, loadData, loadTheme]);
+        }, [core.api]); // Only depend on core.api, not the functions
         
         // Task mark done handler
         const handleMarkDone = useCallback(async (choreId, userId) => {
@@ -211,12 +224,17 @@ window.ChoresApp = window.ChoresApp || {};
             }
         }, [core.api, dialogs, status, handleError, loadData]);
         
-        // Task form submit handler
-        const handleTaskFormSubmit = useCallback(async (taskData) => {
+        // Task form handlers
+        const handleTaskFormSubmit = useCallback(async (task) => {
             if (!core.api) return;
             
             try {
-                await core.api.chores.addChore(taskData);
+                if (ui.editingTask) {
+                    await core.api.chores.update(ui.editingTask.id || ui.editingTask.chore_id, task);
+                } else {
+                    await core.api.chores.add(task);
+                }
+                
                 ui.setShowTaskForm(false);
                 ui.setEditingTask(null);
                 await loadData();
@@ -225,32 +243,37 @@ window.ChoresApp = window.ChoresApp || {};
             }
         }, [core.api, ui, handleError, loadData]);
         
-        // Edit task handler
         const handleEditTask = useCallback((task) => {
             ui.setEditingTask(task);
             ui.setShowTaskForm(true);
         }, [ui]);
         
-        // Delete task handler
         const handleDeleteTask = useCallback(async (choreId) => {
             if (!core.api) return;
             
-            try {
-                await core.api.chores.deleteChore(choreId);
-                ui.setShowTaskForm(false);
-                ui.setEditingTask(null);
-                await loadData();
-            } catch (err) {
-                handleError(err);
-            }
-        }, [core.api, ui, handleError, loadData]);
+            dialogs.setConfirmDialogData({
+                title: 'Taak verwijderen',
+                message: 'Weet je zeker dat je deze taak wilt verwijderen?',
+                onConfirm: async () => {
+                    try {
+                        await core.api.chores.delete(choreId);
+                        dialogs.setShowConfirmDialog(false);
+                        dialogs.setConfirmDialogData(null);
+                        await loadData();
+                    } catch (err) {
+                        handleError(err);
+                    }
+                }
+            });
+            dialogs.setShowConfirmDialog(true);
+        }, [core.api, dialogs, handleError, loadData]);
         
         // Reset completion handler
         const handleResetCompletion = useCallback(async (choreId) => {
             if (!core.api) return;
             
             try {
-                await core.api.chores.resetChore(choreId);
+                await core.api.chores.resetCompletion(choreId);
                 await loadData();
             } catch (err) {
                 handleError(err);
