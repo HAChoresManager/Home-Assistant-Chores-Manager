@@ -366,8 +366,11 @@ window.ChoresApp = window.ChoresApp || {};
         return App;
     }
     
-    // Export the app
-    window.ChoresApp.App = ChoresApp();
+    // Export a factory to obtain the App component once all
+    // dependencies have been loaded. This avoids executing the
+    // component factory too early which resulted in React receiving
+    // a plain object instead of a valid component.
+    window.ChoresApp.getApp = ChoresApp;
     
     console.log('Chores Dashboard App loaded successfully');
 })();
