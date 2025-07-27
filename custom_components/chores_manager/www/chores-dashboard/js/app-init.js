@@ -83,6 +83,7 @@ window.ChoresApp = window.ChoresApp || {};
             const AppWithErrorBoundary = React.createElement(
                 window.ChoresApp.ErrorBoundary,
                 null,
+
                 React.createElement(AppComponent)
             );
             
