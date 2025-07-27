@@ -40,7 +40,12 @@ window.ChoresApp = window.ChoresApp || {};
         // Success/Error States
         const [lastCompletion, setLastCompletion] = useState(null);
         const [hasAuthError, setHasAuthError] = useState(false);
-        const [themeSettings, setThemeSettings] = useState(null);
+        const [themeSettings, setThemeSettings] = useState({
+            backgroundColor: '#f3f4f6',
+            cardColor: '#ffffff',
+            primaryTextColor: '#1f2937',
+            secondaryTextColor: '#6b7280'
+        });
         
         // Helper functions
         const clearError = useCallback(() => setError(null), []);
