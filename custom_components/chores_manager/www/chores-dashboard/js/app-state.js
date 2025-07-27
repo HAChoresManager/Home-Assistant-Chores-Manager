@@ -21,6 +21,7 @@ window.ChoresApp = window.ChoresApp || {};
         const [stats, setStats] = useState({});
         const [loading, setLoading] = useState(true);
         const [error, setError] = useState(null);
+        const [api, setApi] = useState(null); // Add API to state
         
         // UI State
         const [showTaskForm, setShowTaskForm] = useState(false);
@@ -39,35 +40,13 @@ window.ChoresApp = window.ChoresApp || {};
         // Success/Error States
         const [lastCompletion, setLastCompletion] = useState(null);
         const [hasAuthError, setHasAuthError] = useState(false);
-        
-        // Theme State
-        const [themeSettings, setThemeSettings] = useState({
-            backgroundColor: '#ffffff',
-            cardColor: '#f8f8f8', 
-            primaryTextColor: '#000000',
-            secondaryTextColor: '#333333'
-        });
-        
-        // API State
-        const [api, setApi] = useState(null);
+        const [themeSettings, setThemeSettings] = useState(null);
         
         // Helper functions
-        const clearError = useCallback(() => {
-            setError(null);
-            setHasAuthError(false);
-        }, []);
-        
-        const clearLastCompletion = useCallback(() => {
-            setLastCompletion(null);
-        }, []);
-        
-        const cancelCompletionDialog = useCallback(() => {
-            setSelectedCompletion(null);
-        }, []);
-        
-        const cancelSubtaskDialog = useCallback(() => {
-            setSelectedSubtaskCompletion(null);
-        }, []);
+        const clearError = useCallback(() => setError(null), []);
+        const clearLastCompletion = useCallback(() => setLastCompletion(null), []);
+        const cancelCompletionDialog = useCallback(() => setSelectedCompletion(null), []);
+        const cancelSubtaskDialog = useCallback(() => setSelectedSubtaskCompletion(null), []);
         
         // Return organized state
         return {
@@ -78,7 +57,7 @@ window.ChoresApp = window.ChoresApp || {};
                 stats, setStats,
                 loading, setLoading,
                 error, setError,
-                api, setApi
+                api, setApi  // Include api in core state
             },
             
             // UI state
