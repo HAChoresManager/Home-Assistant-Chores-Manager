@@ -89,8 +89,8 @@ window.ChoresApp = window.ChoresApp || {};
                 h('div', { 
                     className: "min-h-screen bg-gray-100 font-sans",
                     style: { 
-                        backgroundColor: status.themeSettings.backgroundColor || '#f3f4f6',
-                        color: status.themeSettings.primaryTextColor || '#111827'
+                        backgroundColor: status.themeSettings?.backgroundColor || '#f3f4f6',
+                        color: status.themeSettings?.primaryTextColor || '#111827'
                     }
                 },
                     // Header
@@ -118,7 +118,7 @@ window.ChoresApp = window.ChoresApp || {};
                                     h('button', {
                                         className: "px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600",
                                         onClick: handlers.loadData
-                                    }, "↻")
+                                    }, "⟳")
                                 )
                             )
                         )
@@ -127,132 +127,147 @@ window.ChoresApp = window.ChoresApp || {};
                     // Main content
                     h('main', { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" },
                         // Loading state
-                        core.loading && h(Loading, { message: "Taken laden..." }),
-                        
-                        // Error state
-                        core.error && h(ErrorMessage, { 
-                            message: core.error, 
-                            onRetry: handlers.loadData,
-                            onDismiss: helpers.clearError
-                        }),
-                        
-                        // Success message for completed tasks
-                        status.lastCompletion && h(Alert, {
-                            type: "success",
-                            message: `Taak voltooid door ${status.lastCompletion.person}!`,
-                            onDismiss: helpers.clearLastCompletion
-                        }),
-                        
-                        // Statistics
-                        !core.loading && !core.error && h('div', { className: "grid grid-cols-1 md:grid-cols-3 gap-4 mb-8" },
-                            h(StatsCard, {
-                                title: "Vandaag te doen",
-                                value: computed.pendingTasks.filter(c => c.is_due || c.status === 'due').length,
-                                icon: "📅",
-                                color: "blue"
-                            }),
-                            h(StatsCard, {
-                                title: "Voltooid vandaag",
-                                value: computed.completedTasks.length,
-                                icon: "✅",
-                                color: "green"
-                            }),
-                            h(StatsCard, {
-                                title: "Totaal taken",
-                                value: core.chores.length,
-                                icon: "📊",
-                                color: "purple"
-                            })
+                        core.loading && h('div', { className: "flex justify-center items-center min-h-screen" },
+                            h(Loading)
                         ),
                         
-                        // Task sections
-                        !core.loading && !core.error && h('div', { className: "space-y-8" },
-                            // Overdue tasks
-                            computed.overdueTasks.length > 0 && h('div', null,
+                        // Error state
+                        core.error && h(ErrorMessage, {
+                            message: core.error,
+                            onClose: helpers.clearError
+                        }),
+                        
+                        // Success message
+                        status.lastCompletion && h(Alert, {
+                            type: 'success',
+                            message: `Taak voltooid door ${status.lastCompletion.person}! 🎉`,
+                            onClose: helpers.clearLastCompletion
+                        }),
+                        
+                        // Main content when loaded
+                        !core.loading && h('div', null,
+                            // Statistics
+                            h('div', { className: "grid grid-cols-1 md:grid-cols-3 gap-4 mb-8" },
+                                h(StatsCard, {
+                                    title: "Vandaag Voltooid",
+                                    value: computed.completedTasks.length,
+                                    total: core.chores.length,
+                                    icon: "✅"
+                                }),
+                                h(StatsCard, {
+                                    title: "Te Doen",
+                                    value: computed.todayTasks.length,
+                                    total: computed.pendingTasks.length,
+                                    icon: "📋",
+                                    variant: computed.todayTasks.length > 0 ? "warning" : "default"
+                                }),
+                                h(StatsCard, {
+                                    title: "Achterstallig",
+                                    value: computed.overdueTasks.length,
+                                    icon: "⚠️",
+                                    variant: computed.overdueTasks.length > 0 ? "danger" : "default"
+                                })
+                            ),
+                            
+                            // User statistics
+                            core.stats?.user_stats && Object.keys(core.stats.user_stats).length > 0 && 
+                            h('div', { className: "mb-8" },
+                                h('h2', { className: "text-xl font-semibold mb-4" }, "Gebruiker Statistieken"),
+                                h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" },
+                                    Object.entries(core.stats.user_stats).map(([userId, stats]) =>
+                                        h(UserStatsCard, {
+                                            key: userId,
+                                            name: stats.name,
+                                            stats: stats,
+                                            totalChores: core.chores.length
+                                        })
+                                    )
+                                )
+                            ),
+                            
+                            // Task sections
+                            computed.overdueTasks.length > 0 && h('div', { className: "mb-8" },
                                 h('h2', { className: "text-xl font-semibold mb-4 text-red-600" }, 
-                                    `⚠️ Achterstallig (${computed.overdueTasks.length})`),
-                                h('div', { className: "grid gap-4 mb-8" },
-                                    computed.overdueTasks.map(chore =>
-                                        h(TaskCard, {
-                                            key: chore.id || chore.chore_id,
-                                            chore: chore,
-                                            onMarkDone: handlers.handleMarkDone,
-                                            onEdit: handlers.handleEditTask,
-                                            onToggleDescription: handlers.handleToggleDescription,
-                                            isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id],
-                                            assignees: core.assignees,
-                                            onMarkSubtaskDone: handlers.handleMarkSubtaskDone
-                                        })
+                                    `Achterstallig (${computed.overdueTasks.length})`),
+                                h('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-4" },
+                                    computed.overdueTasks.map(chore => 
+                                        h('div', { key: chore.id || chore.chore_id, className: "task-card-wrapper" },
+                                            h(TaskCard, {
+                                                chore: chore,
+                                                onComplete: handlers.handleMarkDone,
+                                                onEdit: () => handlers.handleEditTask(chore),
+                                                onToggleDescription: handlers.handleToggleDescription,
+                                                isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id] || false,
+                                                users: core.assignees
+                                            })
+                                        )
                                     )
                                 )
                             ),
                             
-                            // Today's tasks
-                            h('div', null,
-                                h('h2', { className: "text-xl font-semibold mb-4" }, 
-                                    `📋 Vandaag (${computed.todayTasks.length})`),
-                                h('div', { className: "grid gap-4 mb-8" },
-                                    computed.todayTasks.length > 0 ? computed.todayTasks.map(chore =>
-                                        h(TaskCard, {
-                                            key: chore.id || chore.chore_id,
-                                            chore: chore,
-                                            onMarkDone: handlers.handleMarkDone,
-                                            onEdit: handlers.handleEditTask,
-                                            onToggleDescription: handlers.handleToggleDescription,
-                                            isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id],
-                                            assignees: core.assignees,
-                                            onMarkSubtaskDone: handlers.handleMarkSubtaskDone
-                                        })
-                                    ) : h('p', { className: "text-gray-500 text-center py-4" }, 
-                                        "Geen taken voor vandaag! 🎉")
+                            computed.todayTasks.length > 0 && h('div', { className: "mb-8" },
+                                h('h2', { className: "text-xl font-semibold mb-4 text-orange-600" }, 
+                                    `Vandaag Te Doen (${computed.todayTasks.length})`),
+                                h('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-4" },
+                                    computed.todayTasks.map(chore =>
+                                        h('div', { key: chore.id || chore.chore_id, className: "task-card-wrapper" },
+                                            h(TaskCard, {
+                                                chore: chore,
+                                                onComplete: handlers.handleMarkDone,
+                                                onEdit: () => handlers.handleEditTask(chore),
+                                                onToggleDescription: handlers.handleToggleDescription,
+                                                isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id] || false,
+                                                users: core.assignees
+                                            })
+                                        )
+                                    )
                                 )
                             ),
                             
-                            // Upcoming tasks
-                            computed.upcomingTasks.length > 0 && h('div', null,
+                            computed.upcomingTasks.length > 0 && h('div', { className: "mb-8" },
                                 h('h2', { className: "text-xl font-semibold mb-4" }, 
-                                    `📅 Komende taken (${computed.upcomingTasks.length})`),
-                                h('div', { className: "grid gap-4 mb-8" },
+                                    `Aankomende Taken (${computed.upcomingTasks.length})`),
+                                h('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-4" },
                                     computed.upcomingTasks.map(chore =>
-                                        h(TaskCard, {
-                                            key: chore.id || chore.chore_id,
-                                            chore: chore,
-                                            onMarkDone: handlers.handleMarkDone,
-                                            onEdit: handlers.handleEditTask,
-                                            onToggleDescription: handlers.handleToggleDescription,
-                                            isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id],
-                                            assignees: core.assignees,
-                                            onMarkSubtaskDone: handlers.handleMarkSubtaskDone
-                                        })
+                                        h('div', { key: chore.id || chore.chore_id, className: "task-card-wrapper" },
+                                            h(TaskCard, {
+                                                chore: chore,
+                                                onComplete: handlers.handleMarkDone,
+                                                onEdit: () => handlers.handleEditTask(chore),
+                                                onToggleDescription: handlers.handleToggleDescription,
+                                                isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id] || false,
+                                                users: core.assignees
+                                            })
+                                        )
                                     )
                                 )
                             ),
                             
-                            // Completed tasks
-                            computed.completedTasks.length > 0 && h('div', null,
+                            computed.completedTasks.length > 0 && h('div', { className: "mb-8" },
                                 h('h2', { className: "text-xl font-semibold mb-4 text-green-600" }, 
-                                    `✅ Voltooid vandaag (${computed.completedTasks.length})`),
-                                h('div', { className: "grid gap-4" },
+                                    `Voltooid Vandaag (${computed.completedTasks.length})`),
+                                h('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-4" },
                                     computed.completedTasks.map(chore =>
-                                        h(TaskCard, {
-                                            key: chore.id || chore.chore_id,
-                                            chore: chore,
-                                            onMarkDone: handlers.handleMarkDone,
-                                            onEdit: handlers.handleEditTask,
-                                            onToggleDescription: handlers.handleToggleDescription,
-                                            isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id],
-                                            assignees: core.assignees,
-                                            onMarkSubtaskDone: handlers.handleMarkSubtaskDone
-                                        })
+                                        h('div', { 
+                                            key: chore.id || chore.chore_id, 
+                                            className: "task-card-wrapper opacity-75" 
+                                        },
+                                            h(TaskCard, {
+                                                chore: chore,
+                                                onComplete: handlers.handleMarkDone,
+                                                onEdit: () => handlers.handleEditTask(chore),
+                                                onToggleDescription: handlers.handleToggleDescription,
+                                                isExpanded: ui.expandedDescriptions[chore.id || chore.chore_id] || false,
+                                                users: core.assignees
+                                            })
+                                        )
                                     )
                                 )
                             ),
                             
                             // Empty state
-                            core.chores.length === 0 && !core.loading && h('div', { 
-                                className: "text-center py-12 bg-white rounded-lg shadow-sm"
-                            },
-                                h('p', { className: "text-gray-500 text-lg" }, 
+                            core.chores.length === 0 && h('div', { className: "text-center py-12" },
+                                h('p', { className: "text-gray-500" }, 
                                     "Geen taken gevonden. Klik op 'Nieuwe Taak' om te beginnen."
                                 )
                             )
@@ -322,46 +337,37 @@ window.ChoresApp = window.ChoresApp || {};
                         isOpen: true,
                         title: "Taak voltooien",
                         message: "Wie heeft deze taak voltooid?",
-                        onConfirm: handlers.handleCompletionConfirm,
-                        onCancel: helpers.cancelCompletionDialog,
-                        assignees: computed.availableAssignees,
-                        defaultUser: dialogs.selectedCompletion.defaultUser
+                        users: computed.availableAssignees,
+                        defaultUser: dialogs.selectedCompletion.defaultUser,
+                        onConfirm: (userId) => handlers.handleCompletionConfirm(
+                            dialogs.selectedCompletion.choreId, 
+                            userId
+                        ),
+                        onCancel: helpers.cancelCompletionDialog
                     }),
                     
                     // Subtask completion dialog
                     dialogs.selectedSubtaskCompletion && h(SubtaskCompletionDialog, {
                         isOpen: true,
-                        chore: dialogs.selectedSubtaskCompletion.chore,
-                        onComplete: handlers.handleSubtaskCompletionConfirm,
-                        onCancel: helpers.cancelSubtaskDialog,
-                        assignees: computed.availableAssignees,
-                        defaultUser: dialogs.selectedSubtaskCompletion.defaultUser
-                    }),
-                    
-                    // Confirm dialog
-                    dialogs.showConfirmDialog && dialogs.confirmDialogData && h(ConfirmDialog, {
-                        isOpen: dialogs.showConfirmDialog,
-                        title: dialogs.confirmDialogData.title,
-                        message: dialogs.confirmDialogData.message,
-                        onConfirm: () => {
-                            dialogs.confirmDialogData.onConfirm();
-                            dialogs.setShowConfirmDialog(false);
-                            dialogs.setConfirmDialogData(null);
-                        },
-                        onCancel: () => {
-                            dialogs.setShowConfirmDialog(false);
-                            dialogs.setConfirmDialogData(null);
-                        }
+                        subtasks: dialogs.selectedSubtaskCompletion.subtasks,
+                        users: computed.availableAssignees,
+                        defaultUser: dialogs.selectedSubtaskCompletion.defaultUser || computed.availableAssignees[0],
+                        onConfirm: (completedSubtasks, userId) => handlers.handleSubtaskCompletionConfirm(
+                            dialogs.selectedSubtaskCompletion.choreId,
+                            completedSubtasks,
+                            userId
+                        ),
+                        onCancel: helpers.cancelSubtaskDialog
                     })
                 )
             );
         }
         
-        return h(App);
+        return App;
     }
     
-    // Export for global access
-    window.ChoresApp.ChoresApp = ChoresApp;
+    // Export the app
+    window.ChoresApp.App = ChoresApp();
     
     console.log('Chores Dashboard App loaded successfully');
 })();
