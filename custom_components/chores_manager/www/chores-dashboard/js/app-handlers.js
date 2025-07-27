@@ -73,7 +73,8 @@ window.ChoresApp = window.ChoresApp || {};
                 core.setLoading(true);
                 console.log('Loading data with API:', core.api);
                 
-                const state = await core.api.getSensorState('sensor.chores_overview');
+                // Call getSensorState without parameters (as defined in base.js)
+                const state = await core.api.getSensorState();
                 console.log('Loaded state:', state);
                 
                 if (state && state.attributes) {
@@ -170,77 +171,66 @@ window.ChoresApp = window.ChoresApp || {};
                     )
                 );
             }
-        }, [core, dialogs, status, loadData, handleError]);
+        }, [core, dialogs, status, handleError, loadData]);
         
-        // Completion confirmation handler
-        const handleCompletionConfirm = useCallback(async (selectedUser) => {
-            if (dialogs.selectedCompletion) {
-                await handleMarkDone(dialogs.selectedCompletion.choreId, selectedUser);
-                dialogs.setSelectedCompletion(null);
-            }
+        // Completion confirm handler
+        const handleCompletionConfirm = useCallback(async (choreId, userId) => {
+            dialogs.setSelectedCompletion(null);
+            await handleMarkDone(choreId, userId);
         }, [dialogs, handleMarkDone]);
         
-        // Subtask completion handler
-        const handleMarkSubtaskDone = useCallback(async (choreId, subtaskIndex, userId) => {
-            if (!core.api) return;
+        // Subtask completion handlers
+        const handleMarkSubtaskDone = useCallback((chore, subtask) => {
+            dialogs.setSelectedSubtaskCompletion({
+                chore,
+                subtask,
+                defaultUser: chore.assigned_to || core.assignees[0]?.name || 'Wie kan'
+            });
+        }, [core.assignees, dialogs]);
+        
+        const handleSubtaskCompletionConfirm = useCallback(async (selectedSubtasks, completedBy) => {
+            if (!core.api || selectedSubtasks.length === 0) return;
             
-            // If no userId provided and multiple assignees, show selection dialog
-            if (!userId && core.assignees.length > 1) {
-                const chore = core.chores.find(c => (c.id || c.chore_id) === choreId);
-                dialogs.setSelectedSubtaskCompletion({ 
-                    chore, 
-                    subtaskIndex, 
-                    defaultUser: core.assignees[0]?.name || 'Wie kan' 
-                });
-                return;
-            }
+            dialogs.setSelectedSubtaskCompletion(null);
             
             try {
-                await core.api.chores.completeSubtask(subtaskIndex, userId || core.assignees[0]?.name || 'Wie kan');
+                // Complete each selected subtask
+                for (const subtaskId of selectedSubtasks) {
+                    await core.api.chores.completeSubtask(subtaskId, completedBy);
+                }
+                
+                status.setLastCompletion({ 
+                    subtaskCount: selectedSubtasks.length, 
+                    person: completedBy 
+                });
+                
                 await loadData();
             } catch (err) {
                 handleError(err);
             }
-        }, [core, dialogs, loadData, handleError]);
+        }, [core.api, dialogs, status, handleError, loadData]);
         
-        // Subtask completion confirmation handler
-        const handleSubtaskCompletionConfirm = useCallback(async (subtaskIndex, selectedUser) => {
-            if (dialogs.selectedSubtaskCompletion) {
-                await handleMarkSubtaskDone(
-                    dialogs.selectedSubtaskCompletion.chore.id || dialogs.selectedSubtaskCompletion.chore.chore_id,
-                    subtaskIndex,
-                    selectedUser
-                );
-                dialogs.setSelectedSubtaskCompletion(null);
-            }
-        }, [dialogs, handleMarkSubtaskDone]);
-        
-        // Task form submission
-        const handleTaskFormSubmit = useCallback(async (formData) => {
+        // Task form submit handler
+        const handleTaskFormSubmit = useCallback(async (taskData) => {
             if (!core.api) return;
             
             try {
-                if (ui.editingTask) {
-                    await core.api.chores.updateDescription(ui.editingTask.chore_id || ui.editingTask.id, formData);
-                } else {
-                    await core.api.chores.addChore(formData);
-                }
-                
+                await core.api.chores.addChore(taskData);
                 ui.setShowTaskForm(false);
                 ui.setEditingTask(null);
                 await loadData();
             } catch (err) {
                 handleError(err);
             }
-        }, [core.api, ui, loadData, handleError]);
+        }, [core.api, ui, handleError, loadData]);
         
-        // Task editing
-        const handleEditTask = useCallback((chore) => {
-            ui.setEditingTask(chore);
+        // Edit task handler
+        const handleEditTask = useCallback((task) => {
+            ui.setEditingTask(task);
             ui.setShowTaskForm(true);
         }, [ui]);
         
-        // Task deletion
+        // Delete task handler
         const handleDeleteTask = useCallback(async (choreId) => {
             if (!core.api) return;
             
@@ -252,9 +242,9 @@ window.ChoresApp = window.ChoresApp || {};
             } catch (err) {
                 handleError(err);
             }
-        }, [core.api, ui, loadData, handleError]);
+        }, [core.api, ui, handleError, loadData]);
         
-        // Completion reset
+        // Reset completion handler
         const handleResetCompletion = useCallback(async (choreId) => {
             if (!core.api) return;
             
@@ -264,29 +254,36 @@ window.ChoresApp = window.ChoresApp || {};
             } catch (err) {
                 handleError(err);
             }
-        }, [core.api, loadData, handleError]);
+        }, [core.api, handleError, loadData]);
         
-        // User management
+        // User management handlers
         const handleSaveUsers = useCallback(async (users) => {
+            if (!core.api) return;
+            
             try {
-                core.setAssignees(users);
+                // Process user updates
+                for (const user of users) {
+                    if (user.deleted) {
+                        await core.api.users.deleteUser(user.id);
+                    } else if (user.isNew || user.modified) {
+                        await core.api.users.addUser(user);
+                    }
+                }
+                
                 ui.setShowUserManagement(false);
                 await loadData();
             } catch (err) {
                 handleError(err);
             }
-        }, [core, ui, loadData, handleError]);
+        }, [core.api, ui, handleError, loadData]);
         
-        // Theme changes
+        // Theme save handler
         const handleSaveTheme = useCallback(async (theme) => {
             if (!core.api) return;
             
             try {
-                if (core.api.theme && core.api.theme.save) {
-                    await core.api.theme.save(theme.primaryColor, theme.accentColor);
-                }
+                await core.api.theme.save(theme);
                 
-                status.setThemeSettings(theme);
                 // Apply theme immediately
                 const root = document.documentElement;
                 root.style.setProperty('--theme-background', theme.backgroundColor);

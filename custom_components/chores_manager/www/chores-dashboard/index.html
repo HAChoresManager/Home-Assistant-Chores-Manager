@@ -9,7 +9,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- Custom styles -->
-    <link rel="stylesheet" href="css/styles.css?v=20250415-refactored">
+    <link rel="stylesheet" href="css/styles.css?v=20250415-fixed">
     
     <style>
         /* Initial loading state styles */
@@ -69,7 +69,7 @@
         });
 
         // Add version info to global object
-        window.CHORES_APP_VERSION = "1.4.0-20250415-refactored";
+        window.CHORES_APP_VERSION = "1.4.0-20250415-fixed";
         console.log('Chores Dashboard Version:', window.CHORES_APP_VERSION);
     </script>
 </head>
@@ -86,12 +86,12 @@
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
 
     <!-- Load core utilities and helpers -->
-    <script src="js/auth-helper.js?v=20250415-refactored" type="text/javascript"></script>
-    <script src="js/utils.js?v=20250415-refactored" type="text/javascript"></script>
-    <script src="js/theme-integration.js?v=20250415-refactored" type="text/javascript"></script>
+    <script src="js/auth-helper.js?v=20250415-fixed" type="text/javascript"></script>
+    <script src="js/utils.js?v=20250415-fixed" type="text/javascript"></script>
+    <script src="js/theme-integration.js?v=20250415-fixed" type="text/javascript"></script>
 
-    <!-- Load modular API layer with deferred execution -->
-    <script src="js/api/base.js?v=20250415-refactored" type="text/javascript"></script>
+    <!-- Load modular API layer with proper sequencing -->
+    <script src="js/api/base.js?v=20250415-fixed" type="text/javascript"></script>
     
     <!-- Wait for base.js to load completely before loading other API modules -->
     <script type="text/javascript">
@@ -115,7 +115,7 @@
             async function loadAPIModules() {
                 try {
                     // Wait a bit to ensure base.js is fully executed
-                    await new Promise(resolve => setTimeout(resolve, 50));
+                    await new Promise(resolve => setTimeout(resolve, 100));
                     
                     // Check if BaseAPI is available
                     if (!window.ChoresAPI || !window.ChoresAPI.BaseAPI) {
@@ -125,10 +125,10 @@
                     console.log('BaseAPI confirmed loaded, loading dependent modules...');
                     
                     // Load API modules in sequence
-                    await loadScript('js/api/chores.js?v=20250415-refactored');
-                    await loadScript('js/api/users.js?v=20250415-refactored');
-                    await loadScript('js/api/theme.js?v=20250415-refactored');
-                    await loadScript('js/api/index.js?v=20250415-refactored');
+                    await loadScript('js/api/chores.js?v=20250415-fixed');
+                    await loadScript('js/api/users.js?v=20250415-fixed');
+                    await loadScript('js/api/theme.js?v=20250415-fixed');
+                    await loadScript('js/api/index.js?v=20250415-fixed');
                     
                     console.log('All API modules loaded successfully');
                     
@@ -149,15 +149,15 @@
     </script>
 
     <!-- Load component loader which will load all components -->
-    <script src="js/components/index.js?v=20250415-refactored" type="text/javascript"></script>
+    <script src="js/components/index.js?v=20250415-fixed" type="text/javascript"></script>
 
     <!-- Load app modules in correct order -->
-    <script src="js/app-state.js?v=20250415-refactored" type="text/javascript"></script>
-    <script src="js/app-handlers.js?v=20250415-refactored" type="text/javascript"></script>
-    <script src="js/app-init.js?v=20250415-refactored" type="text/javascript"></script>
+    <script src="js/app-state.js?v=20250415-fixed" type="text/javascript"></script>
+    <script src="js/app-handlers.js?v=20250415-fixed" type="text/javascript"></script>
+    <script src="js/app-init.js?v=20250415-fixed" type="text/javascript"></script>
 
     <!-- Load the main app last -->
-    <script src="js/app.js?v=20250415-refactored" type="text/javascript"></script>
+    <script src="js/app.js?v=20250415-fixed" type="text/javascript"></script>
 
     <script type="text/javascript">
         // Initialize app when all dependencies are loaded
@@ -165,7 +165,7 @@
             console.log('DOM loaded, waiting for dependencies...');
 
             let initAttempts = 0;
-            const maxAttempts = 100; // Increased timeout for slower connections
+            const maxAttempts = 50; // 5 seconds total
             
             function checkDependenciesAndInit() {
                 initAttempts++;
@@ -190,7 +190,7 @@
                         // Add small delay to ensure DOM is fully ready
                         setTimeout(() => {
                             window.ChoresApp.initApp();
-                        }, 50);
+                        }, 100);
                     } catch (error) {
                         console.error('Error initializing app:', error);
                         const rootElement = document.getElementById('root');
@@ -198,43 +198,50 @@
                             rootElement.innerHTML = `
                                 <div class="error-container" style="padding: 20px; text-align: center;">
                                     <h2>Initialization Error</h2>
-                                    <p>Failed to initialize the dashboard: ${error.message}</p>
-                                    <pre style="text-align: left; background: #f5f5f5; padding: 10px; border-radius: 4px;">${error.stack}</pre>
-                                    <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
+                                    <p>${error.message}</p>
+                                    <pre style="text-align: left; overflow: auto;">${error.stack}</pre>
+                                    <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">
+                                        Reload Page
+                                    </button>
                                 </div>`;
                         }
                     }
-                } else if (initAttempts < maxAttempts) {
-                    console.log(`Attempt ${initAttempts}/${maxAttempts} - Waiting for dependencies:`, missing);
-                    setTimeout(checkDependenciesAndInit, 100);
-                } else {
-                    console.error(`Failed to load dependencies after ${maxAttempts} attempts; missing:`, missing);
+                    return; // Stop checking
+                }
+
+                // Show progress after 1 second
+                if (initAttempts > 10 && initAttempts % 10 === 0) {
+                    console.log(`Still loading... Missing: ${missing.join(', ')}`);
+                }
+
+                // If we've exceeded max attempts, show error
+                if (initAttempts >= maxAttempts) {
+                    console.error('Failed to load dependencies after ' + maxAttempts + ' attempts');
+                    console.error('Missing dependencies:', missing);
                     const rootElement = document.getElementById('root');
                     if (rootElement) {
                         rootElement.innerHTML = `
-                            <div class="error-container" style="padding: 20px; text-align: center;">
+                            <div class="error-container" style="padding: 20px;">
                                 <h2>Loading Error</h2>
-                                <p>Failed to load required dependencies after ${maxAttempts} attempts.</p>
-                                <p>Missing: ${missing.join(', ')}</p>
-                                <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
+                                <p>Failed to load required dependencies:</p>
+                                <ul style="text-align: left;">
+                                    ${missing.map(dep => `<li>${dep}</li>`).join('')}
+                                </ul>
+                                <p>Please check the browser console for more details.</p>
+                                <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">
+                                    Reload Page
+                                </button>
                             </div>`;
                     }
+                    return;
                 }
+
+                // Continue checking
+                setTimeout(checkDependenciesAndInit, 100);
             }
 
-            // Start checking after a short delay to allow scripts to load
-            setTimeout(checkDependenciesAndInit, 200); // Increased initial delay
-        });
-
-        // Add event listener for components ready
-        window.addEventListener('componentsReady', function() {
-            console.log('Components ready event received');
-        });
-        
-        // Enhanced error handling for unhandled promise rejections
-        window.addEventListener('unhandledrejection', function(event) {
-            console.error('Unhandled promise rejection:', event.reason);
-            event.preventDefault(); // Prevent default browser behavior
+            // Start checking dependencies
+            checkDependenciesAndInit();
         });
     </script>
 </body>
