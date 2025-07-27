@@ -33,13 +33,13 @@ window.ChoresApp = window.ChoresApp || {};
                 try {
                     if (window.ChoresAPI && window.ChoresAPI.initialize) {
                         console.log('Initializing Chores Dashboard App');
-                        
+
                         const apiMethods = Object.keys(window.ChoresAPI);
                         console.log('ChoresAPI available methods:', apiMethods);
-                        
+
                         await window.ChoresAPI.initialize();
                         console.log('API initialized successfully');
-                        
+
                         core.setApi(window.ChoresAPI);
                     } else {
                         throw new Error('ChoresAPI not available');
@@ -50,8 +50,19 @@ window.ChoresApp = window.ChoresApp || {};
                     core.setLoading(false);
                 }
             };
-            
-            initializeAPI();
+
+            // Wait for the API ready event to avoid race conditions
+            const onApiReady = () => initializeAPI();
+            window.addEventListener('chores-api-ready', onApiReady);
+
+            // If the API is already available, initialize immediately
+            if (window.ChoresAPI && window.ChoresAPI.initialize) {
+                initializeAPI();
+            }
+
+            return () => {
+                window.removeEventListener('chores-api-ready', onApiReady);
+            };
         }, [handleError, core]);
         
         // Load data
