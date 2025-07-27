@@ -39,11 +39,36 @@ window.ChoresAPI = window.ChoresAPI || {};
             
             // Create a unified API object that exposes all methods
             const api = {
-                // Store instances
-                chores: choresInstance,
-                users: usersInstance,
+                // Expose chores methods with proper naming
+                chores: {
+                    // Map the expected method names to actual methods
+                    add: choresInstance.addChore.bind(choresInstance),
+                    addChore: choresInstance.addChore.bind(choresInstance), // Keep both for compatibility
+                    markDone: choresInstance.markDone.bind(choresInstance),
+                    updateDescription: choresInstance.updateDescription.bind(choresInstance),
+                    reset: choresInstance.resetChore.bind(choresInstance),
+                    resetChore: choresInstance.resetChore.bind(choresInstance),
+                    delete: choresInstance.deleteChore.bind(choresInstance),
+                    deleteChore: choresInstance.deleteChore.bind(choresInstance),
+                    forceDue: choresInstance.forceDue.bind(choresInstance),
+                    completeSubtask: choresInstance.completeSubtask.bind(choresInstance),
+                    addSubtask: choresInstance.addSubtask.bind(choresInstance),
+                    deleteSubtask: choresInstance.deleteSubtask.bind(choresInstance),
+                    // Also expose base methods
+                    getSensorState: choresInstance.getSensorState.bind(choresInstance)
+                },
+                
+                // Expose users methods
+                users: {
+                    add: usersInstance.addUser.bind(usersInstance),
+                    addUser: usersInstance.addUser.bind(usersInstance), // Keep both for compatibility
+                    delete: usersInstance.deleteUser.bind(usersInstance),
+                    deleteUser: usersInstance.deleteUser.bind(usersInstance),
+                    getHAUsers: usersInstance.getHAUsers.bind(usersInstance)
+                },
+                
+                // Expose theme methods
                 theme: {
-                    // Properly expose theme methods
                     get: themeInstance.get.bind(themeInstance),
                     save: themeInstance.save.bind(themeInstance),
                     reset: themeInstance.reset.bind(themeInstance)
@@ -110,6 +135,11 @@ window.ChoresAPI = window.ChoresAPI || {};
                 console.log('theme.get method confirmed available');
             } else {
                 console.error('theme.get method not available after initialization');
+            }
+            
+            // Log available chores methods for debugging
+            if (window.ChoresAPI.chores) {
+                console.log('Available chores methods:', Object.keys(window.ChoresAPI.chores));
             }
             
             // Dispatch event to signal API is ready
