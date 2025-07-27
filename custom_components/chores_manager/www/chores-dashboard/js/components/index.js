@@ -24,7 +24,7 @@
     function loadScript(src) {
         return new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            script.src = src + '?v=' + (window.CHORES_APP_VERSION || '1.4.0-20250415-modular');
+            script.src = src + '?v=' + (window.CHORES_APP_VERSION || '1.4.1-20250415-flickerfix');
             script.type = 'text/javascript';
             
             script.onload = () => {
@@ -70,56 +70,28 @@
                     'TaskCard', 'TaskDescription', 'PriorityIndicator',
                     // Form components
                     'TaskForm', 'UserManagement', 'IconSelector', 'WeekDayPicker', 'MonthDayPicker',
-                    // Stats components
-                    'StatsCard', 'UserStatsCard', 'ThemeSettings',
                     // Dialog components
-                    'ConfirmDialog', 'CompletionConfirmDialog', 'SubtaskCompletionDialog', 'ErrorDialog', 'SuccessDialog'
+                    'ConfirmDialog', 'CompletionConfirmDialog', 'SubtaskCompletionDialog', 'ErrorDialog', 'SuccessDialog',
+                    // Stats components
+                    'StatsCard', 'UserStatsCard', 'ThemeSettings'
                 ];
                 
-                const missingComponents = expectedComponents.filter(
-                    comp => typeof window.choreComponents[comp] !== 'function'
-                );
-                
+                const missingComponents = expectedComponents.filter(comp => !window.choreComponents[comp]);
                 if (missingComponents.length > 0) {
-                    console.warn('Some expected components are missing:', missingComponents);
+                    console.warn('Missing expected components:', missingComponents);
                 } else {
                     console.log('All expected components are available');
                 }
-                
-                // Log available components
-                const availableComponents = Object.keys(window.choreComponents).filter(
-                    key => typeof window.choreComponents[key] === 'function'
-                );
-                console.log('Available components:', availableComponents);
+            } else {
+                console.error('choreComponents object not found after loading');
             }
-            
-            // Dispatch event to signal components are ready
-            window.dispatchEvent(new CustomEvent('chores-components-ready'));
         } else {
-            console.error(`Failed to load all components. Loaded: ${loadedCount}/${componentFiles.length}`);
+            console.error(`Only ${loadedCount} of ${componentFiles.length} components loaded successfully`);
             console.error('Load errors:', loadErrors);
-            
-            // Show error in the root element
-            const rootElement = document.getElementById('root');
-            if (rootElement) {
-                rootElement.innerHTML = `
-                    <div class="error-container">
-                        <h2>Component Loading Error</h2>
-                        <p>Failed to load some components. Please refresh the page.</p>
-                        <p>Errors: ${loadErrors.map(e => e.message).join(', ')}</p>
-                        <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">
-                            Reload Page
-                        </button>
-                    </div>
-                `;
-            }
         }
     }
 
     // Start loading components
-    loadAllComponents().catch(error => {
-        console.error('Critical error loading components:', error);
-    });
-    
-    console.log('Component loader initialized');
+    loadAllComponents();
+
 })();
