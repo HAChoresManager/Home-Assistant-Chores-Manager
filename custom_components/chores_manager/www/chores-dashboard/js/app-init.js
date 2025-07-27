@@ -76,12 +76,15 @@ window.ChoresApp = window.ChoresApp || {};
                 throw new Error('ReactDOM not available');
             }
             
+            // Obtain the App component through the exported factory
+            const AppComponent = window.ChoresApp.getApp();
+
             // Create and render the app with error boundary
             const AppWithErrorBoundary = React.createElement(
                 window.ChoresApp.ErrorBoundary,
                 null,
-                // Use the exported App component from app.js
-                React.createElement(window.ChoresApp.App)
+
+                React.createElement(AppComponent)
             );
             
             // Check React version and use appropriate API
