@@ -185,17 +185,18 @@ window.ChoresAPI = window.ChoresAPI || {};
         }
         
         /**
-         * Get sensor state
+         * Get sensor state - NO PARAMETERS
          */
         async getSensorState() {
             const response = await this.fetchWithAuth(ENDPOINTS.SENSOR_STATE);
             
             if (response.status === 404) {
-                // Sensor not available yet
+                // Sensor not available yet, return default state
                 return {
                     state: "0",
                     attributes: {
                         friendly_name: "Chores Overview",
+                        chores: [],
                         overdue_tasks: [],
                         stats: {},
                         assignees: [
@@ -215,7 +216,9 @@ window.ChoresAPI = window.ChoresAPI || {};
         }
     }
     
-    // Export
+    // Export to ChoresAPI namespace
     window.ChoresAPI.BaseAPI = BaseAPI;
     window.ChoresAPI.ENDPOINTS = ENDPOINTS;
+    
+    console.log('BaseAPI loaded successfully');
 })();

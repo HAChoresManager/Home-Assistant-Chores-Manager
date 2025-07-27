@@ -69,11 +69,11 @@
                     // Task components
                     'TaskCard', 'TaskDescription', 'PriorityIndicator',
                     // Form components
-                    'TaskForm', 'UserManagement', 'IconSelector',
+                    'TaskForm', 'UserManagement', 'IconSelector', 'WeekDayPicker', 'MonthDayPicker',
                     // Stats components
                     'StatsCard', 'UserStatsCard', 'ThemeSettings',
                     // Dialog components
-                    'ConfirmDialog', 'CompletionConfirmDialog', 'SubtaskCompletionDialog'
+                    'ConfirmDialog', 'CompletionConfirmDialog', 'SubtaskCompletionDialog', 'ErrorDialog', 'SuccessDialog'
                 ];
                 
                 const missingComponents = expectedComponents.filter(
