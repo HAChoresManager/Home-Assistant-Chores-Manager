@@ -1,14 +1,14 @@
-/**
- * Enhanced Base API functionality for Chores Dashboard
- * Includes improved retry logic with exponential backoff and jitter
- */
+// Chores Dashboard API Module - Base API
+// Core functionality for all API interactions with Home Assistant
+// Version: 1.4.1-20250415-flickerfix
 
-window.ChoresAPI = window.ChoresAPI || {};
-
-(function() {
+(function(window) {
     'use strict';
     
-    // API endpoints
+    // Ensure ChoresAPI namespace exists
+    window.ChoresAPI = window.ChoresAPI || {};
+    
+    // API Endpoints - Using full paths as in the original
     const ENDPOINTS = {
         // Chore services
         ADD_CHORE: '/api/services/chores_manager/add_chore',
@@ -35,7 +35,9 @@ window.ChoresAPI = window.ChoresAPI || {};
         SENSOR_STATE: '/api/states/sensor.chores_overview'
     };
     
-    // Enhanced Base API class with better retry logic
+    /**
+     * Enhanced Base API class with exponential backoff and retry logic
+     */
     class BaseAPI {
         constructor() {
             this.retryConfig = {
@@ -101,35 +103,81 @@ window.ChoresAPI = window.ChoresAPI || {};
         }
         
         /**
-         * Get authentication token with fallback mechanisms
+         * Get authentication token with multiple fallback mechanisms
          */
         getAuthToken() {
             // Try multiple sources for the token
             const sources = [
+                // 1. Try native Home Assistant token from parent window
+                () => {
+                    if (window.parent && window.parent.hassConnection) {
+                        try {
+                            return window.parent.hassConnection.options.auth.data.access_token;
+                        } catch (e) {
+                            return null;
+                        }
+                    }
+                    return null;
+                },
+                // 2. Try from global auth helper
+                () => {
+                    if (window.choreAuth && typeof window.choreAuth.getToken === 'function') {
+                        try {
+                            return window.choreAuth.getToken();
+                        } catch (e) {
+                            return null;
+                        }
+                    }
+                    return null;
+                },
+                // 3. Check localStorage for chores-specific token
                 () => localStorage.getItem('chores_auth_token'),
+                // 4. Check sessionStorage
                 () => sessionStorage.getItem('chores_auth_token'),
+                // 5. Check localStorage for HA tokens
+                () => {
+                    const stored = localStorage.getItem('hassTokens');
+                    if (stored) {
+                        try {
+                            const tokens = JSON.parse(stored);
+                            return tokens.access_token;
+                        } catch (e) {
+                            return null;
+                        }
+                    }
+                    return null;
+                },
+                // 6. Check config element
                 () => {
                     const configEl = document.getElementById('chores-config');
                     return configEl ? configEl.dataset.token : null;
                 },
+                // 7. Check global variable
                 () => window.CHORES_AUTH_TOKEN,
+                // 8. Check meta tag
                 () => {
-                    // Try to get from meta tag
                     const meta = document.querySelector('meta[name="chores-auth-token"]');
                     return meta ? meta.content : null;
+                },
+                // 9. Try URL parameters (for development)
+                () => {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    return urlParams.get('token');
                 }
             ];
             
             for (const source of sources) {
                 try {
                     const token = source();
-                    if (token) return token;
+                    if (token) {
+                        return token;
+                    }
                 } catch (e) {
                     // Continue to next source
                 }
             }
             
-            console.warn('No authentication token found');
+            console.warn('No authentication token found from any source');
             return null;
         }
         
@@ -146,6 +194,7 @@ window.ChoresAPI = window.ChoresAPI || {};
                 const cached = this.getCached(url);
                 if (cached) {
                     console.log(`Cache hit for ${url}`);
+                    this.stats.cacheHits = (this.stats.cacheHits || 0) + 1;
                     return cached;
                 }
             }
@@ -176,6 +225,8 @@ window.ChoresAPI = window.ChoresAPI || {};
                     
                     if (token) {
                         fetchOptions.headers['Authorization'] = `Bearer ${token}`;
+                    } else if (attempt === 0) {
+                        console.warn('No authentication token available for request to:', url);
                     }
                     
                     // Add timeout using AbortController
@@ -308,12 +359,40 @@ window.ChoresAPI = window.ChoresAPI || {};
                         body: JSON.stringify(request.data)
                     });
                     
+                    // Handle non-OK responses
                     if (!response.ok) {
-                        const errorText = await response.text();
-                        throw new Error(`Service call failed: ${response.status} ${errorText}`);
+                        let errorMessage = `Service call failed: ${response.status}`;
+                        
+                        try {
+                            const contentType = response.headers.get('content-type');
+                            if (contentType && contentType.includes('application/json')) {
+                                const errorData = await response.json();
+                                errorMessage = errorData.message || errorData.error || errorMessage;
+                            } else {
+                                const errorText = await response.text();
+                                errorMessage = `${response.status}: ${errorText || response.statusText}`;
+                            }
+                        } catch (e) {
+                            errorMessage = `${response.status}: ${response.statusText}`;
+                        }
+                        
+                        throw new Error(errorMessage);
                     }
                     
-                    const result = await response.json();
+                    // Parse successful response
+                    let result;
+                    try {
+                        const contentType = response.headers.get('content-type');
+                        if (contentType && contentType.includes('application/json')) {
+                            result = await response.json();
+                        } else {
+                            // Some services don't return JSON
+                            result = { success: true };
+                        }
+                    } catch (e) {
+                        // If parsing fails, assume success
+                        result = { success: true };
+                    }
                     
                     // Check for service-level errors
                     if (result && result.success === false) {
@@ -324,6 +403,11 @@ window.ChoresAPI = window.ChoresAPI || {};
                     
                 } catch (error) {
                     console.error('Service call error:', error);
+                    console.error('Service details:', {
+                        endpoint: request.endpoint,
+                        data: request.data,
+                        error: error.message
+                    });
                     request.reject(error);
                 }
                 
@@ -343,6 +427,7 @@ window.ChoresAPI = window.ChoresAPI || {};
                 
                 if (response.status === 404) {
                     // Sensor not available yet, return default state
+                    console.warn('Sensor not found, returning default state');
                     return this.getDefaultSensorState();
                 }
                 
@@ -350,7 +435,15 @@ window.ChoresAPI = window.ChoresAPI || {};
                     throw new Error(`Failed to get sensor state: ${response.status}`);
                 }
                 
-                return await response.json();
+                const state = await response.json();
+                
+                // Handle unavailable state
+                if (state.state === 'unavailable' || state.state === 'unknown') {
+                    console.warn('Sensor is unavailable, returning default state');
+                    return this.getDefaultSensorState();
+                }
+                
+                return state;
                 
             } catch (error) {
                 console.error('Error getting sensor state:', error);
@@ -379,7 +472,14 @@ window.ChoresAPI = window.ChoresAPI || {};
                         {id: "martijn", name: "Martijn", color: "#F9E79F", active: true},
                         {id: "wie_kan", name: "Wie kan", color: "#A9DFBF", active: true}
                     ],
-                    theme_settings: {}
+                    theme_settings: {
+                        primary_color: "#4299E1",
+                        secondary_color: "#805AD5",
+                        accent_color: "#38B2AC",
+                        background_style: "gradient",
+                        card_style: "modern",
+                        enable_animations: true
+                    }
                 }
             };
         }
@@ -408,5 +508,5 @@ window.ChoresAPI = window.ChoresAPI || {};
     window.ChoresAPI.BaseAPI = BaseAPI;
     window.ChoresAPI.ENDPOINTS = ENDPOINTS;
     
-    console.log('Enhanced BaseAPI loaded successfully with exponential backoff');
+    console.log('BaseAPI loaded successfully with exponential backoff and retry logic');
 })();
