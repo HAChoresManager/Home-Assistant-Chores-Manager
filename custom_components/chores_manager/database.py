@@ -6,6 +6,8 @@ modular structure while maintaining the existing API for backwards compatibility
 """
 import logging
 from typing import Dict, Any, List, Optional, Tuple
+import sqlite3
+from datetime import datetime
 
 # Import from new modular structure
 from .db import (
@@ -62,6 +64,7 @@ from .db.notifications import (
     mark_notifications_sent,
     get_notification_summary
 )
+from .db.base import get_connection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -114,7 +117,12 @@ __all__ = [
     # Legacy compatibility functions
     'get_chores_from_db',
     'get_users_from_db',
-    'get_assignees_from_db'
+    'get_assignees_from_db',
+    # Database utilities
+    'export_database_to_dict',
+    'import_database_from_dict',
+    'get_database_stats',
+    'vacuum_database'
 ]
 
 
@@ -149,47 +157,68 @@ def get_assignees_from_db(database_path: str) -> List[Dict[str, Any]]:
     return get_all_assignees(database_path, active_only=True)
 
 
-# Additional helper functions that were in the original file
+# Additional helper functions
 def export_database_to_dict(database_path: str) -> Dict[str, Any]:
     """Export the entire database to a dictionary for backup purposes."""
-    data = {
-        'chores': get_all_chores(database_path),
-        'assignees': get_all_assignees(database_path, active_only=False),
-        'history': get_completion_history(database_path, days=365),
-        'subtasks': [],
-        'notifications': get_notification_history(database_path, days=30)
-    }
-    
-    # Get subtasks for all chores
-    for chore in data['chores']:
-        subtasks = get_subtasks_for_chore(database_path, chore['id'])
-        if subtasks:
-            data['subtasks'].extend([
-                {
-                    'chore_id': chore['id'],
-                    'subtask': subtask
-                }
-                for subtask in subtasks
-            ])
-    
-    return data
+    try:
+        data = {
+            'chores': get_all_chores(database_path),
+            'assignees': get_all_assignees(database_path, active_only=False),
+            'history': get_completion_history(database_path, days=365),
+            'subtasks': [],
+            'notifications': get_notification_history(database_path, days=30),
+            'export_timestamp': datetime.now().isoformat(),
+            'version': '1.0.0'
+        }
+        
+        # Get subtasks for all chores
+        for chore in data['chores']:
+            subtasks = get_subtasks_for_chore(database_path, chore['id'])
+            if subtasks:
+                data['subtasks'].extend([
+                    {
+                        'chore_id': chore['id'],
+                        'subtask': subtask
+                    }
+                    for subtask in subtasks
+                ])
+        
+        return data
+    except Exception as e:
+        _LOGGER.error("Failed to export database: %s", e)
+        raise
 
 
 def import_database_from_dict(database_path: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Import database from a dictionary backup."""
     results = {
+        'success': False,
         'chores_imported': 0,
         'users_imported': 0,
-        'errors': []
+        'subtasks_imported': 0,
+        'errors': [],
+        'warnings': []
     }
     
     try:
-        # Import users first
+        # Validate data structure
+        if not isinstance(data, dict):
+            raise ValueError("Invalid data format: expected dictionary")
+        
+        # Check version compatibility
+        version = data.get('version', '0.0.0')
+        if version != '1.0.0':
+            results['warnings'].append(f"Version mismatch: expected 1.0.0, got {version}")
+        
+        # Import users first (dependencies)
         if 'assignees' in data:
             for user in data['assignees']:
                 try:
-                    add_user(database_path, user)
-                    results['users_imported'] += 1
+                    result = add_user(database_path, user)
+                    if result.get('success'):
+                        results['users_imported'] += 1
+                    else:
+                        results['errors'].append(f"User {user.get('id')}: {result.get('error', 'Unknown error')}")
                 except Exception as e:
                     results['errors'].append(f"User {user.get('id')}: {str(e)}")
         
@@ -201,8 +230,15 @@ def import_database_from_dict(database_path: str, data: Dict[str, Any]) -> Dict[
                     chore_data = chore.copy()
                     chore_data['chore_id'] = chore_data.pop('id', None)
                     
-                    add_chore_to_db(database_path, chore_data)
-                    results['chores_imported'] += 1
+                    if not chore_data['chore_id']:
+                        results['errors'].append(f"Chore missing ID: {chore.get('name', 'Unknown')}")
+                        continue
+                    
+                    result = add_chore_to_db(database_path, chore_data)
+                    if result.get('success'):
+                        results['chores_imported'] += 1
+                    else:
+                        results['errors'].append(f"Chore {chore_data['chore_id']}: {result.get('error', 'Unknown error')}")
                 except Exception as e:
                     results['errors'].append(f"Chore {chore.get('id')}: {str(e)}")
         
@@ -210,87 +246,139 @@ def import_database_from_dict(database_path: str, data: Dict[str, Any]) -> Dict[
         if 'subtasks' in data:
             for item in data['subtasks']:
                 try:
-                    chore_id = item['chore_id']
-                    subtask = item['subtask']
-                    add_subtask(
+                    chore_id = item.get('chore_id')
+                    subtask = item.get('subtask', {})
+                    
+                    if not chore_id or not subtask.get('name'):
+                        results['errors'].append(f"Invalid subtask data: {item}")
+                        continue
+                    
+                    result = add_subtask(
                         database_path,
                         chore_id,
                         subtask['name'],
                         subtask.get('position', 0)
                     )
+                    if result.get('success'):
+                        results['subtasks_imported'] += 1
+                    else:
+                        results['errors'].append(f"Subtask {subtask['name']}: {result.get('error', 'Unknown error')}")
                 except Exception as e:
                     results['errors'].append(f"Subtask error: {str(e)}")
-    
+        
+        # Mark as successful if at least some data was imported
+        if results['chores_imported'] > 0 or results['users_imported'] > 0:
+            results['success'] = True
+            
     except Exception as e:
         results['errors'].append(f"Import failed: {str(e)}")
+        _LOGGER.error("Database import failed: %s", e)
     
     return results
 
 
 def get_database_stats(database_path: str) -> Dict[str, Any]:
     """Get overall database statistics."""
-    from .db.base import get_connection
+    stats = {
+        'total_chores': 0,
+        'active_chores': 0,
+        'total_users': 0,
+        'active_users': 0,
+        'total_completions': 0,
+        'completions_this_week': 0,
+        'completions_this_month': 0,
+        'database_size_kb': 0,
+        'tables': {}
+    }
     
-    with get_connection(database_path) as conn:
-        cursor = conn.cursor()
-        
-        stats = {}
-        
-        # Count chores
-        cursor.execute("SELECT COUNT(*) as count FROM chores")
-        stats['total_chores'] = cursor.fetchone()['count']
-        
-        # Count active users
-        cursor.execute("SELECT COUNT(*) as count FROM assignees WHERE active = 1")
-        stats['active_users'] = cursor.fetchone()['count']
-        
-        # Count completions
-        cursor.execute("SELECT COUNT(*) as count FROM chore_history")
-        stats['total_completions'] = cursor.fetchone()['count']
-        
-        # Count subtasks
-        cursor.execute("SELECT COUNT(*) as count FROM subtasks")
-        stats['total_subtasks'] = cursor.fetchone()['count']
-        
-        # Database size
-        cursor.execute("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
-        stats['database_size_bytes'] = cursor.fetchone()['size']
-        
-        # Get table sizes
-        tables = ['chores', 'chore_history', 'assignees', 'subtasks', 
-                  'subtask_completions', 'notification_log']
-        stats['table_counts'] = {}
-        
-        for table in tables:
-            cursor.execute(f"SELECT COUNT(*) as count FROM {table}")
-            stats['table_counts'][table] = cursor.fetchone()['count']
-        
-        return stats
+    try:
+        with get_connection(database_path) as conn:
+            cursor = conn.cursor()
+            
+            # Get chore counts
+            cursor.execute("SELECT COUNT(*) FROM chores")
+            stats['total_chores'] = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM chores WHERE is_active = 1")
+            stats['active_chores'] = cursor.fetchone()[0]
+            
+            # Get user counts
+            cursor.execute("SELECT COUNT(*) FROM assignees")
+            stats['total_users'] = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM assignees WHERE active = 1")
+            stats['active_users'] = cursor.fetchone()[0]
+            
+            # Get completion counts
+            cursor.execute("SELECT COUNT(*) FROM chore_history")
+            stats['total_completions'] = cursor.fetchone()[0]
+            
+            # Completions this week
+            cursor.execute("""
+                SELECT COUNT(*) FROM chore_history 
+                WHERE datetime(completed_at) >= datetime('now', '-7 days')
+            """)
+            stats['completions_this_week'] = cursor.fetchone()[0]
+            
+            # Completions this month
+            cursor.execute("""
+                SELECT COUNT(*) FROM chore_history 
+                WHERE datetime(completed_at) >= datetime('now', 'start of month')
+            """)
+            stats['completions_this_month'] = cursor.fetchone()[0]
+            
+            # Get table row counts
+            tables = ['chores', 'assignees', 'chore_history', 'subtasks', 'notification_log']
+            for table in tables:
+                try:
+                    cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                    stats['tables'][table] = cursor.fetchone()[0]
+                except sqlite3.OperationalError:
+                    stats['tables'][table] = 0
+            
+            # Get database file size
+            import os
+            if os.path.exists(database_path):
+                stats['database_size_kb'] = os.path.getsize(database_path) / 1024
+                
+    except Exception as e:
+        _LOGGER.error("Failed to get database stats: %s", e)
+        stats['error'] = str(e)
+    
+    return stats
 
 
 def vacuum_database(database_path: str) -> Dict[str, Any]:
     """Vacuum the database to reclaim space and optimize performance."""
-    from .db.base import get_connection
+    result = {
+        'success': False,
+        'size_before_kb': 0,
+        'size_after_kb': 0,
+        'space_reclaimed_kb': 0
+    }
     
     try:
-        # Get size before
-        stats_before = get_database_stats(database_path)
-        
+        import os
+
+        # Get size before vacuum
+        if os.path.exists(database_path):
+            result['size_before_kb'] = os.path.getsize(database_path) / 1024
+
+        # Perform vacuum
         with get_connection(database_path) as conn:
             conn.execute("VACUUM")
+            conn.execute("ANALYZE")  # Also update statistics
         
-        # Get size after
-        stats_after = get_database_stats(database_path)
+        # Get size after vacuum
+        if os.path.exists(database_path):
+            result['size_after_kb'] = os.path.getsize(database_path) / 1024
+            result['space_reclaimed_kb'] = result['size_before_kb'] - result['size_after_kb']
         
-        return {
-            'success': True,
-            'size_before': stats_before['database_size_bytes'],
-            'size_after': stats_after['database_size_bytes'],
-            'space_saved': stats_before['database_size_bytes'] - stats_after['database_size_bytes']
-        }
+        result['success'] = True
+        _LOGGER.info("Database vacuum completed. Reclaimed %.2f KB", result['space_reclaimed_kb'])
+        
     except Exception as e:
+        result['error'] = str(e)
         _LOGGER.error("Failed to vacuum database: %s", e)
-        return {
-            'success': False,
-            'error': str(e)
-        }
+    
+    return result
