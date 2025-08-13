@@ -1,6 +1,6 @@
 // Chores Dashboard API Module - Chore Services
 // Manages all chore-related operations (add, update, delete, complete)
-// Part of the modular architecture - depends on base.js
+// Version: 1.4.1-20250415-flickerfix
 
 (function(window) {
     'use strict';
@@ -30,54 +30,103 @@
         
         /**
          * Add or update a chore
+         * Ensures all required fields are present according to backend schema
          */
         async addChore(choreData) {
-            // Normalize chore data structure
-            const normalizedData = {
-                chore_id: choreData.chore_id || choreData.id,
-                name: choreData.name,
-                frequency_type: choreData.frequency_type || 'Wekelijks',
-                frequency_days: choreData.frequency_days || choreData.frequency || 7,
-                assigned_to: choreData.assigned_to || 'Wie kan',
-                priority: choreData.priority || 'Middel',
-                duration: choreData.duration || 15,
-                description: choreData.description || '',
-                icon: choreData.icon || null,
-                use_alternating: choreData.use_alternating || false,
-                alternate_with: choreData.alternate_with || '',
-                notify_when_due: choreData.notify_when_due || false
+            // Log incoming data for debugging
+            console.log('ChoresAPI.addChore called with:', choreData);
+            
+            // Generate chore_id if not provided
+            if (!choreData.chore_id && !choreData.id) {
+                // Generate ID from name if available
+                if (choreData.name) {
+                    choreData.chore_id = choreData.name.toLowerCase()
+                        .replace(/[^a-z0-9]/g, '_')
+                        .replace(/_+/g, '_')
+                        .replace(/^_|_$/g, '');
+                } else {
+                    choreData.chore_id = 'chore_' + Date.now();
+                }
+            }
+            
+            // Build the data object with only the fields expected by the backend
+            const serviceData = {
+                chore_id: choreData.chore_id || choreData.id
             };
             
-            // Handle weekly day selection
+            // Add optional fields only if they are provided
+            if (choreData.name !== undefined) {
+                serviceData.name = choreData.name;
+            }
+            
+            if (choreData.frequency_type !== undefined) {
+                serviceData.frequency_type = choreData.frequency_type;
+            }
+            
+            if (choreData.assigned_to !== undefined) {
+                serviceData.assigned_to = choreData.assigned_to;
+            }
+            
+            if (choreData.priority !== undefined) {
+                serviceData.priority = choreData.priority;
+            }
+            
+            if (choreData.duration !== undefined) {
+                serviceData.duration = parseInt(choreData.duration) || 15;
+            }
+            
+            if (choreData.description !== undefined) {
+                serviceData.description = choreData.description;
+            }
+            
+            if (choreData.icon !== undefined) {
+                serviceData.icon = choreData.icon;
+            }
+            
+            if (choreData.notify_when_due !== undefined) {
+                serviceData.notify_when_due = Boolean(choreData.notify_when_due);
+            }
+            
+            // Handle frequency-specific fields
+            if (choreData.frequency_days !== undefined) {
+                serviceData.frequency_days = parseInt(choreData.frequency_days);
+            }
+            
             if (choreData.selected_weekday !== undefined) {
-                normalizedData.selected_weekday = choreData.selected_weekday;
+                serviceData.selected_weekday = choreData.selected_weekday;
             }
             
-            // Handle monthly day selection
+            if (choreData.selected_weekdays !== undefined) {
+                serviceData.selected_weekdays = choreData.selected_weekdays;
+            }
+            
             if (choreData.selected_day_of_month !== undefined) {
-                normalizedData.selected_day_of_month = choreData.selected_day_of_month;
+                serviceData.selected_day_of_month = parseInt(choreData.selected_day_of_month);
             }
             
-            // Handle multiple days per week
-            if (choreData.selected_weekdays) {
-                normalizedData.selected_weekdays = choreData.selected_weekdays;
+            if (choreData.selected_days_of_month !== undefined) {
+                serviceData.selected_days_of_month = choreData.selected_days_of_month;
             }
             
-            // Handle multiple days per month
-            if (choreData.selected_days_of_month) {
-                normalizedData.selected_days_of_month = choreData.selected_days_of_month;
+            // Handle alternating assignment
+            if (choreData.use_alternating !== undefined) {
+                serviceData.use_alternating = Boolean(choreData.use_alternating);
             }
             
-            // Ensure frequency_days is set
-            normalizedData.frequency_days = normalizedData.frequency_days || 7;
+            if (choreData.alternate_with !== undefined) {
+                serviceData.alternate_with = choreData.alternate_with;
+            }
             
-            // Handle date fields conversion
-            if (choreData.start_date) {
-                normalizedData.start_date = choreData.start_date;
+            // Handle date fields
+            if (choreData.start_date !== undefined) {
+                serviceData.start_date = choreData.start_date;
             }
-            if (choreData.end_date) {
-                normalizedData.end_date = choreData.end_date;
+            
+            if (choreData.end_date !== undefined) {
+                serviceData.end_date = choreData.end_date;
             }
+            
+            console.log('Sending to service:', serviceData);
             
             // Ensure ENDPOINTS are available
             const endpoints = window.ChoresAPI.ENDPOINTS;
@@ -85,12 +134,24 @@
                 throw new Error('API endpoints not properly initialized');
             }
             
-            return await this.callService(endpoints.ADD_CHORE, normalizedData);
+            try {
+                const result = await this.callService(endpoints.ADD_CHORE, serviceData);
+                console.log('Chore added successfully:', result);
+                return result;
+            } catch (error) {
+                console.error('Failed to add chore:', error);
+                // Add more context to the error
+                if (error.message.includes('400')) {
+                    console.error('Bad Request - Check that all required fields are provided:', serviceData);
+                    throw new Error(`Failed to add chore: Missing required fields or invalid data. ${error.message}`);
+                }
+                throw error;
+            }
         }
         
         /**
          * Mark a chore as done
-         * FIXED: Using 'person' parameter to match backend
+         * Using 'person' parameter to match backend schema
          */
         async markDone(choreId, completedBy) {
             const endpoints = window.ChoresAPI.ENDPOINTS;
@@ -98,11 +159,13 @@
                 throw new Error('API endpoints not properly initialized');
             }
             
+            console.log('Marking chore done:', choreId, 'by', completedBy);
+            
             return await this.callService(
                 endpoints.MARK_DONE,
                 {
                     chore_id: choreId,
-                    person: completedBy  // FIXED: Was 'completed_by', now 'person'
+                    person: completedBy  // Matches backend schema
                 }
             );
         }
@@ -126,13 +189,15 @@
         }
         
         /**
-         * Reset a chore
+         * Reset a chore's completion status
          */
         async resetChore(choreId) {
             const endpoints = window.ChoresAPI.ENDPOINTS;
             if (!endpoints || !endpoints.RESET_CHORE) {
                 throw new Error('API endpoints not properly initialized');
             }
+            
+            console.log('Resetting chore:', choreId);
             
             return await this.callService(
                 endpoints.RESET_CHORE,
@@ -149,6 +214,8 @@
                 throw new Error('API endpoints not properly initialized');
             }
             
+            console.log('Deleting chore:', choreId);
+            
             return await this.callService(
                 endpoints.DELETE_CHORE,
                 { chore_id: choreId }
@@ -164,10 +231,16 @@
                 throw new Error('API endpoints not properly initialized');
             }
             
-            const data = { chore_id: choreId, notify: notify };
+            const data = { 
+                chore_id: choreId, 
+                notify: notify 
+            };
+            
             if (message) {
                 data.message = message;
             }
+            
+            console.log('Forcing chore due:', choreId);
             
             return await this.callService(endpoints.FORCE_DUE, data);
         }
@@ -182,10 +255,12 @@
                 throw new Error('API endpoints not properly initialized');
             }
             
+            console.log('Completing subtask:', subtaskId, 'by', completedBy);
+            
             return await this.callService(
                 endpoints.COMPLETE_SUBTASK,
                 {
-                    subtask_id: subtaskId,
+                    subtask_id: parseInt(subtaskId),
                     person: completedBy  // Matches backend expectation
                 }
             );
@@ -200,12 +275,14 @@
                 throw new Error('API endpoints not properly initialized');
             }
             
+            console.log('Adding subtask to chore:', choreId, name);
+            
             return await this.callService(
                 endpoints.ADD_SUBTASK,
                 {
                     chore_id: choreId,
                     name: name,
-                    position: position
+                    position: parseInt(position)
                 }
             );
         }
@@ -219,87 +296,38 @@
                 throw new Error('API endpoints not properly initialized');
             }
             
+            console.log('Deleting subtask:', subtaskId);
+            
             return await this.callService(
                 endpoints.DELETE_SUBTASK,
-                { subtask_id: subtaskId }
+                { subtask_id: parseInt(subtaskId) }
             );
         }
         
         /**
-         * Add a user
+         * Helper method to validate chore data
          */
-        async addUser(userId, name, color = null, avatar = null) {
-            const endpoints = window.ChoresAPI.ENDPOINTS;
-            if (!endpoints || !endpoints.ADD_USER) {
-                throw new Error('API endpoints not properly initialized');
+        validateChoreData(choreData) {
+            const errors = [];
+            
+            if (!choreData.chore_id && !choreData.id) {
+                if (!choreData.name) {
+                    errors.push('Either chore_id or name is required');
+                }
             }
             
-            const data = { id: userId, name: name };
-            if (color) data.color = color;
-            if (avatar) data.avatar = avatar;
+            // Add more validation as needed based on backend requirements
             
-            return await this.callService(endpoints.ADD_USER, data);
-        }
-        
-        /**
-         * Delete a user
-         */
-        async deleteUser(userId) {
-            const endpoints = window.ChoresAPI.ENDPOINTS;
-            if (!endpoints || !endpoints.DELETE_USER) {
-                throw new Error('API endpoints not properly initialized');
+            if (errors.length > 0) {
+                throw new Error(`Validation failed: ${errors.join(', ')}`);
             }
             
-            return await this.callService(
-                endpoints.DELETE_USER,
-                { user_id: userId }
-            );
-        }
-        
-        /**
-         * Get Home Assistant users
-         */
-        async getHAUsers() {
-            const endpoints = window.ChoresAPI.ENDPOINTS;
-            if (!endpoints || !endpoints.GET_HA_USERS) {
-                throw new Error('API endpoints not properly initialized');
-            }
-            
-            return await this.callService(endpoints.GET_HA_USERS, {});
-        }
-        
-        /**
-         * Save theme settings
-         */
-        async saveTheme(primaryColor, accentColor = null) {
-            const endpoints = window.ChoresAPI.ENDPOINTS;
-            if (!endpoints || !endpoints.SAVE_THEME) {
-                throw new Error('API endpoints not properly initialized');
-            }
-            
-            const data = { primary_color: primaryColor };
-            if (accentColor) {
-                data.accent_color = accentColor;
-            }
-            
-            return await this.callService(endpoints.SAVE_THEME, data);
+            return true;
         }
     }
     
-    // Create and expose the ChoresAPI instance
-    const instance = new ChoresAPI();
-    
-    // Ensure the ChoresAPI namespace exists
-    if (!window.ChoresAPI) {
-        window.ChoresAPI = {};
-    }
-    
-    // Store the instance
-    window.ChoresAPI.chores = instance;
-    
-    // Also expose the class if needed
+    // Export to window
     window.ChoresAPI.ChoresAPI = ChoresAPI;
     
     console.log('ChoresAPI.ChoresAPI loaded successfully');
-    
-})(window);
+})();
