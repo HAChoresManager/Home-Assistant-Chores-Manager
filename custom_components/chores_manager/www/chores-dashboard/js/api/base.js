@@ -1,5 +1,6 @@
 /**
- * Base API functionality for Chores Dashboard.
+ * Enhanced Base API functionality for Chores Dashboard
+ * Includes improved retry logic with exponential backoff and jitter
  */
 
 window.ChoresAPI = window.ChoresAPI || {};
@@ -34,25 +35,133 @@ window.ChoresAPI = window.ChoresAPI || {};
         SENSOR_STATE: '/api/states/sensor.chores_overview'
     };
     
-    // Base API class
+    // Enhanced Base API class with better retry logic
     class BaseAPI {
         constructor() {
             this.retryConfig = {
                 maxRetries: 3,
-                baseDelay: 1000,
-                maxDelay: 5000
+                baseDelay: 1000,  // Start with 1 second
+                maxDelay: 10000,  // Cap at 10 seconds
+                backoffMultiplier: 2,
+                jitterRange: 1000  // Add up to 1 second of jitter
             };
+            
+            // Track request statistics
+            this.stats = {
+                totalRequests: 0,
+                successfulRequests: 0,
+                failedRequests: 0,
+                retriedRequests: 0,
+                averageResponseTime: 0
+            };
+            
+            // Request queue for rate limiting
+            this.requestQueue = [];
+            this.isProcessingQueue = false;
+            this.requestsPerSecond = 10;  // Rate limit
+            
+            // Cache for GET requests
+            this.cache = new Map();
+            this.cacheTimeout = 5000;  // 5 seconds cache
         }
         
         /**
-         * Make an authenticated API call with retry logic
+         * Calculate retry delay with exponential backoff and jitter
+         */
+        calculateRetryDelay(attempt) {
+            // Exponential backoff: delay = min(base * (multiplier ^ attempt), maxDelay)
+            const exponentialDelay = Math.min(
+                this.retryConfig.baseDelay * Math.pow(this.retryConfig.backoffMultiplier, attempt),
+                this.retryConfig.maxDelay
+            );
+            
+            // Add jitter to prevent thundering herd
+            const jitter = Math.random() * this.retryConfig.jitterRange;
+            
+            return exponentialDelay + jitter;
+        }
+        
+        /**
+         * Check if error is retryable
+         */
+        isRetryableError(response) {
+            // Retry on network errors, 5xx errors, and specific 4xx errors
+            if (!response) return true;  // Network error
+            
+            const retryableStatuses = [
+                408,  // Request Timeout
+                429,  // Too Many Requests
+                500,  // Internal Server Error
+                502,  // Bad Gateway
+                503,  // Service Unavailable
+                504   // Gateway Timeout
+            ];
+            
+            return retryableStatuses.includes(response.status);
+        }
+        
+        /**
+         * Get authentication token with fallback mechanisms
+         */
+        getAuthToken() {
+            // Try multiple sources for the token
+            const sources = [
+                () => localStorage.getItem('chores_auth_token'),
+                () => sessionStorage.getItem('chores_auth_token'),
+                () => {
+                    const configEl = document.getElementById('chores-config');
+                    return configEl ? configEl.dataset.token : null;
+                },
+                () => window.CHORES_AUTH_TOKEN,
+                () => {
+                    // Try to get from meta tag
+                    const meta = document.querySelector('meta[name="chores-auth-token"]');
+                    return meta ? meta.content : null;
+                }
+            ];
+            
+            for (const source of sources) {
+                try {
+                    const token = source();
+                    if (token) return token;
+                } catch (e) {
+                    // Continue to next source
+                }
+            }
+            
+            console.warn('No authentication token found');
+            return null;
+        }
+        
+        /**
+         * Make an authenticated API call with enhanced retry logic
          */
         async fetchWithAuth(url, options = {}) {
-            const maxRetries = this.retryConfig.maxRetries;
+            const startTime = Date.now();
             let lastError = null;
+            let response = null;
             
-            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            // Check cache for GET requests
+            if (options.method === 'GET' || !options.method) {
+                const cached = this.getCached(url);
+                if (cached) {
+                    console.log(`Cache hit for ${url}`);
+                    return cached;
+                }
+            }
+            
+            // Try request with retries
+            for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
                 try {
+                    // Add delay for retries (exponential backoff)
+                    if (attempt > 0) {
+                        const delay = this.calculateRetryDelay(attempt - 1);
+                        console.log(`Retry ${attempt}/${this.retryConfig.maxRetries} after ${Math.round(delay)}ms`);
+                        await this.delay(delay);
+                        this.stats.retriedRequests++;
+                    }
+                    
+                    // Get fresh token for each attempt
                     const token = this.getAuthToken();
                     
                     const fetchOptions = {
@@ -69,82 +178,97 @@ window.ChoresAPI = window.ChoresAPI || {};
                         fetchOptions.headers['Authorization'] = `Bearer ${token}`;
                     }
                     
-                    const response = await fetch(url, fetchOptions);
+                    // Add timeout using AbortController
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 30000);  // 30 second timeout
+                    fetchOptions.signal = controller.signal;
                     
-                    // Handle 401 errors
-                    if (response.status === 401 && attempt < maxRetries) {
-                        console.warn(`Authentication failed for ${url}, retrying...`);
-                        await this.handleAuthError();
-                        await this.delay(this.calculateBackoff(attempt));
-                        continue;
+                    this.stats.totalRequests++;
+                    response = await fetch(url, fetchOptions);
+                    clearTimeout(timeoutId);
+                    
+                    // Check if response is ok or if we should retry
+                    if (response.ok) {
+                        this.stats.successfulRequests++;
+                        
+                        // Update average response time
+                        const responseTime = Date.now() - startTime;
+                        this.stats.averageResponseTime = 
+                            (this.stats.averageResponseTime * (this.stats.successfulRequests - 1) + responseTime) / 
+                            this.stats.successfulRequests;
+                        
+                        // Cache successful GET responses
+                        if (options.method === 'GET' || !options.method) {
+                            this.setCached(url, response.clone());
+                        }
+                        
+                        return response;
                     }
                     
-                    return response;
+                    // Check if error is retryable
+                    if (!this.isRetryableError(response)) {
+                        // Non-retryable error, fail immediately
+                        console.error(`Non-retryable error ${response.status} for ${url}`);
+                        this.stats.failedRequests++;
+                        return response;
+                    }
+                    
+                    // Retryable error, continue loop
+                    lastError = new Error(`HTTP ${response.status}: ${response.statusText}`);
                     
                 } catch (error) {
                     lastError = error;
-                    console.error(`Fetch error for ${url} (attempt ${attempt + 1}):`, error);
                     
-                    if (attempt < maxRetries) {
-                        await this.delay(this.calculateBackoff(attempt));
+                    // Check if error is abort (timeout)
+                    if (error.name === 'AbortError') {
+                        console.error(`Request timeout for ${url}`);
+                    } else {
+                        console.error(`Request error for ${url}:`, error);
+                    }
+                    
+                    // Network errors are always retryable
+                    if (attempt === this.retryConfig.maxRetries) {
+                        this.stats.failedRequests++;
+                        throw error;
                     }
                 }
             }
             
-            throw lastError || new Error('Max retries exceeded');
+            // All retries exhausted
+            this.stats.failedRequests++;
+            throw lastError || new Error('Request failed after all retries');
         }
         
         /**
-         * Get the authentication token
+         * Cache management
          */
-        getAuthToken() {
-            // Try multiple sources
-            const token = localStorage.getItem('chores_auth_token') ||
-                         window.choreUtils?.getAuthToken?.() ||
-                         null;
-            
-            if (!token) {
-                console.warn('No authentication token available');
+        getCached(key) {
+            const cached = this.cache.get(key);
+            if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+                return cached.response.clone();
             }
-            
-            return token;
+            this.cache.delete(key);
+            return null;
         }
         
-        /**
-         * Handle authentication errors
-         */
-        async handleAuthError() {
-            // Clear stored token
-            localStorage.removeItem('chores_auth_token');
+        setCached(key, response) {
+            this.cache.set(key, {
+                response: response,
+                timestamp: Date.now()
+            });
             
-            // Try to refresh token if auth helper is available
-            if (window.choreAuth?.getBestToken) {
-                try {
-                    const newToken = await window.choreAuth.getBestToken();
-                    if (newToken) {
-                        localStorage.setItem('chores_auth_token', newToken);
-                    }
-                } catch (e) {
-                    console.error('Failed to refresh token:', e);
-                }
+            // Clean old cache entries
+            if (this.cache.size > 100) {
+                const oldestKey = this.cache.keys().next().value;
+                this.cache.delete(oldestKey);
             }
-            
-            // Dispatch auth error event
-            window.dispatchEvent(new CustomEvent('chores-auth-error', {
-                detail: { message: 'Authentication failed' }
-            }));
         }
         
         /**
-         * Calculate exponential backoff delay
+         * Clear cache
          */
-        calculateBackoff(attempt) {
-            const delay = Math.min(
-                this.retryConfig.baseDelay * Math.pow(2, attempt),
-                this.retryConfig.maxDelay
-            );
-            // Add jitter
-            return delay + Math.random() * 1000;
+        clearCache() {
+            this.cache.clear();
         }
         
         /**
@@ -155,64 +279,128 @@ window.ChoresAPI = window.ChoresAPI || {};
         }
         
         /**
-         * Make a service call
+         * Make a service call with queuing
          */
         async callService(endpoint, data = {}) {
+            // Add to queue for rate limiting
+            return new Promise((resolve, reject) => {
+                this.requestQueue.push({ endpoint, data, resolve, reject });
+                this.processQueue();
+            });
+        }
+        
+        /**
+         * Process request queue with rate limiting
+         */
+        async processQueue() {
+            if (this.isProcessingQueue || this.requestQueue.length === 0) {
+                return;
+            }
+            
+            this.isProcessingQueue = true;
+            
+            while (this.requestQueue.length > 0) {
+                const request = this.requestQueue.shift();
+                
+                try {
+                    const response = await this.fetchWithAuth(request.endpoint, {
+                        method: 'POST',
+                        body: JSON.stringify(request.data)
+                    });
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`Service call failed: ${response.status} ${errorText}`);
+                    }
+                    
+                    const result = await response.json();
+                    
+                    // Check for service-level errors
+                    if (result && result.success === false) {
+                        throw new Error(result.error || 'Service returned an error');
+                    }
+                    
+                    request.resolve(result);
+                    
+                } catch (error) {
+                    console.error('Service call error:', error);
+                    request.reject(error);
+                }
+                
+                // Rate limiting delay
+                await this.delay(1000 / this.requestsPerSecond);
+            }
+            
+            this.isProcessingQueue = false;
+        }
+        
+        /**
+         * Get sensor state with fallback
+         */
+        async getSensorState() {
             try {
-                const response = await this.fetchWithAuth(endpoint, {
-                    method: 'POST',
-                    body: JSON.stringify(data)
-                });
+                const response = await this.fetchWithAuth(ENDPOINTS.SENSOR_STATE);
+                
+                if (response.status === 404) {
+                    // Sensor not available yet, return default state
+                    return this.getDefaultSensorState();
+                }
                 
                 if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Service call failed: ${response.status} ${errorText}`);
+                    throw new Error(`Failed to get sensor state: ${response.status}`);
                 }
                 
-                const result = await response.json();
-                
-                // Check for service-level errors
-                if (result && result.success === false) {
-                    throw new Error(result.error || 'Service returned an error');
-                }
-                
-                return result;
+                return await response.json();
                 
             } catch (error) {
-                console.error('Service call error:', error);
-                throw error;
+                console.error('Error getting sensor state:', error);
+                // Return default state on error
+                return this.getDefaultSensorState();
             }
         }
         
         /**
-         * Get sensor state - NO PARAMETERS
+         * Get default sensor state
          */
-        async getSensorState() {
-            const response = await this.fetchWithAuth(ENDPOINTS.SENSOR_STATE);
-            
-            if (response.status === 404) {
-                // Sensor not available yet, return default state
-                return {
-                    state: "0",
-                    attributes: {
-                        friendly_name: "Chores Overview",
-                        chores: [],
-                        overdue_tasks: [],
-                        stats: {},
-                        assignees: [
-                            {id: "laura", name: "Laura", color: "#F5B7B1", active: true},
-                            {id: "martijn", name: "Martijn", color: "#F9E79F", active: true},
-                            {id: "wie_kan", name: "Wie kan", color: "#A9DFBF", active: true}
-                        ]
-                    }
-                };
-            }
-            
-            if (!response.ok) {
-                throw new Error(`Failed to get sensor state: ${response.status}`);
-            }
-            
-            return await response.json();
+        getDefaultSensorState() {
+            return {
+                state: "0",
+                attributes: {
+                    friendly_name: "Chores Overview",
+                    chores: [],
+                    overdue_tasks: [],
+                    stats: {
+                        total_tasks: 0,
+                        completed_today: 0,
+                        overdue_count: 0
+                    },
+                    assignees: [
+                        {id: "laura", name: "Laura", color: "#F5B7B1", active: true},
+                        {id: "martijn", name: "Martijn", color: "#F9E79F", active: true},
+                        {id: "wie_kan", name: "Wie kan", color: "#A9DFBF", active: true}
+                    ],
+                    theme_settings: {}
+                }
+            };
+        }
+        
+        /**
+         * Get API statistics
+         */
+        getStats() {
+            return {
+                ...this.stats,
+                cacheSize: this.cache.size,
+                queueLength: this.requestQueue.length
+            };
+        }
+        
+        /**
+         * Log error to backend (if implemented)
+         */
+        async logError(errorData) {
+            // This could be implemented to send errors to a monitoring service
+            console.log('Error logged:', errorData);
         }
     }
     
@@ -220,5 +408,5 @@ window.ChoresAPI = window.ChoresAPI || {};
     window.ChoresAPI.BaseAPI = BaseAPI;
     window.ChoresAPI.ENDPOINTS = ENDPOINTS;
     
-    console.log('BaseAPI loaded successfully');
+    console.log('Enhanced BaseAPI loaded successfully with exponential backoff');
 })();
