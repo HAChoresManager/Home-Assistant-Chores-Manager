@@ -72,7 +72,8 @@
             }
             
             if (choreData.duration !== undefined) {
-                serviceData.duration = parseInt(choreData.duration) || 15;
+                const duration = parseInt(choreData.duration);
+                serviceData.duration = isNaN(duration) ? 15 : duration;
             }
             
             if (choreData.description !== undefined) {
