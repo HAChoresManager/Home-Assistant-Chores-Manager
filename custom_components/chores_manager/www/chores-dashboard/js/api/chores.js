@@ -89,8 +89,19 @@
             }
             
             // Handle frequency-specific fields
+            // The backend requires these values even if the frontend leaves them blank
             if (choreData.frequency_days !== undefined) {
-                serviceData.frequency_days = parseInt(choreData.frequency_days);
+                const days = parseInt(choreData.frequency_days);
+                serviceData.frequency_days = isNaN(days) ? 7 : days;
+            } else {
+                serviceData.frequency_days = 7;
+            }
+
+            if (choreData.frequency_times !== undefined) {
+                const times = parseInt(choreData.frequency_times);
+                serviceData.frequency_times = isNaN(times) ? 1 : times;
+            } else {
+                serviceData.frequency_times = 1;
             }
             
             if (choreData.selected_weekday !== undefined) {
@@ -102,11 +113,16 @@
             }
             
             if (choreData.selected_day_of_month !== undefined) {
-                serviceData.selected_day_of_month = parseInt(choreData.selected_day_of_month);
+                const dom = parseInt(choreData.selected_day_of_month);
+                if (!isNaN(dom)) {
+                    serviceData.selected_day_of_month = dom;
+                }
             }
-            
+
             if (choreData.selected_days_of_month !== undefined) {
-                serviceData.selected_days_of_month = choreData.selected_days_of_month;
+                serviceData.selected_days_of_month = (choreData.selected_days_of_month || [])
+                    .map(d => parseInt(d))
+                    .filter(d => !isNaN(d));
             }
             
             // Handle alternating assignment
