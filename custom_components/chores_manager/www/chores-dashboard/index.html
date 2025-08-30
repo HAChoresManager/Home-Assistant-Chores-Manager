@@ -1,34 +1,50 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chores Dashboard</title>
+    <title>Chores Manager Dashboard</title>
     
-    <!-- Tailwind CSS for styling -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
     
     <!-- Custom styles -->
-    <link rel="stylesheet" href="css/styles.css?v=20250415-flickerfix">
+    <link rel="stylesheet" href="css/styles.css">
     
     <style>
-        /* Initial loading state styles */
         .loading-container {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
-            background-color: #f3f4f6;
+            min-height: 100vh;
+            padding: 20px;
         }
         
         .loading-spinner {
-            border: 3px solid #e5e7eb;
-            border-top: 3px solid #3b82f6;
+            border: 4px solid #f3f4f6;
+            border-left: 4px solid #3b82f6;
             border-radius: 50%;
             width: 40px;
             height: 40px;
             animation: spin 1s linear infinite;
+            margin-bottom: 16px;
         }
         
         @keyframes spin {
@@ -37,31 +53,68 @@
         }
         
         .loading-text {
-            margin-top: 16px;
             color: #6b7280;
-            font-size: 14px;
+            font-size: 16px;
         }
         
         .error-container {
-            background-color: #fee;
-            border: 1px solid #fcc;
-            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
             padding: 20px;
-            margin: 20px;
             text-align: center;
         }
+        
+        .error-container h2 {
+            color: #dc2626;
+            margin-bottom: 16px;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .error-container p {
+            color: #6b7280;
+            margin-bottom: 8px;
+        }
+        
+        .error-container button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .error-container button:hover {
+            background: #2563eb;
+        }
+        
+        .error-container ul {
+            margin: 16px 0;
+            padding-left: 20px;
+        }
+        
+        .error-container li {
+            margin: 4px 0;
+            color: #dc2626;
+        }
     </style>
-    
-    <script type="text/javascript">
-        // Enhanced error handling for the entire application
+
+    <script>
+        // Global error handler
         window.addEventListener('error', function(event) {
-            console.error('Global error:', event.error);
+            console.error('Global error caught:', event.error);
+            
             const rootElement = document.getElementById('root');
             if (rootElement && !rootElement.querySelector('.error-container')) {
                 rootElement.innerHTML = `
                     <div class="error-container">
-                        <h2>JavaScript Error</h2>
-                        <p>${event.error ? event.error.message : 'Unknown error'}</p>
+                        <h2>Application Error</h2>
+                        <p>An unexpected error occurred: ${event.error ? event.error.message : 'Unknown error'}</p>
                         <pre>${event.error ? event.error.stack : ''}</pre>
                         <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
                     </div>`;
@@ -91,11 +144,8 @@
     <script src="js/theme-integration.js?v=20250415-flickerfix" type="text/javascript"></script>
 
     <!-- Load modular API layer with proper sequencing -->
-    <script src="js/api/base.js?v=20250415-flickerfix" type="text/javascript"></script>
-    
-    <!-- Wait for base.js to load completely before loading other API modules -->
     <script type="text/javascript">
-        // Ensure BaseAPI is loaded before loading dependent modules
+        // Ensure all API modules are loaded in the correct sequence
         (function() {
             'use strict';
             
@@ -114,21 +164,49 @@
             // Function to load API modules in sequence
             async function loadAPIModules() {
                 try {
-                    // Wait a bit to ensure base.js is fully executed
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    console.log('Starting API module loading sequence...');
                     
-                    // Check if BaseAPI is available
+                    // Step 1: Load base.js first (defines BaseAPI, ENDPOINTS)
+                    console.log('Loading base.js...');
+                    await loadScript('js/api/base.js?v=20250415-flickerfix');
+                    
+                    // Step 2: Wait for BaseAPI to be available
+                    let attempts = 0;
+                    const maxAttempts = 50;
+                    
+                    while ((!window.ChoresAPI || !window.ChoresAPI.BaseAPI) && attempts < maxAttempts) {
+                        attempts++;
+                        console.log(`Waiting for BaseAPI... attempt ${attempts}/${maxAttempts}`);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                    
                     if (!window.ChoresAPI || !window.ChoresAPI.BaseAPI) {
-                        throw new Error('BaseAPI not loaded properly');
+                        throw new Error('BaseAPI not loaded after ' + maxAttempts + ' attempts');
                     }
                     
                     console.log('BaseAPI confirmed loaded, loading dependent modules...');
                     
-                    // Load API modules in sequence
+                    // Step 3: Load API modules in sequence (these depend on BaseAPI)
                     await loadScript('js/api/chores.js?v=20250415-flickerfix');
+                    console.log('chores.js loaded');
+                    
                     await loadScript('js/api/users.js?v=20250415-flickerfix');
+                    console.log('users.js loaded');
+                    
                     await loadScript('js/api/theme.js?v=20250415-flickerfix');
+                    console.log('theme.js loaded');
+                    
+                    // Step 4: Load index.js last (combines all APIs)
                     await loadScript('js/api/index.js?v=20250415-flickerfix');
+                    console.log('index.js loaded');
+                    
+                    // Step 5: Wait for final API to be initialized
+                    attempts = 0;
+                    while ((!window.ChoresAPI || !window.ChoresAPI.initialize) && attempts < maxAttempts) {
+                        attempts++;
+                        console.log(`Waiting for ChoresAPI initialization... attempt ${attempts}/${maxAttempts}`);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
                     
                     console.log('All API modules loaded successfully');
                     
@@ -136,8 +214,9 @@
                     console.error('Error loading API modules:', error);
                     document.getElementById('root').innerHTML = `
                         <div class="error-container">
-                            <h2>Loading Error</h2>
+                            <h2>API Loading Error</h2>
                             <p>Failed to load API modules: ${error.message}</p>
+                            <p>Please check the browser console for more details.</p>
                             <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
                         </div>`;
                 }
@@ -179,38 +258,29 @@
                 if (!window.ChoresApp) missing.push('ChoresApp');
                 if (!window.ChoresAPI) missing.push('ChoresAPI');
                 if (window.ChoresAPI && !window.ChoresAPI.ENDPOINTS) missing.push('ChoresAPI.ENDPOINTS');
-                if (!window.ChoresApp.useAppState) missing.push('ChoresApp.useAppState');
-                if (!window.ChoresApp.useEventHandlers) missing.push('ChoresApp.useEventHandlers');
-                if (!window.ChoresApp.initApp) missing.push('ChoresApp.initApp');
 
-                // If nothing is missing, initialize
                 if (missing.length === 0) {
+                    // All dependencies loaded, initialize the app
                     console.log('All dependencies loaded, initializing app...');
                     try {
-                        // Add small delay to ensure DOM is fully ready
-                        setTimeout(() => {
-                            window.ChoresApp.initApp();
-                        }, 100);
-                    } catch (error) {
-                        console.error('Error initializing app:', error);
-                        const rootElement = document.getElementById('root');
-                        if (rootElement) {
-                            rootElement.innerHTML = `
-                                <div class="error-container" style="padding: 20px; text-align: center;">
-                                    <h2>Initialization Error</h2>
-                                    <p>${error.message}</p>
-                                    <pre style="text-align: left; overflow: auto;">${error.stack}</pre>
-                                    <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">
-                                        Reload Page
-                                    </button>
-                                </div>`;
+                        if (window.ChoresApp && typeof window.ChoresApp.init === 'function') {
+                            window.ChoresApp.init();
+                        } else {
+                            throw new Error('ChoresApp.init not available');
                         }
+                    } catch (error) {
+                        console.error('Failed to initialize ChoresApp:', error);
+                        document.getElementById('root').innerHTML = `
+                            <div class="error-container">
+                                <h2>Initialization Error</h2>
+                                <p>Failed to initialize the application: ${error.message}</p>
+                                <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
+                            </div>`;
                     }
-                    return; // Stop checking
+                    return;
                 }
 
-                // Show progress after 1 second
-                if (initAttempts > 10 && initAttempts % 10 === 0) {
+                if (initAttempts < maxAttempts) {
                     console.log(`Still loading... Missing: ${missing.join(', ')}`);
                 }
 
