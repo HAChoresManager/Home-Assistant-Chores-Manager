@@ -122,6 +122,12 @@ window.ChoresApp = window.ChoresApp || {};
             `;
         }
     };
-    
+
+    // Maintain backward compatibility with older initialization name
+    window.ChoresApp.init = function() {
+        console.warn('ChoresApp.init is deprecated, use ChoresApp.initApp instead.');
+        return window.ChoresApp.initApp.apply(window.ChoresApp, arguments);
+    };
+
     console.log('App initialization module loaded');
 })();

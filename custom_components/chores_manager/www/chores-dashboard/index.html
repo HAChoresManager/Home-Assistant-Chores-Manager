@@ -256,6 +256,7 @@
                 if (!window.choreUtils) missing.push('choreUtils');
                 if (!window.choreComponents) missing.push('choreComponents');
                 if (!window.ChoresApp) missing.push('ChoresApp');
+                if (window.ChoresApp && typeof window.ChoresApp.initApp !== 'function') missing.push('ChoresApp.initApp');
                 if (!window.ChoresAPI) missing.push('ChoresAPI');
                 if (window.ChoresAPI && !window.ChoresAPI.ENDPOINTS) missing.push('ChoresAPI.ENDPOINTS');
 
@@ -263,10 +264,10 @@
                     // All dependencies loaded, initialize the app
                     console.log('All dependencies loaded, initializing app...');
                     try {
-                        if (window.ChoresApp && typeof window.ChoresApp.init === 'function') {
-                            window.ChoresApp.init();
+                        if (window.ChoresApp && typeof window.ChoresApp.initApp === 'function') {
+                            window.ChoresApp.initApp();
                         } else {
-                            throw new Error('ChoresApp.init not available');
+                            throw new Error('ChoresApp.initApp not available');
                         }
                     } catch (error) {
                         console.error('Failed to initialize ChoresApp:', error);
