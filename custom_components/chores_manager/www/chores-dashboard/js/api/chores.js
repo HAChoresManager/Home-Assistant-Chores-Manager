@@ -347,4 +347,4 @@
     window.ChoresAPI.ChoresAPI = ChoresAPI;
     
     console.log('ChoresAPI.ChoresAPI loaded successfully');
-})();
+})(window);
