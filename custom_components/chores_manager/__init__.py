@@ -48,9 +48,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         # Verify database is working
         verification = await hass.async_add_executor_job(verify_database, str(database_path))
-        if not verification.get("success"):
-            _LOGGER.error("Database verification failed: %s", verification.get("error"))
+        
+        # FIX: Handle both boolean and dictionary returns from verify_database
+        if isinstance(verification, bool):
+            if not verification:
+                _LOGGER.error("Database verification failed")
+                return False
+        elif isinstance(verification, dict):
+            if not verification.get("success"):
+                _LOGGER.error("Database verification failed: %s", verification.get("error"))
+                return False
+        else:
+            _LOGGER.error("Unexpected verification result type: %s", type(verification))
             return False
+            
     except Exception as e:
         _LOGGER.error("Failed to initialize database: %s", e)
         return False
