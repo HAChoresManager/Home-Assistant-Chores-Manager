@@ -509,4 +509,4 @@
     window.ChoresAPI.ENDPOINTS = ENDPOINTS;
     
     console.log('BaseAPI loaded successfully with exponential backoff and retry logic');
-})();
+})(window);
