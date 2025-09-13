@@ -218,7 +218,7 @@
                 })
             ),
 
-            // Dialogs (safeguarded)
+            // Dialogs - FIXED with safety checks
             window.choreComponents?.CompletionConfirmDialog && h(
                 window.choreComponents.CompletionConfirmDialog, {
                     isOpen: showConfirm,
