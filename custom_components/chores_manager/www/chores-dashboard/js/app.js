@@ -10,6 +10,12 @@ window.ChoresApp = window.ChoresApp || {};
     'use strict';
     
     const h = React.createElement;
+
+    function createFallback(name) {
+        return function FallbackComponent() {
+            return h('div', { className: 'p-4 text-red-500' }, `Missing component: ${name}`);
+        };
+    }
     
     /**
      * ChoresApp - Main application component
@@ -23,23 +29,33 @@ window.ChoresApp = window.ChoresApp || {};
             );
         }
         
-        // Get all components
+        // Get all components safely with fallbacks
+        const components = window.choreComponents || {};
         const {
-            Loading,
-            ErrorMessage,
-            Alert,
-            Modal,
-            TaskCard,
-            TaskForm,
-            UserManagement,
-            StatsCard,
-            UserStatsCard,
-            ThemeSettings,
-            ConfirmDialog,
-            CompletionConfirmDialog,
-            SubtaskCompletionDialog,
-            TaskDescription
-        } = window.choreComponents;
+            Loading = createFallback('Loading'),
+            ErrorMessage = createFallback('ErrorMessage'),
+            Alert = createFallback('Alert'),
+            Modal = createFallback('Modal'),
+            TaskCard = createFallback('TaskCard'),
+            TaskForm = createFallback('TaskForm'),
+            UserManagement = createFallback('UserManagement'),
+            StatsCard = createFallback('StatsCard'),
+            UserStatsCard = createFallback('UserStatsCard'),
+            ThemeSettings = createFallback('ThemeSettings'),
+            ConfirmDialog = createFallback('ConfirmDialog'),
+            CompletionConfirmDialog = createFallback('CompletionConfirmDialog'),
+            SubtaskCompletionDialog = createFallback('SubtaskCompletionDialog'),
+            TaskDescription = createFallback('TaskDescription')
+        } = components;
+
+        const criticalComponents = ['Loading', 'ErrorMessage', 'TaskCard'];
+        const missingCritical = criticalComponents.filter(name => !components[name]);
+        if (missingCritical.length > 0) {
+            return h('div', { className: 'error-container' },
+                h('h2', null, 'Critical components missing'),
+                h('p', null, missingCritical.join(', '))
+            );
+        }
         
         // Main app component
         function App() {
