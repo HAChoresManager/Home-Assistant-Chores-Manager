@@ -41,21 +41,24 @@
     /**
      * Completion confirmation dialog with user selection
      */
-    const CompletionConfirmDialog = function({ 
-        isOpen, 
-        title, 
-        message, 
-        onConfirm, 
-        onCancel, 
-        assignees = [], 
-        defaultUser 
+    const CompletionConfirmDialog = function({
+        isOpen,
+        title,
+        message,
+        onConfirm,
+        onCancel,
+        assignees = [],
+        defaultUser
     }) {
         const [selectedUser, setSelectedUser] = React.useState(defaultUser);
 
-        // Update selected user when default changes
         React.useEffect(() => {
-            setSelectedUser(defaultUser);
-        }, [defaultUser]);
+            if (defaultUser) {
+                setSelectedUser(defaultUser);
+            } else if (assignees.length > 0 && !selectedUser) {
+                setSelectedUser(assignees[0]);
+            }
+        }, [defaultUser, assignees, selectedUser]);
 
         if (!isOpen) return null;
 
