@@ -227,8 +227,41 @@
         })();
     </script>
 
-    <!-- Load component loader which will load all components -->
-    <script src="js/components/index.js?v=20250415-flickerfix" type="text/javascript"></script>
+    <!-- Load components sequentially to respect dependencies -->
+    <script type="text/javascript">
+        (function() {
+            'use strict';
+
+            const componentLoadOrder = [
+                'js/components/fallback.js',
+                'js/components/base.js',
+                'js/components/error-boundary.js',
+                'js/components/dialogs.js',
+                'js/components/forms.js',
+                'js/components/stats.js',
+                'js/components/tasks.js'
+            ];
+
+            function loadSequentially(index = 0) {
+                if (index >= componentLoadOrder.length) {
+                    window.dispatchEvent(new CustomEvent('chores-components-ready', {
+                        detail: { components: Object.keys(window.choreComponents || {}) }
+                    }));
+                    return;
+                }
+
+                const script = document.createElement('script');
+                const version = window.CHORES_APP_VERSION ? `?v=${window.CHORES_APP_VERSION}` : '';
+                script.src = componentLoadOrder[index] + version;
+                script.type = 'text/javascript';
+                script.onload = () => loadSequentially(index + 1);
+                script.onerror = () => loadSequentially(index + 1);
+                document.head.appendChild(script);
+            }
+
+            loadSequentially();
+        })();
+    </script>
 
     <!-- Load app modules in correct order -->
     <script src="js/app-state.js?v=20250415-flickerfix" type="text/javascript"></script>

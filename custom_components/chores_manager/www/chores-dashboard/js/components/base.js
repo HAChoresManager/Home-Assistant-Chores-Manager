@@ -234,9 +234,10 @@
         );
     };
 
-    // Export base components
+    // Export base components with verification
     window.choreComponents = window.choreComponents || {};
-    Object.assign(window.choreComponents, {
+
+    const componentExports = {
         Loading,
         ErrorMessage,
         Alert,
@@ -245,7 +246,18 @@
         Badge,
         ProgressBar,
         Tooltip
-    });
+    };
 
-    console.log('Base components loaded successfully');
+    Object.assign(window.choreComponents, componentExports);
+
+    const exportedCount = Object.keys(componentExports).length;
+    const successfulExports = Object.keys(componentExports).filter(
+        name => window.choreComponents[name]
+    ).length;
+
+    if (successfulExports === exportedCount) {
+        console.log(`✅ Base components loaded successfully`);
+    } else {
+        console.error(`❌ Base components partially loaded`);
+    }
 })();
