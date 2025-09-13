@@ -218,25 +218,29 @@
                 })
             ),
 
-            // Dialogs
-            h(window.choreComponents.CompletionConfirmDialog, {
-                isOpen: showConfirm,
-                title: "Taak voltooien",
-                message: `Markeer "${chore.name}" als voltooid:`,
-                onConfirm: handleConfirmComplete,
-                onCancel: () => setShowConfirm(false),
-                assignees: availableAssignees,
-                defaultUser: chore.assigned_to
-            }),
+            // Dialogs - FIXED with safety checks
+            window.choreComponents?.CompletionConfirmDialog && h(
+                window.choreComponents.CompletionConfirmDialog, {
+                    isOpen: showConfirm,
+                    title: "Taak voltooien",
+                    message: `Markeer "${chore.name}" als voltooid:`,
+                    onConfirm: handleConfirmComplete,
+                    onCancel: () => setShowConfirm(false),
+                    assignees: availableAssignees,
+                    defaultUser: chore.assigned_to
+                }
+            ),
 
-            hasSubtasks && h(window.choreComponents.SubtaskCompletionDialog, {
-                isOpen: showSubtaskConfirm,
-                chore: chore,
-                onComplete: handleSubtaskCompletion,
-                onCancel: () => setShowSubtaskConfirm(false),
-                assignees: availableAssignees,
-                defaultUser: chore.assigned_to
-            })
+            hasSubtasks && window.choreComponents?.SubtaskCompletionDialog && h(
+                window.choreComponents.SubtaskCompletionDialog, {
+                    isOpen: showSubtaskConfirm,
+                    chore: chore,
+                    onComplete: handleSubtaskCompletion,
+                    onCancel: () => setShowSubtaskConfirm(false),
+                    assignees: availableAssignees,
+                    defaultUser: chore.assigned_to
+                }
+            )
         );
     };
 

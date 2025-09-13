@@ -15,11 +15,11 @@
     class ErrorBoundary extends Component {
         constructor(props) {
             super(props);
-            this.state = { 
+            this.state = {
                 hasError: false,
                 error: null,
                 errorInfo: null,
-                errorCount: 0
+                errorId: null
             };
             
             // Bind methods
@@ -27,10 +27,11 @@
         }
         
         static getDerivedStateFromError(error) {
-            // Update state so the next render shows the fallback UI
-            return { 
+            const errorId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+            return {
                 hasError: true,
-                errorCount: (this.state?.errorCount || 0) + 1
+                error,
+                errorId
             };
         }
         
@@ -60,15 +61,13 @@
             this.setState({
                 hasError: false,
                 error: null,
-                errorInfo: null
+                errorInfo: null,
+                errorId: null
             });
         }
         
         render() {
             if (this.state.hasError) {
-                // Determine if this is a recoverable error
-                const isRecoverable = this.state.errorCount < 3;
-                
                 return h('div', {
                     className: 'error-boundary-fallback p-4 m-4 bg-red-50 border border-red-200 rounded-lg'
                 },
@@ -113,18 +112,14 @@
                             
                             // Action buttons
                             h('div', { className: 'mt-4 flex space-x-3' },
-                                isRecoverable && h('button', {
+                                h('button', {
                                     onClick: this.resetError,
                                     className: 'bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors'
-                                },
-                                    'Probeer opnieuw'
-                                ),
+                                }, 'Probeer opnieuw'),
                                 h('button', {
                                     onClick: () => window.location.reload(),
                                     className: 'bg-gray-200 text-gray-700 px-3 py-1 rounded hover:bg-gray-300 transition-colors'
-                                },
-                                    'Pagina vernieuwen'
-                                )
+                                }, 'Pagina vernieuwen')
                             )
                         )
                     )
