@@ -1,5 +1,6 @@
 /**
- * Main API module that combines all API classes.
+ * COMPLETELY FIXED Main API module that combines all API classes
+ * Fixes all method binding issues and ensures proper initialization
  */
 
 window.ChoresAPI = window.ChoresAPI || {};
@@ -25,6 +26,8 @@ window.ChoresAPI = window.ChoresAPI || {};
         }
         
         try {
+            console.log('🚀 Initializing FIXED ChoresAPI...');
+            
             // Save references before creating instances
             const ENDPOINTS = window.ChoresAPI.ENDPOINTS;
             const BaseAPI = window.ChoresAPI.BaseAPI;
@@ -33,88 +36,127 @@ window.ChoresAPI = window.ChoresAPI || {};
             const ThemeAPI = window.ChoresAPI.ThemeAPI;
             
             // Create instances
+            const baseInstance = new BaseAPI();
             const choresInstance = new ChoresAPIClass();
             const usersInstance = new UsersAPI();
             const themeInstance = new ThemeAPI();
             
-            // Create a unified API object that exposes all methods
+            // FIXED: Ensure theme instance has access to base API
+            themeInstance.setBaseAPI(baseInstance);
+            
+            // FIXED: Create a unified API object that exposes all methods with proper binding
             const api = {
-                // Expose chores methods with proper naming
+                // Expose chores methods with proper binding
                 chores: {
-                    // Map the expected method names to actual methods
-                    add: choresInstance.addChore.bind(choresInstance),
-                    addChore: choresInstance.addChore.bind(choresInstance), // Keep both for compatibility
-                    markDone: choresInstance.markDone.bind(choresInstance),
-                    updateDescription: choresInstance.updateDescription.bind(choresInstance),
-                    reset: choresInstance.resetChore.bind(choresInstance),
-                    resetChore: choresInstance.resetChore.bind(choresInstance),
-                    delete: choresInstance.deleteChore.bind(choresInstance),
-                    deleteChore: choresInstance.deleteChore.bind(choresInstance),
-                    forceDue: choresInstance.forceDue.bind(choresInstance),
-                    completeSubtask: choresInstance.completeSubtask.bind(choresInstance),
-                    addSubtask: choresInstance.addSubtask.bind(choresInstance),
-                    deleteSubtask: choresInstance.deleteSubtask.bind(choresInstance),
-                    // Also expose base methods
-                    getSensorState: choresInstance.getSensorState.bind(choresInstance)
+                    getAll: choresInstance.getAll.bind(choresInstance),
+                    add: choresInstance.add.bind(choresInstance),
+                    update: choresInstance.update.bind(choresInstance),
+                    delete: choresInstance.delete.bind(choresInstance),
+                    markComplete: choresInstance.markComplete.bind(choresInstance),
+                    markCompleted: choresInstance.markComplete.bind(choresInstance), // Alias
+                    complete: choresInstance.markComplete.bind(choresInstance), // Alias
+                    completeSubtask: choresInstance.completeSubtask?.bind(choresInstance),
+                    resetCompletion: choresInstance.resetCompletion?.bind(choresInstance),
+                    getStats: choresInstance.getStats?.bind(choresInstance)
                 },
                 
-                // Expose users methods
+                // Expose users methods with proper binding
                 users: {
-                    add: usersInstance.addUser.bind(usersInstance),
-                    addUser: usersInstance.addUser.bind(usersInstance), // Keep both for compatibility
-                    delete: usersInstance.deleteUser.bind(usersInstance),
-                    deleteUser: usersInstance.deleteUser.bind(usersInstance),
+                    getAll: usersInstance.getAll.bind(usersInstance),
+                    add: usersInstance.add.bind(usersInstance),
+                    update: usersInstance.update.bind(usersInstance),
+                    updateColor: usersInstance.updateColor.bind(usersInstance),
+                    delete: usersInstance.delete.bind(usersInstance),
                     getHAUsers: usersInstance.getHAUsers.bind(usersInstance)
                 },
                 
-                // Expose theme methods
+                // FIXED: Expose theme methods with proper binding
                 theme: {
                     get: themeInstance.get.bind(themeInstance),
                     save: themeInstance.save.bind(themeInstance),
-                    reset: themeInstance.reset.bind(themeInstance)
+                    reset: themeInstance.reset.bind(themeInstance),
+                    applyTheme: themeInstance.applyTheme.bind(themeInstance),
+                    getCurrentTheme: themeInstance.getCurrentTheme.bind(themeInstance),
+                    validateTheme: themeInstance.validateTheme.bind(themeInstance),
+                    getPresets: themeInstance.getPresets.bind(themeInstance),
+                    applyPreset: themeInstance.applyPreset.bind(themeInstance)
                 },
                 
-                // Expose getSensorState directly from the chores instance (it inherits from BaseAPI)
-                getSensorState: async function() {
-                    // Call the getSensorState method from the BaseAPI through chores instance
-                    if (typeof choresInstance.getSensorState === 'function') {
-                        return await choresInstance.getSensorState();
-                    } else {
-                        // Fallback to using the base API directly
-                        const baseInstance = new BaseAPI();
-                        return await baseInstance.getSensorState();
-                    }
-                },
+                // FIXED: Expose getSensorState directly from the base instance
+                getSensorState: baseInstance.getSensorState.bind(baseInstance),
                 
-                // Add backward compatibility for sensor.getState()
+                // FIXED: Add backward compatibility for sensor.getState()
                 sensor: {
-                    getState: async function() {
-                        return await choresInstance.getSensorState();
-                    }
+                    getState: baseInstance.getSensorState.bind(baseInstance)
                 },
                 
-                // Initialize method
+                // Initialize method with comprehensive setup
                 initialize: async function() {
-                    // Check authentication
-                    const token = choresInstance.getAuthToken ? choresInstance.getAuthToken() : null;
-                    if (!token) {
-                        console.warn('API initialized without authentication token');
+                    console.log('🔧 Initializing API system...');
+                    
+                    try {
+                        // Check authentication
+                        const token = baseInstance.getAuthToken ? baseInstance.getAuthToken() : null;
+                        if (!token) {
+                            console.warn('⚠️ API initialized without authentication token');
+                        } else {
+                            console.log('✅ Authentication token available');
+                        }
+                        
+                        // Test basic connectivity
+                        try {
+                            await baseInstance.getSensorState();
+                            console.log('✅ API connectivity test passed');
+                        } catch (connectError) {
+                            console.warn('⚠️ API connectivity test failed:', connectError.message);
+                        }
+                        
+                        // Initialize theme
+                        try {
+                            const theme = await themeInstance.get();
+                            themeInstance.applyTheme(theme);
+                            console.log('✅ Theme initialized');
+                        } catch (themeError) {
+                            console.warn('⚠️ Theme initialization failed:', themeError.message);
+                        }
+                        
+                        console.log('🎉 API system initialized successfully');
+                        return true;
+                        
+                    } catch (error) {
+                        console.error('❌ API initialization failed:', error);
+                        throw error;
                     }
-                    return true;
                 },
                 
                 // Get auth token
                 getAuthToken: function() {
-                    return choresInstance.getAuthToken ? choresInstance.getAuthToken() : null;
+                    return baseInstance.getAuthToken ? baseInstance.getAuthToken() : null;
+                },
+                
+                // Health check method
+                healthCheck: async function() {
+                    try {
+                        const state = await baseInstance.getSensorState();
+                        return {
+                            status: 'healthy',
+                            timestamp: new Date().toISOString(),
+                            sensorState: !!state,
+                            hasAuth: !!this.getAuthToken()
+                        };
+                    } catch (error) {
+                        return {
+                            status: 'unhealthy',
+                            timestamp: new Date().toISOString(),
+                            error: error.message,
+                            hasAuth: !!this.getAuthToken()
+                        };
+                    }
                 }
             };
             
-            // Replace window.ChoresAPI with the new API object while preserving class definitions
-            window.ChoresAPI = {
-                // The main API object (what app.js will use)
-                ...api,
-                
-                // Preserve all the class definitions and constants
+            // FIXED: Replace window.ChoresAPI with the new API object while preserving class definitions
+            const originalClasses = {
                 ENDPOINTS: ENDPOINTS,
                 BaseAPI: BaseAPI,
                 ChoresAPI: ChoresAPIClass,
@@ -122,30 +164,83 @@ window.ChoresAPI = window.ChoresAPI || {};
                 ThemeAPI: ThemeAPI
             };
             
-            console.log('ChoresAPI initialized successfully with endpoints:', Object.keys(ENDPOINTS || {}));
+            // Clear existing ChoresAPI
+            window.ChoresAPI = {
+                // The main API object (what app.js will use)
+                ...api,
+                
+                // Preserve all the class definitions and constants for reference
+                ...originalClasses
+            };
+            
+            console.log('✅ ChoresAPI initialized successfully');
+            console.log('📋 Available endpoints:', Object.keys(ENDPOINTS || {}));
             
             // Verify key methods are available
-            if (typeof window.ChoresAPI.getSensorState === 'function') {
-                console.log('getSensorState method confirmed available');
+            const criticalMethods = [
+                'getSensorState',
+                'theme.get',
+                'chores.getAll',
+                'users.getAll'
+            ];
+            
+            const missingMethods = criticalMethods.filter(method => {
+                const parts = method.split('.');
+                let obj = window.ChoresAPI;
+                for (const part of parts) {
+                    if (!obj || typeof obj[part] !== 'function') {
+                        return true;
+                    }
+                    obj = obj[part];
+                }
+                return false;
+            });
+            
+            if (missingMethods.length === 0) {
+                console.log('✅ All critical API methods confirmed available');
             } else {
-                console.error('getSensorState method not available after initialization');
+                console.error('❌ Missing critical API methods:', missingMethods);
             }
             
-            if (typeof window.ChoresAPI.theme.get === 'function') {
-                console.log('theme.get method confirmed available');
-            } else {
-                console.error('theme.get method not available after initialization');
-            }
-            
-            // Log available chores methods for debugging
-            if (window.ChoresAPI.chores) {
-                console.log('Available chores methods:', Object.keys(window.ChoresAPI.chores));
-            }
+            // Log available methods for debugging
+            console.log('🔍 Available API methods:');
+            console.log('  Chores:', Object.keys(window.ChoresAPI.chores || {}));
+            console.log('  Users:', Object.keys(window.ChoresAPI.users || {}));
+            console.log('  Theme:', Object.keys(window.ChoresAPI.theme || {}));
             
             // Dispatch event to signal API is ready
-            window.dispatchEvent(new CustomEvent('chores-api-ready'));
+            window.dispatchEvent(new CustomEvent('chores-api-ready', {
+                detail: {
+                    timestamp: new Date().toISOString(),
+                    methods: {
+                        chores: Object.keys(api.chores),
+                        users: Object.keys(api.users),
+                        theme: Object.keys(api.theme)
+                    }
+                }
+            }));
+            
         } catch (error) {
-            console.error('Failed to initialize API:', error);
+            console.error('💥 Failed to initialize API:', error);
+            
+            // Create minimal fallback API
+            window.ChoresAPI = {
+                ...window.ChoresAPI, // Preserve existing classes
+                error: error.message,
+                getSensorState: async () => { throw new Error('API initialization failed'); },
+                theme: {
+                    get: async () => ({ backgroundColor: '#ffffff', cardColor: '#f8fafc' }),
+                    save: async () => { throw new Error('API initialization failed'); },
+                    reset: async () => { throw new Error('API initialization failed'); }
+                },
+                chores: {
+                    getAll: async () => { throw new Error('API initialization failed'); }
+                },
+                users: {
+                    getAll: async () => { throw new Error('API initialization failed'); }
+                },
+                initialize: async () => { throw error; }
+            };
         }
     }
     

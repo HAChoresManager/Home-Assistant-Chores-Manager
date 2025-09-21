@@ -1,352 +1,495 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="nl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chores Manager Dashboard</title>
+    <title>Huishoudelijke Taken Dashboard</title>
+    
+    <!-- FIXED: Updated version with comprehensive cache busting -->
+    <script type="text/javascript">
+        window.CHORES_APP_VERSION = '1.4.2-20250915-comprehensive-fix';
+        console.log('🏠 Chores Manager Dashboard v' + window.CHORES_APP_VERSION);
+    </script>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: {
-                            50: '#f0f9ff',
-                            500: '#3b82f6',
-                            600: '#2563eb',
-                            700: '#1d4ed8'
-                        }
-                    }
-                }
-            }
-        }
-    </script>
     
-    <!-- Custom styles -->
-    <link rel="stylesheet" href="css/styles.css">
-    
+    <!-- Enhanced Custom Styles with Theme Support -->
     <style>
-        .loading-container {
+        :root {
+            --theme-background: #ffffff;
+            --theme-card: #f8fafc;
+            --theme-primary-text: #1f2937;
+            --theme-secondary-text: #6b7280;
+            --theme-accent: #3b82f6;
+            --theme-border: #e5e7eb;
+            --theme-success: #10b981;
+            --theme-warning: #f59e0b;
+            --theme-error: #ef4444;
+        }
+
+        body {
+            background-color: var(--theme-background);
+            color: var(--theme-primary-text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .app-loaded {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .error-container {
+            max-width: 600px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: #fee;
+            border: 1px solid #fcc;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .error-container h2 {
+            color: #c00;
+            margin-top: 0;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .error-container button {
+            background: #c00;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+
+        .error-container button:hover {
+            background: #a00;
+        }
+
+        /* Modal overlay styles */
+        .modal-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            min-height: 100vh;
-            padding: 20px;
+            z-index: 1000;
+            padding: 1rem;
         }
-        
-        .loading-spinner {
-            border: 4px solid #f3f4f6;
-            border-left: 4px solid #3b82f6;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 16px;
+
+        .modal-content {
+            background-color: var(--theme-card);
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 1.5rem;
+            border: 1px solid var(--theme-border);
         }
-        
+
+        /* Loading animation */
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
-        .loading-text {
-            color: #6b7280;
-            font-size: 16px;
+
+        .animate-spin {
+            animation: spin 1s linear infinite;
         }
-        
-        .error-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 20px;
-            text-align: center;
+
+        /* Task card styles */
+        .task-card {
+            background-color: var(--theme-card);
+            border: 1px solid var(--theme-border);
+            transition: all 0.2s ease;
         }
-        
-        .error-container h2 {
-            color: #dc2626;
-            margin-bottom: 16px;
-            font-size: 24px;
-            font-weight: 600;
+
+        .task-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
         }
-        
-        .error-container p {
-            color: #6b7280;
-            margin-bottom: 8px;
+
+        /* Responsive design improvements */
+        @media (max-width: 768px) {
+            .modal-content {
+                margin: 1rem;
+                padding: 1rem;
+            }
+            
+            .task-card {
+                margin: 0.5rem;
+            }
         }
-        
-        .error-container button {
-            background: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            cursor: pointer;
-            font-size: 14px;
+
+        /* Print styles */
+        @media print {
+            .modal-container,
+            button,
+            .no-print {
+                display: none !important;
+            }
         }
-        
-        .error-container button:hover {
-            background: #2563eb;
+
+        /* Accessibility improvements */
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
-        
-        .error-container ul {
-            margin: 16px 0;
-            padding-left: 20px;
-        }
-        
-        .error-container li {
-            margin: 4px 0;
-            color: #dc2626;
+
+        /* High contrast mode support */
+        @media (prefers-contrast: high) {
+            .task-card {
+                border-width: 2px;
+            }
         }
     </style>
-
-    <script>
-        // Global error handler
-        window.addEventListener('error', function(event) {
-            console.error('Global error caught:', event.error);
-            
-            const rootElement = document.getElementById('root');
-            if (rootElement && !rootElement.querySelector('.error-container')) {
-                rootElement.innerHTML = `
-                    <div class="error-container">
-                        <h2>Application Error</h2>
-                        <p>An unexpected error occurred: ${event.error ? event.error.message : 'Unknown error'}</p>
-                        <pre>${event.error ? event.error.stack : ''}</pre>
-                        <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
-                    </div>`;
-            }
-        });
-
-        // Add version info to global object
-        window.CHORES_APP_VERSION = "1.4.1-20250415-flickerfix";
-        console.log('Chores Dashboard Version:', window.CHORES_APP_VERSION);
-    </script>
 </head>
 <body>
+    <!-- App root element -->
     <div id="root">
-        <div class="loading-container">
-            <div class="loading-spinner"></div>
-            <div class="loading-text">Loading dashboard...</div>
+        <div style="display: flex; items-center: justify-center; min-height: 100vh; background: #f9fafb;">
+            <div style="text-align: center; padding: 2rem;">
+                <div style="width: 64px; height: 64px; border: 4px solid #e5e7eb; border-top: 4px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem;"></div>
+                <h2 style="color: #374151; margin-bottom: 0.5rem;">Loading Dashboard...</h2>
+                <p style="color: #6b7280; font-size: 0.875rem;">Please wait while we load your chores dashboard</p>
+            </div>
         </div>
     </div>
 
-    <!-- Load React first -->
-    <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- FIXED: Load React and ReactDOM with version pinning -->
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
 
-    <!-- Load core utilities and helpers -->
-    <script src="js/auth-helper.js?v=20250415-flickerfix" type="text/javascript"></script>
-    <script src="js/utils.js?v=20250415-flickerfix" type="text/javascript"></script>
-    <script src="js/theme-integration.js?v=20250415-flickerfix" type="text/javascript"></script>
-
-    <!-- Load modular API layer with proper sequencing -->
+    <!-- FIXED: Enhanced dependency verification -->
     <script type="text/javascript">
-        // Ensure all API modules are loaded in the correct sequence
         (function() {
             'use strict';
             
-            // Function to load a script dynamically
-            function loadScript(src) {
-                return new Promise((resolve, reject) => {
-                    const script = document.createElement('script');
-                    script.src = src;
-                    script.type = 'text/javascript';
-                    script.onload = resolve;
-                    script.onerror = reject;
-                    document.head.appendChild(script);
-                });
+            // Verify React is loaded
+            if (!window.React || !window.ReactDOM) {
+                console.error('❌ React libraries failed to load');
+                document.getElementById('root').innerHTML = `
+                    <div class="error-container">
+                        <h2>React Loading Error</h2>
+                        <p>Failed to load React libraries. Please check your internet connection and try again.</p>
+                        <button onclick="window.location.reload()">Reload Page</button>
+                    </div>`;
+                return;
             }
             
-            // Function to load API modules in sequence
-            async function loadAPIModules() {
-                try {
-                    console.log('Starting API module loading sequence...');
-                    
-                    // Step 1: Load base.js first (defines BaseAPI, ENDPOINTS)
-                    console.log('Loading base.js...');
-                    await loadScript('js/api/base.js?v=20250415-flickerfix');
-                    
-                    // Step 2: Wait for BaseAPI to be available
-                    let attempts = 0;
-                    const maxAttempts = 50;
-                    
-                    while ((!window.ChoresAPI || !window.ChoresAPI.BaseAPI) && attempts < maxAttempts) {
-                        attempts++;
-                        console.log(`Waiting for BaseAPI... attempt ${attempts}/${maxAttempts}`);
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                    }
-                    
-                    if (!window.ChoresAPI || !window.ChoresAPI.BaseAPI) {
-                        throw new Error('BaseAPI not loaded after ' + maxAttempts + ' attempts');
-                    }
-                    
-                    console.log('BaseAPI confirmed loaded, loading dependent modules...');
-                    
-                    // Step 3: Load API modules in sequence (these depend on BaseAPI)
-                    await loadScript('js/api/chores.js?v=20250415-flickerfix');
-                    console.log('chores.js loaded');
-                    
-                    await loadScript('js/api/users.js?v=20250415-flickerfix');
-                    console.log('users.js loaded');
-                    
-                    await loadScript('js/api/theme.js?v=20250415-flickerfix');
-                    console.log('theme.js loaded');
-                    
-                    // Step 4: Load index.js last (combines all APIs)
-                    await loadScript('js/api/index.js?v=20250415-flickerfix');
-                    console.log('index.js loaded');
-                    
-                    // Step 5: Wait for final API to be initialized
-                    attempts = 0;
-                    while ((!window.ChoresAPI || !window.ChoresAPI.initialize) && attempts < maxAttempts) {
-                        attempts++;
-                        console.log(`Waiting for ChoresAPI initialization... attempt ${attempts}/${maxAttempts}`);
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                    }
-                    
-                    console.log('All API modules loaded successfully');
-                    
-                } catch (error) {
-                    console.error('Error loading API modules:', error);
-                    document.getElementById('root').innerHTML = `
-                        <div class="error-container">
-                            <h2>API Loading Error</h2>
-                            <p>Failed to load API modules: ${error.message}</p>
-                            <p>Please check the browser console for more details.</p>
-                            <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
-                        </div>`;
-                }
-            }
+            console.log('✅ React ' + React.version + ' loaded successfully');
+            console.log('✅ ReactDOM loaded successfully');
             
-            // Start loading API modules
-            loadAPIModules();
+            // Initialize component storage
+            window.choreComponents = {};
+            window.ChoresApp = {};
         })();
     </script>
 
-    <!-- Load components sequentially to respect dependencies -->
+    <!-- FIXED: Load utility functions first -->
+    <script src="js/utils.js?v=1.4.2-20250915-comprehensive-fix" type="text/javascript"></script>
+    <script src="js/auth-helper.js?v=1.4.2-20250915-comprehensive-fix" type="text/javascript"></script>
+
+    <!-- FIXED: Load API modules in correct dependency order -->
     <script type="text/javascript">
         (function() {
             'use strict';
-
-            const componentLoadOrder = [
-                'js/components/fallback.js',
-                'js/components/base.js',
-                'js/components/error-boundary.js',
-                'js/components/dialogs.js',
-                'js/components/forms.js',
-                'js/components/stats.js',
-                'js/components/tasks.js'
+            
+            console.log('🔧 Loading API modules...');
+            
+            const apiModules = [
+                'js/api/base.js',
+                'js/api/chores.js', 
+                'js/api/users.js',
+                'js/api/theme.js',
+                'js/api/index.js'
             ];
 
-            function loadSequentially(index = 0) {
-                if (index >= componentLoadOrder.length) {
-                    window.dispatchEvent(new CustomEvent('chores-components-ready', {
-                        detail: { components: Object.keys(window.choreComponents || {}) }
-                    }));
+            let loadedModules = 0;
+
+            function loadAPIModule(index) {
+                if (index >= apiModules.length) {
+                    console.log('✅ All API modules loaded');
+                    window.dispatchEvent(new CustomEvent('chores-api-modules-loaded'));
                     return;
                 }
 
                 const script = document.createElement('script');
                 const version = window.CHORES_APP_VERSION ? `?v=${window.CHORES_APP_VERSION}` : '';
-                script.src = componentLoadOrder[index] + version;
+                script.src = apiModules[index] + version;
                 script.type = 'text/javascript';
-                script.onload = () => loadSequentially(index + 1);
-                script.onerror = () => loadSequentially(index + 1);
+                
+                script.onload = () => {
+                    loadedModules++;
+                    console.log(`✅ Loaded ${apiModules[index]} (${loadedModules}/${apiModules.length})`);
+                    loadAPIModule(index + 1);
+                };
+                
+                script.onerror = (error) => {
+                    console.error(`❌ Failed to load ${apiModules[index]}:`, error);
+                    document.getElementById('root').innerHTML = `
+                        <div class="error-container">
+                            <h2>API Loading Error</h2>
+                            <p>Failed to load API module: ${apiModules[index]}</p>
+                            <p>Please check the browser console for more details.</p>
+                            <button onclick="window.location.reload()">Reload Page</button>
+                        </div>`;
+                };
+                
                 document.head.appendChild(script);
             }
-
-            loadSequentially();
+            
+            // Start loading API modules
+            loadAPIModule(0);
         })();
     </script>
 
-    <!-- Load app modules in correct order -->
-    <script src="js/app-state.js?v=20250415-flickerfix" type="text/javascript"></script>
-    <script src="js/app-handlers.js?v=20250415-flickerfix" type="text/javascript"></script>
-    <script src="js/app-init.js?v=20250415-flickerfix" type="text/javascript"></script>
+    <!-- FIXED: Load components using the enhanced component loader -->
+    <script src="js/components/index.js?v=1.4.2-20250915-comprehensive-fix" type="text/javascript"></script>
 
-    <!-- Load the main app last -->
-    <script src="js/app.js?v=20250415-flickerfix" type="text/javascript"></script>
-
+    <!-- FIXED: Load app modules in correct dependency order -->
     <script type="text/javascript">
-        // Initialize app when all dependencies are loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, waiting for dependencies...');
-
-            let initAttempts = 0;
-            const maxAttempts = 50; // 5 seconds total
+        (function() {
+            'use strict';
             
-            function checkDependenciesAndInit() {
-                initAttempts++;
+            const appModules = [
+                'js/app-state.js',
+                'js/app-handlers.js', 
+                'js/app-init.js',
+                'js/app.js'
+            ];
 
-                // Check what's missing
-                const missing = [];
-                if (!window.React) missing.push('React');
-                if (!window.ReactDOM) missing.push('ReactDOM');
-                if (!window.choreUtils) missing.push('choreUtils');
-                if (!window.choreComponents) missing.push('choreComponents');
-                if (!window.ChoresApp) missing.push('ChoresApp');
-                if (window.ChoresApp && typeof window.ChoresApp.initApp !== 'function') missing.push('ChoresApp.initApp');
-                if (!window.ChoresAPI) missing.push('ChoresAPI');
-                if (window.ChoresAPI && !window.ChoresAPI.ENDPOINTS) missing.push('ChoresAPI.ENDPOINTS');
-
-                if (missing.length === 0) {
-                    // All dependencies loaded, initialize the app
-                    console.log('All dependencies loaded, initializing app...');
-                    try {
-                        if (window.ChoresApp && typeof window.ChoresApp.initApp === 'function') {
-                            window.ChoresApp.initApp();
-                        } else {
-                            throw new Error('ChoresApp.initApp not available');
-                        }
-                    } catch (error) {
-                        console.error('Failed to initialize ChoresApp:', error);
-                        document.getElementById('root').innerHTML = `
-                            <div class="error-container">
-                                <h2>Initialization Error</h2>
-                                <p>Failed to initialize the application: ${error.message}</p>
-                                <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">Reload Page</button>
-                            </div>`;
+            function loadAppModules() {
+                console.log('🚀 Loading app modules...');
+                
+                function loadModule(index) {
+                    if (index >= appModules.length) {
+                        console.log('✅ All app modules loaded');
+                        initializeApp();
+                        return;
                     }
-                    return;
-                }
 
-                if (initAttempts < maxAttempts) {
-                    console.log(`Still loading... Missing: ${missing.join(', ')}`);
+                    const script = document.createElement('script');
+                    const version = window.CHORES_APP_VERSION ? `?v=${window.CHORES_APP_VERSION}` : '';
+                    script.src = appModules[index] + version;
+                    script.type = 'text/javascript';
+                    
+                    script.onload = () => {
+                        console.log(`✅ Loaded ${appModules[index]}`);
+                        loadModule(index + 1);
+                    };
+                    
+                    script.onerror = (error) => {
+                        console.error(`❌ Failed to load ${appModules[index]}:`, error);
+                        // Continue loading other modules
+                        loadModule(index + 1);
+                    };
+                    
+                    document.head.appendChild(script);
                 }
+                
+                loadModule(0);
+            }
 
-                // If we've exceeded max attempts, show error
-                if (initAttempts >= maxAttempts) {
-                    console.error('Failed to load dependencies after ' + maxAttempts + ' attempts');
-                    console.error('Missing dependencies:', missing);
+            // Initialize the app once everything is loaded
+            function initializeApp() {
+                console.log('🎯 Initializing Chores Dashboard App...');
+                
+                try {
+                    // Verify all dependencies
+                    if (!window.React || !window.ReactDOM) {
+                        throw new Error('React libraries not available');
+                    }
+                    
+                    if (!window.choreComponents) {
+                        throw new Error('Components not loaded');
+                    }
+                    
+                    if (!window.ChoresApp?.getApp) {
+                        throw new Error('Main app component not available');
+                    }
+
+                    // Get the root element
+                    const rootElement = document.getElementById('root');
+                    if (!rootElement) {
+                        throw new Error('Root element not found');
+                    }
+
+                    // Get the main app component
+                    const App = window.ChoresApp.getApp();
+                    if (!App) {
+                        throw new Error('Failed to get app component');
+                    }
+
+                    // Create error boundary wrapper
+                    const ErrorBoundary = window.choreComponents.ErrorBoundary;
+                    const AppWithErrorBoundary = ErrorBoundary ? 
+                        React.createElement(ErrorBoundary, { showDetails: true }, React.createElement(App)) :
+                        React.createElement(App);
+
+                    // Render the app
+                    console.log('🎨 Rendering React app...');
+                    
+                    // Use React 18 createRoot if available
+                    if (window.ReactDOM.createRoot) {
+                        console.log('Using React 18 createRoot API');
+                        const root = window.ReactDOM.createRoot(rootElement);
+                        root.render(AppWithErrorBoundary);
+                    } else {
+                        console.log('Using legacy React render API');
+                        window.ReactDOM.render(AppWithErrorBoundary, rootElement);
+                    }
+
+                    // Mark app as loaded
+                    console.log('🎉 React app initialized successfully');
+                    document.body.classList.add('app-loaded');
+                    
+                    // Dispatch success event
+                    window.dispatchEvent(new CustomEvent('chores-app-initialized', {
+                        detail: {
+                            version: window.CHORES_APP_VERSION,
+                            reactVersion: React.version,
+                            componentCount: Object.keys(window.choreComponents).length,
+                            timestamp: new Date().toISOString()
+                        }
+                    }));
+                    
+                } catch (error) {
+                    console.error('💥 Failed to initialize React app:', error);
+                    
                     const rootElement = document.getElementById('root');
                     if (rootElement) {
                         rootElement.innerHTML = `
-                            <div class="error-container" style="padding: 20px;">
-                                <h2>Loading Error</h2>
-                                <p>Failed to load required dependencies:</p>
-                                <ul style="text-align: left;">
-                                    ${missing.map(dep => `<li>${dep}</li>`).join('')}
-                                </ul>
-                                <p>Please check the browser console for more details.</p>
-                                <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px;">
-                                    Reload Page
-                                </button>
-                            </div>`;
+                            <div class="error-container">
+                                <h2>App Initialization Error</h2>
+                                <p>Failed to initialize the dashboard:</p>
+                                <p><strong>${error.message}</strong></p>
+                                <details style="margin: 10px 0;">
+                                    <summary>Debug Information</summary>
+                                    <div style="background: #f5f5f5; padding: 10px; border-radius: 4px; margin-top: 10px; font-family: monospace; font-size: 12px;">
+                                        <div>React: ${!!window.React}</div>
+                                        <div>ReactDOM: ${!!window.ReactDOM}</div>
+                                        <div>Components: ${!!window.choreComponents} (${Object.keys(window.choreComponents || {}).length})</div>
+                                        <div>App: ${!!window.ChoresApp}</div>
+                                        <div>getApp: ${!!window.ChoresApp?.getApp}</div>
+                                        <div>ChoresAPI: ${!!window.ChoresAPI}</div>
+                                        <div>Version: ${window.CHORES_APP_VERSION}</div>
+                                        <div>Timestamp: ${new Date().toISOString()}</div>
+                                    </div>
+                                </details>
+                                <div style="margin-top: 20px;">
+                                    <button onclick="location.reload()" style="margin-right: 10px;">Reload Page</button>
+                                    <button onclick="console.log('Debug Info:', {React: !!window.React, Components: Object.keys(window.choreComponents || {}), API: !!window.ChoresAPI})">Log Debug Info</button>
+                                </div>
+                            </div>
+                        `;
                     }
-                    return;
                 }
-
-                // Continue checking
-                setTimeout(checkDependenciesAndInit, 100);
             }
 
-            // Start checking dependencies
-            checkDependenciesAndInit();
+            // Wait for both API and components to be ready before loading app
+            let apiReady = false;
+            let componentsReady = false;
+
+            function checkIfReady() {
+                if (apiReady && componentsReady) {
+                    loadAppModules();
+                }
+            }
+
+            // Listen for API ready event
+            window.addEventListener('chores-api-ready', () => {
+                console.log('✅ API system ready');
+                apiReady = true;
+                checkIfReady();
+            });
+
+            // Listen for components ready event
+            window.addEventListener('choreComponentsReady', (event) => {
+                console.log('✅ Component system ready:', event.detail);
+                componentsReady = true;
+                checkIfReady();
+            });
+
+            // Fallback timeout in case events don't fire
+            setTimeout(() => {
+                if (!apiReady || !componentsReady) {
+                    console.warn('⚠️ Timeout waiting for dependencies, attempting to load anyway...');
+                    apiReady = true;
+                    componentsReady = true;
+                    checkIfReady();
+                }
+            }, 10000);
+
+        })();
+    </script>
+
+    <!-- FIXED: Enhanced error handling and debugging -->
+    <script type="text/javascript">
+        // Global error handler
+        window.addEventListener('error', function(event) {
+            console.error('💥 Global JavaScript error:', event.error);
+            
+            // Don't show error dialog for resource loading errors
+            if (event.message && event.message.includes('Loading')) {
+                return;
+            }
+            
+            // Show user-friendly error message
+            const rootElement = document.getElementById('root');
+            if (rootElement && !document.querySelector('.error-container')) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-container';
+                errorDiv.innerHTML = `
+                    <h2>Unexpected Error</h2>
+                    <p>An unexpected error occurred in the application.</p>
+                    <p><strong>Error:</strong> ${event.message || 'Unknown error'}</p>
+                    <button onclick="location.reload()">Reload Page</button>
+                    <button onclick="this.parentElement.style.display='none'">Dismiss</button>
+                `;
+                document.body.appendChild(errorDiv);
+            }
         });
+
+        // Unhandled promise rejection handler
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('💥 Unhandled promise rejection:', event.reason);
+            
+            // Prevent the default browser behavior
+            event.preventDefault();
+        });
+
+        // Debug helpers (only in development)
+        if (window.location.hostname === 'localhost' || window.location.hostname.includes('dev')) {
+            window.choresdebug = {
+                components: () => Object.keys(window.choreComponents || {}),
+                api: () => Object.keys(window.ChoresAPI || {}),
+                reload: () => location.reload(),
+                state: () => console.log({
+                    React: !!window.React,
+                    ReactDOM: !!window.ReactDOM,
+                    choreComponents: Object.keys(window.choreComponents || {}),
+                    ChoresAPI: !!window.ChoresAPI,
+                    ChoresApp: !!window.ChoresApp
+                })
+            };
+            console.log('🔧 Debug helpers available at window.choresdebug');
+        }
     </script>
 </body>
 </html>

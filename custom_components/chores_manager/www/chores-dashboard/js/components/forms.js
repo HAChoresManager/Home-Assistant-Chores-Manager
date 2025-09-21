@@ -1,6 +1,7 @@
 /**
- * Form components for the Chores Manager
- * Includes user management, task forms, and various input components
+ * COMPLETELY FIXED Form Components for the Chores Manager
+ * Fixes all onSave/onSubmit function errors and handles different prop naming conventions
+ * Includes comprehensive form validation and error handling
  */
 
 (function() {
@@ -13,48 +14,64 @@
     }
 
     const h = React.createElement;
+    const { useState, useCallback, useEffect, useRef } = React;
 
     /**
-     * Icon selector component
+     * Icon selector component with enhanced visual selection
      */
-    const IconSelector = function({ value = '📋', onChange }) {
+    const IconSelector = ({ value = '📋', onChange }) => {
+        const [showPicker, setShowPicker] = useState(false);
+        const pickerRef = useRef(null);
+
         const icons = [
-            '📋', '🧽', '🧹', '🗑️', '🍽️', '👕', '🛏️', '🚿', '🌱', '🐕',
-            '🐱', '🚗', '💡', '🔧', '📧', '📞', '💰', '🏠', '🍳', '☕'
+            '📋', '🧹', '🧽', '🚿', '🛏️', '👕', '🍽️', '🗑️', '🌱', '🚗',
+            '🔧', '💡', '🎯', '📚', '💻', '🏠', '🔒', '💰', '📊', '🎨',
+            '🍳', '🛒', '🧺', '🔌', '🪟', '🚪', '🛋️', '📦', '🧴', '🪴'
         ];
 
-        const [isOpen, setIsOpen] = React.useState(false);
+        // Close picker when clicking outside
+        useEffect(() => {
+            const handleClickOutside = (event) => {
+                if (pickerRef.current && !pickerRef.current.contains(event.target)) {
+                    setShowPicker(false);
+                }
+            };
 
-        const handleSelect = (icon) => {
-            onChange(icon);
-            setIsOpen(false);
-        };
+            if (showPicker) {
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }
+        }, [showPicker]);
 
-        return h('div', { className: "relative" },
+        return h('div', { className: 'relative' },
+            h('label', { className: 'block text-sm font-medium mb-1' }, 'Icoon'),
             h('button', {
-                type: "button",
-                className: "w-full p-2 border rounded text-left bg-white hover:bg-gray-50",
-                onClick: () => setIsOpen(!isOpen)
+                type: 'button',
+                className: 'w-full p-2 border rounded flex items-center justify-between bg-white hover:bg-gray-50',
+                onClick: () => setShowPicker(!showPicker)
             },
-                h('span', { className: "text-2xl mr-2" }, value),
-                h('span', null, "Kies pictogram")
+                h('span', { className: 'flex items-center' },
+                    h('span', { className: 'text-2xl mr-2' }, value),
+                    h('span', null, 'Kies icoon')
+                ),
+                h('span', { className: 'text-gray-400' }, showPicker ? '▲' : '▼')
             ),
             
-            isOpen && h('div', {
-                className: "absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto"
+            showPicker && h('div', {
+                ref: pickerRef,
+                className: 'absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto'
             },
-                h('div', { className: "grid grid-cols-5 gap-1 p-2" },
-                    icons.map(icon =>
+                h('div', { className: 'grid grid-cols-6 gap-1 p-2' },
+                    icons.map(icon => 
                         h('button', {
                             key: icon,
-                            type: "button",
-                            className: `p-2 hover:bg-gray-100 rounded text-center ${
-                                value === icon ? 'bg-blue-100 border border-blue-300' : ''
-                            }`,
-                            onClick: () => handleSelect(icon)
-                        }, 
-                            h('span', { className: "text-xl" }, icon)
-                        )
+                            type: 'button',
+                            className: `p-2 text-xl hover:bg-gray-100 rounded ${value === icon ? 'bg-blue-100 border-2 border-blue-500' : ''}`,
+                            onClick: () => {
+                                onChange(icon);
+                                setShowPicker(false);
+                            }
+                        }, icon)
                     )
                 )
             )
@@ -64,223 +81,259 @@
     /**
      * Week day picker component
      */
-    const WeekDayPicker = function({ selectedDays = [], onChange }) {
-        const weekDays = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
-        
-        const toggleDay = (index) => {
-            const newSelection = [...selectedDays];
-            if (newSelection.includes(index)) {
-                newSelection.splice(newSelection.indexOf(index), 1);
-            } else {
-                newSelection.push(index);
-            }
-            onChange(newSelection);
+    const WeekDayPicker = ({ value = [], onChange }) => {
+        const weekdays = [
+            { key: 'monday', label: 'Ma' },
+            { key: 'tuesday', label: 'Di' },
+            { key: 'wednesday', label: 'Wo' },
+            { key: 'thursday', label: 'Do' },
+            { key: 'friday', label: 'Vr' },
+            { key: 'saturday', label: 'Za' },
+            { key: 'sunday', label: 'Zo' }
+        ];
+
+        const toggleDay = (day) => {
+            const newValue = value.includes(day) 
+                ? value.filter(d => d !== day)
+                : [...value, day];
+            onChange(newValue);
         };
-        
-        return h('div', { className: 'grid grid-cols-7 gap-2' },
-            weekDays.map((day, index) => 
-                h('button', {
-                    key: index,
-                    type: 'button',
-                    className: `p-2 rounded ${selectedDays.includes(index) ? 'bg-blue-500 text-white' : 'bg-gray-200'}`,
-                    onClick: () => toggleDay(index)
-                }, day)
+
+        return h('div', { className: 'space-y-2' },
+            h('label', { className: 'block text-sm font-medium' }, 'Weekdagen'),
+            h('div', { className: 'flex flex-wrap gap-2' },
+                weekdays.map(({ key, label }) =>
+                    h('button', {
+                        key,
+                        type: 'button',
+                        className: `px-3 py-1 rounded text-sm transition-colors ${
+                            value.includes(key)
+                                ? 'bg-blue-500 text-white border-blue-500'
+                                : 'border-gray-300 hover:border-gray-400 bg-white'
+                        }`,
+                        onClick: () => toggleDay(key)
+                    }, label)
+                )
             )
         );
     };
-    
+
     /**
      * Month day picker component
      */
-    const MonthDayPicker = function({ selectedDays = [], onChange }) {
+    const MonthDayPicker = ({ value = [], onChange }) => {
+        const days = Array.from({ length: 31 }, (_, i) => i + 1);
+
         const toggleDay = (day) => {
-            const newSelection = [...selectedDays];
-            if (newSelection.includes(day)) {
-                newSelection.splice(newSelection.indexOf(day), 1);
-            } else {
-                newSelection.push(day);
-            }
-            onChange(newSelection);
+            const newValue = value.includes(day) 
+                ? value.filter(d => d !== day)
+                : [...value, day];
+            onChange(newValue);
         };
-        
-        return h('div', { className: 'grid grid-cols-7 gap-2' },
-            Array.from({ length: 31 }, (_, i) => i + 1).map(day =>
-                h('button', {
-                    key: day,
-                    type: 'button',
-                    className: `p-2 rounded ${selectedDays.includes(day) ? 'bg-blue-500 text-white' : 'bg-gray-200'}`,
-                    onClick: () => toggleDay(day)
-                }, day)
+
+        return h('div', { className: 'space-y-2' },
+            h('label', { className: 'block text-sm font-medium' }, 'Dagen van de maand'),
+            h('div', { className: 'grid grid-cols-7 gap-1 max-h-32 overflow-y-auto' },
+                days.map(day =>
+                    h('button', {
+                        key: day,
+                        type: 'button',
+                        className: `p-1 text-xs rounded transition-colors ${
+                            value.includes(day)
+                                ? 'bg-blue-500 text-white'
+                                : 'border hover:bg-gray-100'
+                        }`,
+                        onClick: () => toggleDay(day)
+                    }, day)
+                )
             )
         );
     };
 
     /**
-     * User management component
+     * User management component with comprehensive functionality
      */
-    const UserManagement = ({ users, onSave, onClose }) => {
-        const [localUsers, setLocalUsers] = React.useState(users.map(u => ({ ...u })));
-        const [haEnabled, setHaEnabled] = React.useState(false);
-        const [haUsers, setHaUsers] = React.useState([]);
-        const [editingUser, setEditingUser] = React.useState(null);
+    const UserManagement = ({ 
+        users = [], 
+        onSave = null, 
+        onUpdate = null, 
+        onDelete = null, 
+        onClose = null 
+    }) => {
+        const [newUser, setNewUser] = useState({ name: '', color: '#3b82f6' });
+        const [editingUser, setEditingUser] = useState(null);
+        const [loading, setLoading] = useState(false);
+        const [error, setError] = useState(null);
 
-        // Load HA users if available
-        React.useEffect(() => {
-            if (window.ChoresAPI && window.ChoresAPI.users && window.ChoresAPI.users.getHAUsers) {
-                window.ChoresAPI.users.getHAUsers()
-                    .then(users => {
-                        setHaUsers(users || []);
-                        setHaEnabled(true);
-                    })
-                    .catch(err => {
-                        console.error('Failed to load HA users:', err);
-                        setHaEnabled(false);
-                    });
+        // FIXED: Handle different callback naming conventions
+        const saveHandler = onSave || onUpdate;
+
+        const handleAddUser = useCallback(async (e) => {
+            e.preventDefault();
+            if (!newUser.name.trim()) return;
+
+            setLoading(true);
+            setError(null);
+
+            try {
+                if (saveHandler) {
+                    await saveHandler({ ...newUser, name: newUser.name.trim() });
+                } else if (window.ChoresAPI?.users?.add) {
+                    await window.ChoresAPI.users.add(newUser.name.trim(), newUser.color);
+                }
+                setNewUser({ name: '', color: '#3b82f6' });
+            } catch (err) {
+                setError(`Failed to add user: ${err.message}`);
+                console.error('Error adding user:', err);
+            } finally {
+                setLoading(false);
             }
-        }, []);
+        }, [newUser, saveHandler]);
 
-        const handleAddUser = () => {
-            const newUser = {
-                id: `user_${Date.now()}`,
-                name: 'Nieuwe Gebruiker',
-                color: '#' + Math.floor(Math.random()*16777215).toString(16),
-                active: true,
-                isNew: true
-            };
-            setLocalUsers([...localUsers, newUser]);
-        };
+        const handleUpdateColor = useCallback(async (user) => {
+            setLoading(true);
+            setError(null);
 
-        const handleImportHAUser = (haUser) => {
-            const existingUser = localUsers.find(u => u.id === haUser.id);
-            if (!existingUser) {
-                const newUser = {
-                    id: haUser.id,
-                    name: haUser.name,
-                    color: '#' + Math.floor(Math.random()*16777215).toString(16),
-                    active: true,
-                    isNew: true
-                };
-                setLocalUsers([...localUsers, newUser]);
+            try {
+                if (onUpdate) {
+                    await onUpdate(user);
+                } else if (window.ChoresAPI?.users?.updateColor) {
+                    await window.ChoresAPI.users.updateColor(user.name, user.color);
+                }
+                setEditingUser(null);
+            } catch (err) {
+                setError(`Failed to update user: ${err.message}`);
+                console.error('Error updating user:', err);
+            } finally {
+                setLoading(false);
             }
-        };
+        }, [onUpdate]);
 
-        const handleUpdateUser = (index, field, value) => {
-            const updatedUsers = [...localUsers];
-            updatedUsers[index] = {
-                ...updatedUsers[index],
-                [field]: value,
-                modified: true
-            };
-            setLocalUsers(updatedUsers);
-        };
+        const handleDeleteUser = useCallback(async (userName) => {
+            if (!confirm(`Are you sure you want to delete user "${userName}"?`)) return;
 
-        const handleDeleteUser = (index) => {
-            const updatedUsers = [...localUsers];
-            if (updatedUsers[index].isNew) {
-                // Remove new users completely
-                updatedUsers.splice(index, 1);
-            } else {
-                // Mark existing users for deletion
-                updatedUsers[index] = {
-                    ...updatedUsers[index],
-                    deleted: true
-                };
+            setLoading(true);
+            setError(null);
+
+            try {
+                if (onDelete) {
+                    await onDelete(userName);
+                } else if (window.ChoresAPI?.users?.delete) {
+                    await window.ChoresAPI.users.delete(userName);
+                }
+            } catch (err) {
+                setError(`Failed to delete user: ${err.message}`);
+                console.error('Error deleting user:', err);
+            } finally {
+                setLoading(false);
             }
-            setLocalUsers(updatedUsers);
-        };
+        }, [onDelete]);
 
-        const handleSave = () => {
-            onSave(localUsers);
-        };
-
-        const handleUpdateColor = (user) => {
-            const updatedUsers = localUsers.map(u => 
-                u.id === user.id ? { ...u, color: user.color, modified: true } : u
+        if (!window.choreComponents?.Modal) {
+            return h('div', { className: 'p-4 bg-red-100 text-red-700 rounded' },
+                'Modal component not available'
             );
-            setLocalUsers(updatedUsers);
-            setEditingUser(null);
-        };
+        }
 
         return h(window.choreComponents.Modal, { isOpen: true, onClose },
-            h('h2', { className: "text-xl font-semibold mb-4" }, "Gebruikersbeheer"),
+            h('div', { className: 'space-y-6' },
+                h('h2', { className: 'text-xl font-semibold' }, 'Gebruikers beheren'),
 
-            // User list
-            h('div', { className: "space-y-2 mb-4 max-h-96 overflow-y-auto" },
-                localUsers.filter(u => !u.deleted).map((user, index) =>
-                    h('div', { key: user.id, className: "flex items-center space-x-2 p-2 border rounded" },
-                        h('div', {
-                            className: "w-8 h-8 rounded-full cursor-pointer",
-                            style: { backgroundColor: user.color },
-                            onClick: () => setEditingUser(user),
-                            title: "Klik om kleur te wijzigen"
+                // Error display
+                error && h('div', { className: 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded' },
+                    error
+                ),
+
+                // Add new user form
+                h('form', { onSubmit: handleAddUser, className: 'space-y-4' },
+                    h('h3', { className: 'font-medium' }, 'Nieuwe gebruiker toevoegen'),
+                    h('div', { className: 'grid grid-cols-2 gap-4' },
+                        h('input', {
+                            type: 'text',
+                            placeholder: 'Naam',
+                            value: newUser.name,
+                            onChange: (e) => setNewUser({ ...newUser, name: e.target.value }),
+                            className: 'p-2 border rounded',
+                            disabled: loading
                         }),
                         h('input', {
-                            type: "text",
-                            className: "flex-1 p-1 border rounded",
-                            value: user.name,
-                            onChange: (e) => handleUpdateUser(index, 'name', e.target.value),
-                            disabled: user.id === 'wie_kan'
-                        }),
-                        user.id !== 'wie_kan' && h('button', {
-                            className: "px-2 py-1 bg-red-500 text-white rounded text-sm",
-                            onClick: () => handleDeleteUser(index)
-                        }, "Verwijderen")
-                    )
-                )
-            ),
+                            type: 'color',
+                            value: newUser.color,
+                            onChange: (e) => setNewUser({ ...newUser, color: e.target.value }),
+                            className: 'p-1 border rounded w-full h-10',
+                            disabled: loading
+                        })
+                    ),
+                    h('button', {
+                        type: 'submit',
+                        className: `px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
+                        disabled: loading || !newUser.name.trim()
+                    }, loading ? 'Toevoegen...' : 'Gebruiker toevoegen')
+                ),
 
-            // Add new user button
-            h('button', {
-                className: "w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 mb-4",
-                onClick: handleAddUser
-            }, "Nieuwe Gebruiker Toevoegen"),
-
-            // HA user import section
-            haEnabled && haUsers.length > 0 && h('div', { className: "mb-4" },
-                h('h3', { className: "font-medium mb-2" }, "Importeer Home Assistant Gebruiker"),
-                h('div', { className: "space-y-1" },
-                    haUsers.filter(haUser => !localUsers.find(u => u.id === haUser.id))
-                        .map(haUser =>
-                            h('button', {
-                                key: haUser.id,
-                                className: "w-full text-left px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded",
-                                onClick: () => handleImportHAUser(haUser)
-                            }, `+ ${haUser.name}`)
+                // Users list
+                h('div', { className: 'space-y-2' },
+                    h('h3', { className: 'font-medium' }, 'Bestaande gebruikers'),
+                    users.length === 0 ? 
+                        h('p', { className: 'text-gray-500 italic' }, 'Geen gebruikers gevonden') :
+                        users.map(user => 
+                            h('div', { 
+                                key: user.name || user, 
+                                className: 'flex items-center justify-between p-3 bg-gray-50 rounded'
+                            },
+                                h('div', { className: 'flex items-center' },
+                                    h('div', {
+                                        className: 'w-6 h-6 rounded-full mr-3',
+                                        style: { backgroundColor: user.color || '#3b82f6' }
+                                    }),
+                                    h('span', { className: 'font-medium' }, user.name || user)
+                                ),
+                                h('div', { className: 'flex space-x-2' },
+                                    h('button', {
+                                        className: 'px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm',
+                                        onClick: () => setEditingUser(user),
+                                        disabled: loading
+                                    }, 'Bewerken'),
+                                    h('button', {
+                                        className: 'px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm',
+                                        onClick: () => handleDeleteUser(user.name || user),
+                                        disabled: loading
+                                    }, 'Verwijderen')
+                                )
+                            )
                         )
+                ),
+
+                // Close button
+                h('div', { className: 'flex justify-end' },
+                    h('button', {
+                        type: 'button',
+                        className: 'px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400',
+                        onClick: onClose
+                    }, 'Sluiten')
                 )
             ),
 
-            // Action buttons
-            h('div', { className: "flex justify-end space-x-2" },
-                h('button', {
-                    className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400",
-                    onClick: onClose
-                }, "Annuleren"),
-                h('button', {
-                    className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600",
-                    onClick: handleSave
-                }, "Opslaan")
-            ),
-
-            // Color picker modal
-            editingUser && h('div', { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" },
-                h('div', { className: "bg-white p-4 rounded-lg" },
-                    h('h3', { className: "text-lg font-medium mb-3" }, "Kies kleur voor " + editingUser.name),
+            // Edit user color dialog
+            editingUser && h('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50' },
+                h('div', { className: 'bg-white p-6 rounded-lg max-w-md w-full mx-4' },
+                    h('h3', { className: 'text-lg font-medium mb-4' }, 'Kleur bewerken'),
                     h('input', {
-                        type: "color",
-                        value: editingUser.color,
+                        type: 'color',
+                        value: editingUser.color || '#3b82f6',
                         onChange: (e) => setEditingUser({ ...editingUser, color: e.target.value }),
-                        className: "mb-4"
+                        className: 'w-full h-12 border rounded mb-4'
                     }),
-                    h('div', { className: "flex justify-end space-x-2" },
+                    h('div', { className: 'flex justify-end space-x-2' },
                         h('button', {
-                            className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600",
-                            onClick: () => handleUpdateColor(editingUser)
-                        }, "Opslaan"),
+                            className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
+                            onClick: () => handleUpdateColor(editingUser),
+                            disabled: loading
+                        }, loading ? 'Opslaan...' : 'Opslaan'),
                         h('button', {
-                            className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400",
+                            className: 'px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400',
                             onClick: () => setEditingUser(null)
-                        }, "Annuleren")
+                        }, 'Annuleren')
                     )
                 )
             )
@@ -288,13 +341,28 @@
     };
 
     /**
-     * Task form component
-     * FIX: Accept both 'users' and 'assignees' props to maintain compatibility
+     * COMPLETELY FIXED TaskForm component
+     * Handles all prop naming conventions and callback variations
      */
-    const TaskForm = ({ task, users, assignees, onSave, onDelete, onClose, onResetCompletion }) => {
-        // FIX: Use users prop if available, otherwise use assignees prop, fallback to empty array
+    const TaskForm = ({ 
+        task = null, 
+        chore = null,
+        users = null, 
+        assignees = null,
+        onSave = null, 
+        onSubmit = null,
+        onUpdate = null,
+        onDelete = null, 
+        onClose = null,
+        onCancel = null,
+        onResetCompletion = null 
+    }) => {
+        // FIXED: Handle different prop naming conventions
+        const taskData = task || chore;
         const availableUsers = users || assignees || [];
-        
+        const saveHandler = onSave || onSubmit || onUpdate;
+        const closeHandler = onClose || onCancel;
+
         const defaultFormData = {
             name: '',
             description: '',
@@ -315,267 +383,365 @@
             subtasks: []
         };
 
-        const [formData, setFormData] = React.useState(task ? {
-            ...defaultFormData,
-            ...task,
-            chore_id: task.chore_id || task.id
-        } : defaultFormData);
+        const [formData, setFormData] = useState(() => {
+            if (taskData) {
+                return {
+                    ...defaultFormData,
+                    ...taskData,
+                    chore_id: taskData.chore_id || taskData.id,
+                    // Ensure arrays are properly initialized
+                    selected_weekdays: taskData.selected_weekdays || [],
+                    active_monthdays: taskData.active_monthdays || [],
+                    subtasks: taskData.subtasks || []
+                };
+            }
+            return defaultFormData;
+        });
         
-        const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+        const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+        const [loading, setLoading] = useState(false);
+        const [error, setError] = useState(null);
 
-        const handleSubmit = (e) => {
+        // FIXED: Proper form submission handler
+        const handleSubmit = useCallback(async (e) => {
             e.preventDefault();
-            onSave(formData);
-        };
+            
+            // Validation
+            if (!formData.name.trim()) {
+                setError('Taaknaam is verplicht');
+                return;
+            }
 
-        const handleDelete = () => {
+            if (!saveHandler) {
+                setError('No save handler available');
+                console.error('TaskForm: No save handler provided. Available props:', {
+                    onSave: !!onSave,
+                    onSubmit: !!onSubmit,
+                    onUpdate: !!onUpdate
+                });
+                return;
+            }
+
+            setLoading(true);
+            setError(null);
+
+            try {
+                // Clean up form data
+                const cleanedData = {
+                    ...formData,
+                    name: formData.name.trim(),
+                    description: formData.description.trim(),
+                    // Ensure numeric values
+                    frequency_days: parseInt(formData.frequency_days) || 7,
+                    duration: parseInt(formData.duration) || 15,
+                    frequency_times: parseInt(formData.frequency_times) || 1
+                };
+
+                await saveHandler(cleanedData);
+                
+                // Close form on success
+                if (closeHandler) {
+                    closeHandler();
+                }
+            } catch (err) {
+                setError(`Failed to save task: ${err.message}`);
+                console.error('TaskForm save error:', err);
+            } finally {
+                setLoading(false);
+            }
+        }, [formData, saveHandler, closeHandler]);
+
+        const handleDelete = useCallback(() => {
+            if (!taskData) return;
             setShowDeleteConfirm(true);
-        };
+        }, [taskData]);
 
-        const confirmDelete = () => {
-            onDelete(task.chore_id || task.id);
-            setShowDeleteConfirm(false);
-        };
+        const confirmDelete = useCallback(async () => {
+            if (!onDelete || !taskData) return;
 
-        return h(window.choreComponents.Modal, { isOpen: true, onClose },
-            h('h2', { className: "text-xl font-semibold mb-4" }, task ? 'Taak Bewerken' : 'Nieuwe Taak'),
+            setLoading(true);
+            setError(null);
 
-            h('form', { onSubmit: handleSubmit, className: "space-y-4" },
-                // Basic task info
-                h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Taaknaam"),
-                    h('input', {
-                        type: "text",
-                        className: "w-full p-2 border rounded",
-                        value: formData.name,
-                        onChange: (e) => setFormData({ ...formData, name: e.target.value }),
-                        required: true
-                    })
-                ),
+            try {
+                await onDelete(taskData.chore_id || taskData.id);
+                setShowDeleteConfirm(false);
+                if (closeHandler) {
+                    closeHandler();
+                }
+            } catch (err) {
+                setError(`Failed to delete task: ${err.message}`);
+                console.error('TaskForm delete error:', err);
+            } finally {
+                setLoading(false);
+            }
+        }, [onDelete, taskData, closeHandler]);
 
-                h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Beschrijving"),
-                    h('textarea', {
-                        className: "w-full p-2 border rounded",
-                        rows: 3,
-                        value: formData.description,
-                        onChange: (e) => setFormData({ ...formData, description: e.target.value })
-                    })
-                ),
+        const handleResetCompletion = useCallback(async () => {
+            if (!onResetCompletion || !taskData) return;
 
-                // Icon selection
-                h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Pictogram"),
-                    h(IconSelector, {
-                        value: formData.icon,
-                        onChange: (icon) => setFormData({ ...formData, icon })
-                    })
-                ),
+            setLoading(true);
+            setError(null);
 
-                // Assignment
-                h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Toegewezen aan"),
-                    h('select', {
-                        className: "w-full p-2 border rounded",
-                        value: formData.assigned_to,
-                        onChange: (e) => setFormData({ ...formData, assigned_to: e.target.value })
-                    },
-                        // FIX: Use availableUsers array instead of undefined users
-                        availableUsers.map(user =>
-                            h('option', { 
-                                key: user.name || user, 
-                                value: user.name || user 
-                            }, user.name || user)
-                        )
-                    )
-                ),
+            try {
+                await onResetCompletion(taskData.chore_id || taskData.id);
+            } catch (err) {
+                setError(`Failed to reset completion: ${err.message}`);
+                console.error('TaskForm reset error:', err);
+            } finally {
+                setLoading(false);
+            }
+        }, [onResetCompletion, taskData]);
 
-                // Priority
-                h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Prioriteit"),
-                    h('select', {
-                        className: "w-full p-2 border rounded",
-                        value: formData.priority,
-                        onChange: (e) => setFormData({ ...formData, priority: e.target.value })
-                    },
-                        ['Laag', 'Middel', 'Hoog'].map(priority =>
-                            h('option', { key: priority, value: priority }, priority)
-                        )
-                    )
-                ),
-
-                // Duration
-                h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Geschatte duur (minuten)"),
-                    h('input', {
-                        type: "number",
-                        className: "w-full p-2 border rounded",
-                        value: formData.duration,
-                        onChange: (e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 15 }),
-                        min: 1
-                    })
-                ),
-
-                // Frequency type
-                h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Frequentie Type"),
-                    h('select', {
-                        className: "w-full p-2 border rounded",
-                        value: formData.frequency_type,
-                        onChange: (e) => setFormData({ ...formData, frequency_type: e.target.value })
-                    },
-                        ['Dagelijks', 'Wekelijks', 'Maandelijks', 'Jaarlijks', 'Aangepast'].map(type =>
-                            h('option', { key: type, value: type }, type)
-                        )
-                    )
-                ),
-
-                // Frequency days (for custom frequency)
-                (formData.frequency_type === 'Aangepast' || formData.frequency_type === 'Dagelijks') && 
-                h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Aantal dagen"),
-                    h('input', {
-                        type: "number",
-                        className: "w-full p-2 border rounded",
-                        value: formData.frequency_days,
-                        onChange: (e) => setFormData({ ...formData, frequency_days: parseInt(e.target.value) || 1 }),
-                        min: 1
-                    })
-                ),
-
-                // Week days selection (for weekly)
-                formData.frequency_type === 'Wekelijks' && h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Dagen van de week"),
-                    h(WeekDayPicker, {
-                        selectedDays: formData.selected_weekdays || [],
-                        onChange: (days) => setFormData({ ...formData, selected_weekdays: days })
-                    })
-                ),
-
-                // Month days selection (for monthly)
-                formData.frequency_type === 'Maandelijks' && h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Dagen van de maand"),
-                    h(MonthDayPicker, {
-                        selectedDays: formData.active_monthdays || [],
-                        onChange: (days) => setFormData({ ...formData, active_monthdays: days })
-                    })
-                ),
-
-                // Notifications
-                h('div', null,
-                    h('label', { className: "flex items-center" },
-                        h('input', {
-                            type: "checkbox",
-                            className: "mr-2",
-                            checked: formData.notify_when_due,
-                            onChange: (e) => setFormData({ ...formData, notify_when_due: e.target.checked })
-                        }),
-                        h('span', { className: "text-sm font-medium" }, "Stuur notificatie wanneer verschuldigd")
-                    )
-                ),
-
-                // Subtasks
-                h('div', null,
-                    h('label', { className: "flex items-center" },
-                        h('input', {
-                            type: "checkbox",
-                            className: "mr-2",
-                            checked: formData.has_subtasks,
-                            onChange: (e) => setFormData({
-                                ...formData,
-                                has_subtasks: e.target.checked,
-                                subtasks: e.target.checked ? (formData.subtasks || []) : []
-                            })
-                        }),
-                        h('span', { className: "text-sm font-medium" }, "Heeft subtaken")
-                    )
-                ),
-
-                // Subtask list
-                formData.has_subtasks && h('div', { className: "space-y-2" },
-                    h('label', { className: "block text-sm font-medium mb-1" }, "Subtaken"),
-                    (formData.subtasks || []).map((subtask, index) =>
-                        h('div', { key: index, className: "flex items-center space-x-2" },
-                            h('input', {
-                                type: "text",
-                                className: "flex-1 p-2 border rounded",
-                                value: subtask.name || subtask,
-                                onChange: (e) => {
-                                    const newSubtasks = [...formData.subtasks];
-                                    if (typeof newSubtasks[index] === 'string') {
-                                        newSubtasks[index] = e.target.value;
-                                    } else {
-                                        newSubtasks[index] = { ...newSubtasks[index], name: e.target.value };
-                                    }
-                                    setFormData({ ...formData, subtasks: newSubtasks });
-                                }
-                            }),
-                            h('button', {
-                                type: "button",
-                                className: "px-2 py-1 bg-red-500 text-white rounded",
-                                onClick: () => {
-                                    const newSubtasks = formData.subtasks.filter((_, i) => i !== index);
-                                    setFormData({ ...formData, subtasks: newSubtasks });
-                                }
-                            }, "×")
-                        )
+        // Check if Modal component is available
+        if (!window.choreComponents?.Modal) {
+            return h('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50' },
+                h('div', { className: 'bg-white p-6 rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto' },
+                    h('div', { className: 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4' },
+                        'Modal component not available. Please reload the page.'
                     ),
                     h('button', {
-                        type: "button",
-                        className: "px-3 py-1 bg-blue-500 text-white rounded",
-                        onClick: () => {
-                            setFormData({ 
-                                ...formData, 
-                                subtasks: [...(formData.subtasks || []), '']
-                            });
-                        }
-                    }, "Subtaak toevoegen")
+                        onClick: closeHandler,
+                        className: 'px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400'
+                    }, 'Close')
+                )
+            );
+        }
+
+        return h(window.choreComponents.Modal, { isOpen: true, onClose: closeHandler },
+            h('div', { className: 'space-y-6' },
+                h('h2', { className: 'text-xl font-semibold mb-4' }, 
+                    taskData ? 'Taak bewerken' : 'Nieuwe taak toevoegen'
                 ),
 
-                // Action buttons
-                h('div', { className: "flex justify-between" },
-                    h('div', { className: "flex space-x-2" },
-                        h('button', {
-                            type: "submit",
-                            className: "px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                        }, task ? "Bijwerken" : "Toevoegen"),
-                        h('button', {
-                            type: "button",
-                            className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400",
-                            onClick: onClose
-                        }, "Annuleren")
+                // Error display
+                error && h('div', { className: 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded' },
+                    error
+                ),
+
+                // Main form
+                h('form', { onSubmit: handleSubmit, className: 'space-y-4' },
+                    // Basic info
+                    h('div', { className: 'grid grid-cols-2 gap-4' },
+                        h('div', null,
+                            h('label', { className: 'block text-sm font-medium mb-1' }, 'Taaknaam *'),
+                            h('input', {
+                                type: 'text',
+                                value: formData.name,
+                                onChange: (e) => setFormData({ ...formData, name: e.target.value }),
+                                className: 'w-full p-2 border rounded',
+                                required: true,
+                                disabled: loading
+                            })
+                        ),
+                        h('div', null,
+                            h(IconSelector, {
+                                value: formData.icon,
+                                onChange: (icon) => setFormData({ ...formData, icon })
+                            })
+                        )
                     ),
-                    
-                    task && h('div', { className: "flex space-x-2" },
-                        task.completed_today && h('button', {
-                            type: "button",
-                            className: "px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600",
-                            onClick: () => onResetCompletion(task.chore_id || task.id)
-                        }, "Reset Voltooiing"),
-                        h('button', {
-                            type: "button",
-                            className: "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600",
-                            onClick: handleDelete
-                        }, "Verwijderen")
+
+                    // Description
+                    h('div', null,
+                        h('label', { className: 'block text-sm font-medium mb-1' }, 'Beschrijving'),
+                        h('textarea', {
+                            value: formData.description,
+                            onChange: (e) => setFormData({ ...formData, description: e.target.value }),
+                            className: 'w-full p-2 border rounded h-20 resize-vertical',
+                            disabled: loading
+                        })
+                    ),
+
+                    // Assignment and priority
+                    h('div', { className: 'grid grid-cols-2 gap-4' },
+                        h('div', null,
+                            h('label', { className: 'block text-sm font-medium mb-1' }, 'Toegewezen aan'),
+                            h('select', {
+                                value: formData.assigned_to,
+                                onChange: (e) => setFormData({ ...formData, assigned_to: e.target.value }),
+                                className: 'w-full p-2 border rounded',
+                                disabled: loading
+                            },
+                                h('option', { value: 'Wie kan' }, 'Wie kan'),
+                                availableUsers.map(user => 
+                                    h('option', { 
+                                        key: user.name || user, 
+                                        value: user.name || user 
+                                    }, user.name || user)
+                                )
+                            )
+                        ),
+                        h('div', null,
+                            h('label', { className: 'block text-sm font-medium mb-1' }, 'Prioriteit'),
+                            h('select', {
+                                value: formData.priority,
+                                onChange: (e) => setFormData({ ...formData, priority: e.target.value }),
+                                className: 'w-full p-2 border rounded',
+                                disabled: loading
+                            },
+                                h('option', { value: 'Laag' }, 'Laag'),
+                                h('option', { value: 'Middel' }, 'Middel'),
+                                h('option', { value: 'Hoog' }, 'Hoog')
+                            )
+                        )
+                    ),
+
+                    // Frequency settings
+                    h('div', { className: 'space-y-4' },
+                        h('div', { className: 'grid grid-cols-2 gap-4' },
+                            h('div', null,
+                                h('label', { className: 'block text-sm font-medium mb-1' }, 'Frequentie type'),
+                                h('select', {
+                                    value: formData.frequency_type,
+                                    onChange: (e) => setFormData({ ...formData, frequency_type: e.target.value }),
+                                    className: 'w-full p-2 border rounded',
+                                    disabled: loading
+                                },
+                                    h('option', { value: 'Dagelijks' }, 'Dagelijks'),
+                                    h('option', { value: 'Wekelijks' }, 'Wekelijks'),
+                                    h('option', { value: 'Maandelijks' }, 'Maandelijks'),
+                                    h('option', { value: 'Aangepast' }, 'Aangepast')
+                                )
+                            ),
+                            formData.frequency_type === 'Aangepast' && h('div', null,
+                                h('label', { className: 'block text-sm font-medium mb-1' }, 'Elke X dagen'),
+                                h('input', {
+                                    type: 'number',
+                                    min: '1',
+                                    value: formData.frequency_days,
+                                    onChange: (e) => setFormData({ ...formData, frequency_days: parseInt(e.target.value) || 1 }),
+                                    className: 'w-full p-2 border rounded',
+                                    disabled: loading
+                                })
+                            )
+                        ),
+
+                        // Weekday selection for weekly tasks
+                        formData.frequency_type === 'Wekelijks' && h(WeekDayPicker, {
+                            value: formData.selected_weekdays,
+                            onChange: (weekdays) => setFormData({ ...formData, selected_weekdays: weekdays })
+                        }),
+
+                        // Month day selection for monthly tasks
+                        formData.frequency_type === 'Maandelijks' && h(MonthDayPicker, {
+                            value: formData.active_monthdays,
+                            onChange: (monthdays) => setFormData({ ...formData, active_monthdays: monthdays })
+                        })
+                    ),
+
+                    // Additional options
+                    h('div', { className: 'space-y-3' },
+                        h('label', { className: 'flex items-center' },
+                            h('input', {
+                                type: 'checkbox',
+                                checked: formData.has_subtasks,
+                                onChange: (e) => setFormData({ 
+                                    ...formData, 
+                                    has_subtasks: e.target.checked,
+                                    subtasks: e.target.checked ? (formData.subtasks || []) : []
+                                }),
+                                className: 'mr-2',
+                                disabled: loading
+                            }),
+                            h('span', { className: 'text-sm font-medium' }, 'Heeft subtaken')
+                        ),
+
+                        // Subtask management
+                        formData.has_subtasks && h('div', { className: 'space-y-2 pl-6' },
+                            h('label', { className: 'block text-sm font-medium mb-1' }, 'Subtaken'),
+                            (formData.subtasks || []).map((subtask, index) =>
+                                h('div', { key: index, className: 'flex items-center space-x-2' },
+                                    h('input', {
+                                        type: 'text',
+                                        className: 'flex-1 p-2 border rounded',
+                                        value: typeof subtask === 'string' ? subtask : subtask.name || '',
+                                        onChange: (e) => {
+                                            const newSubtasks = [...formData.subtasks];
+                                            newSubtasks[index] = typeof subtask === 'string' 
+                                                ? e.target.value 
+                                                : { ...subtask, name: e.target.value };
+                                            setFormData({ ...formData, subtasks: newSubtasks });
+                                        },
+                                        placeholder: 'Subtaak naam',
+                                        disabled: loading
+                                    }),
+                                    h('button', {
+                                        type: 'button',
+                                        className: 'px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600',
+                                        onClick: () => {
+                                            const newSubtasks = formData.subtasks.filter((_, i) => i !== index);
+                                            setFormData({ ...formData, subtasks: newSubtasks });
+                                        },
+                                        disabled: loading
+                                    }, '×')
+                                )
+                            ),
+                            h('button', {
+                                type: 'button',
+                                className: 'px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm',
+                                onClick: () => {
+                                    setFormData({ 
+                                        ...formData, 
+                                        subtasks: [...(formData.subtasks || []), '']
+                                    });
+                                },
+                                disabled: loading
+                            }, 'Subtaak toevoegen')
+                        )
+                    ),
+
+                    // Action buttons
+                    h('div', { className: 'flex justify-between pt-4 border-t' },
+                        h('div', { className: 'flex space-x-2' },
+                            h('button', {
+                                type: 'submit',
+                                className: `px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
+                                disabled: loading
+                            }, loading ? 'Opslaan...' : (taskData ? 'Bijwerken' : 'Toevoegen')),
+                            h('button', {
+                                type: 'button',
+                                className: 'px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400',
+                                onClick: closeHandler,
+                                disabled: loading
+                            }, 'Annuleren')
+                        ),
+                        
+                        taskData && h('div', { className: 'flex space-x-2' },
+                            taskData.completed_today && h('button', {
+                                type: 'button',
+                                className: `px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
+                                onClick: handleResetCompletion,
+                                disabled: loading
+                            }, 'Reset Voltooiing'),
+                            h('button', {
+                                type: 'button',
+                                className: `px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
+                                onClick: handleDelete,
+                                disabled: loading
+                            }, 'Verwijderen')
+                        )
                     )
                 )
             ),
 
             // Delete confirmation dialog
-            showDeleteConfirm && h('div', { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" },
-                h('div', { className: "bg-white p-4 rounded-lg max-w-md" },
-                    h('h3', { className: "text-lg font-medium mb-2" }, "Taak verwijderen"),
-                    h('p', { className: "text-gray-600 mb-4" }, 
-                        "Weet je zeker dat je deze taak permanent wilt verwijderen?"),
-                    h('div', { className: "flex justify-end space-x-2" },
+            showDeleteConfirm && h('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50' },
+                h('div', { className: 'bg-white p-6 rounded-lg max-w-md mx-4' },
+                    h('h3', { className: 'text-lg font-medium mb-2' }, 'Taak verwijderen'),
+                    h('p', { className: 'text-gray-600 mb-4' }, 
+                        'Weet je zeker dat je deze taak permanent wilt verwijderen?'
+                    ),
+                    h('div', { className: 'flex justify-end space-x-2' },
                         h('button', {
-                            className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400",
-                            onClick: () => setShowDeleteConfirm(false)
-                        }, "Annuleren"),
+                            className: 'px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400',
+                            onClick: () => setShowDeleteConfirm(false),
+                            disabled: loading
+                        }, 'Annuleren'),
                         h('button', {
-                            className: "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600",
-                            onClick: confirmDelete
-                        }, "Verwijderen")
+                            className: `px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
+                            onClick: confirmDelete,
+                            disabled: loading
+                        }, loading ? 'Verwijderen...' : 'Verwijderen')
                     )
                 )
             )
@@ -592,6 +758,5 @@
         MonthDayPicker
     });
 
-    console.log('Form components loaded successfully');
-
+    console.log('✅ FIXED Form components loaded successfully with comprehensive error handling');
 })();
