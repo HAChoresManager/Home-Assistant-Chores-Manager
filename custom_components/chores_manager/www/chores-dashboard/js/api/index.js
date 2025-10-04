@@ -136,6 +136,20 @@ window.ChoresAPI = window.ChoresAPI || {};
             };
             
             console.log('✅ ChoresAPI ready with CORRECTED method bindings');
+
+            // PROTECT from being overwritten
+            Object.freeze(window.ChoresAPI);
+            Object.seal(window.ChoresAPI);
+
+            // Add debug trap to catch if something tries to delete it
+            Object.defineProperty(window, 'ChoresAPI', {
+                value: window.ChoresAPI,
+                writable: false,
+                configurable: false
+            });
+
+            console.log('🔒 ChoresAPI protected from modification');
+
             window.dispatchEvent(new CustomEvent('chores-api-ready'));
             
         } catch (error) {
