@@ -201,6 +201,8 @@ window.ChoresApp = window.ChoresApp || {};
                         }));
                         
                         console.log('✅ Data loaded from sensor state');
+                        console.log('🔍 DEBUG: Chores loaded:', chores.length, chores);
+                        console.log('🔍 DEBUG: Assignees loaded:', assignees.length, assignees);
                         return;
                     }
 
