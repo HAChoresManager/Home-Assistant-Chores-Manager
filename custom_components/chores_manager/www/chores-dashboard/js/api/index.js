@@ -119,8 +119,21 @@ window.ChoresAPI = window.ChoresAPI || {};
                 }
             };
             
-            // Replace global API
-            window.ChoresAPI = { ...api, BaseAPI, ChoresAPI: ChoresAPIClass, UsersAPI, ThemeAPI, ENDPOINTS };
+            // Build complete API object explicitly
+            window.ChoresAPI = {
+                // API methods
+                chores: api.chores,
+                users: api.users,
+                theme: api.theme,
+                getSensorState: api.getSensorState,
+                initialize: api.initialize,
+                // Class references
+                BaseAPI: BaseAPI,
+                ChoresAPI: ChoresAPIClass,
+                UsersAPI: UsersAPI,
+                ThemeAPI: ThemeAPI,
+                ENDPOINTS: ENDPOINTS
+            };
             
             console.log('✅ ChoresAPI ready with CORRECTED method bindings');
             window.dispatchEvent(new CustomEvent('chores-api-ready'));
