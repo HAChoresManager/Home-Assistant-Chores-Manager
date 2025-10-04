@@ -14,7 +14,7 @@
 }
 
 /* Fix ENTIRE BACKGROUND with theme color - solves the white bars on sides */
-html, body, #root, .modal-container {
+html, body, #root {
     background-color: var(--theme-background, #ffffff) !important;
 }
 
@@ -80,183 +80,46 @@ div.bg-green-100 {
 
 .foldout-section.expanded {
     max-height: 500px;
-    transition: max-height 0.5s ease-in;
+    overflow-y: auto;
 }
 
-/* CONSISTENT TOGGLE BUTTONS for foldouts */
-.foldout-toggle-button {
-    display: inline-flex !important;
-    align-items: center !important;
-    font-size: 0.875rem !important;
-    color: #3b82f6 !important;
-    background: none !important;
-    border: none !important;
-    padding: 0.25rem 0.5rem !important;
-    cursor: pointer !important;
-    transition: color 0.2s !important;
-}
-
-.foldout-toggle-button:hover {
-    color: #2563eb !important;
-    text-decoration: underline !important;
-}
-
-.foldout-toggle-button > span {
-    margin-left: 0.25rem !important;
-}
-
-/* Fix for the task card container and description relationship */
-.mb-4 {
-    width: 100% !important;
+/* Icons consistency */
+.task-card-icon {
+    font-size: 2rem !important;
+    line-height: 1 !important;
     display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 
-/* SUBTASKS STYLING - UPDATED TO MATCH DESCRIPTION STYLE */
-.task-card .subtask-list {
-    margin: 0 8px !important;
-    margin-top: 0.5rem !important;
-    padding-left: 0.75rem !important;
-    width: calc(100% - 16px) !important;
-    box-sizing: border-box !important;
-    border-left: 2px solid #e5e7eb !important;
+/* Dividers between sections */
+.section-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, #e5e7eb 20%, #e5e7eb 80%, transparent);
+    margin: 2rem 0;
 }
 
-/* CRITICAL: Fix Achterstallig text color - with highest priority override */
-span:contains("Achterstallig"),
-.flex-1 span:contains("Achterstallig"),
-.task-card span:contains("Achterstallig"),
-div:has(> span:contains("Achterstallig")) span,
-.text-red-600[innerHTML="Achterstallig"],
-span[innerHTML="Achterstallig"],
-.past-due span:contains("Achterstallig"),
-*[innerHTML*="Achterstallig"],
-span.text-gray-600.text-red-600,
-[class*="text-red"],
-span:has(> span:contains("Achterstallig")),
-span:after(> span:contains("Achterstallig")),
-.task-card .text-gray-600[innerHTML*="Achterstallig"],
-div > span:has(> span:contains("Achterstallig")) {
-    color: #ef4444 !important;
-    font-weight: bold !important;
-    text-shadow: none !important;
-}
-
-/* UPDATED: Action buttons styling for consistency */
-.task-action-button {
-    background-color: #f3f4f6 !important;
-    border: 1px solid #d1d5db !important;
-    color: var(--theme-primary-text, #000000) !important;
-    transition: all 0.2s ease !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-.task-action-button:hover {
-    background-color: #e5e7eb !important;
-}
-
-.task-action-button:disabled {
-    opacity: 0.6 !important;
-    cursor: not-allowed !important;
-    color: #6b7280 !important;
-}
-
-/* Remove the orange color from the undo button */
-button.bg-orange-100, 
-button.bg-orange-200, 
-button[class*="bg-orange"] {
-    background-color: #f3f4f6 !important;
-    border-color: #d1d5db !important;
-    color: var(--theme-primary-text, #000000) !important;
-}
-
-button.bg-orange-100:hover, 
-button.bg-orange-200:hover, 
-button[class*="bg-orange"]:hover {
-    background-color: #e5e7eb !important;
-}
-
-/* Fix stats card grid layout */
-.grid.grid-cols-1, .grid.grid-cols-2, .grid.grid-cols-3 {
-    display: grid !important;
+/* Task card header consistency */
+.task-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
     width: 100% !important;
     gap: 1rem !important;
-    margin-bottom: 1rem !important;
 }
 
-/* Ensure task headings use theme variables */
-.task-card h3.text-xl, .task-card h3 {
-    color: var(--theme-primary-text, #000000) !important;
+/* Task action buttons */
+.task-actions {
+    display: flex !important;
+    gap: 0.5rem !important;
+    align-items: center !important;
+    flex-shrink: 0 !important;
 }
 
-/* Reset and base styles */
-body {
-    margin: 0;
-    padding: 0;
-    background-color: var(--theme-background, #ffffff) !important;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-
-#root {
-    min-height: 100vh;
-    padding: 1rem;
-    background-color: var(--theme-background, #ffffff) !important;
-}
-
-/* Force high contrast text throughout the application */
-h1, h2, h3, h4, h5, h6, p, div, span, label, button {
-    color: var(--theme-primary-text, #000000) !important;
-    text-shadow: none !important;
-}
-
-/* Card styling */
-.task-card {
-    transition: all 0.2s ease;
-    cursor: pointer;
-    border-radius: 8px;
-    background-color: #f8f8f8 !important;
-    border: 1px solid #e0e0e0;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    margin-bottom: 0;
-}
-
-.task-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-/* Typography - High contrast */
-.text-gray-400, .text-gray-500, .text-gray-600 {
-    color: #555555 !important;
-}
-
-.text-gray-700, .text-gray-800, .text-gray-900 {
-    color: #000000 !important;
-}
-
-/* Section headers */
-.section-divider {
-    margin: 1.5rem 0;
-    border-top: 1px solid #e0e0e0;
-    position: relative;
-}
-
-.section-divider-text {
-    position: absolute;
-    top: -12px;
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: #ffffff;
-    padding: 0 1rem;
-    font-weight: 600;
-    color: #000000 !important;
-}
-
-/* Aankomende Taken section header */
-div > h2.text-xl.font-semibold.mb-4 {
-    color: #000000 !important;
+/* Task title styling */
+.task-title {
+    flex: 1 !important;
+    min-width: 0 !important;
     font-weight: 600 !important;
     background: none !important;
     width: 100% !important;
@@ -271,31 +134,13 @@ div > h2.text-xl.font-semibold.mb-4 {
     border-left: 4px solid #f59e0b;
 }
 
-/* Modal styling */
-.modal-container {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    z-index: 50;
-    background-color: rgba(0, 0, 0, 0.5);
-    overflow-y: auto;
-    padding: 2rem 0;
-}
-
+/* FIXED Modal styling - positioning handled by inline styles in base.js */
+/* DO NOT add positioning CSS here as it will conflict with the component */
 .modal-content, .bg-white {
     background-color: #f8f8f8 !important;
     color: #000000 !important;
     border-radius: 8px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    max-width: 90%;
-    width: 550px;
-    margin: 0 auto;
-    padding: 1.5rem;
 }
 
 .modal-content h2, .modal-content h3, .modal-content label {
@@ -472,11 +317,17 @@ button.bg-gray-100, button.bg-gray-200 {
     padding: 0.5rem 1rem;
     cursor: pointer;
     font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.user-tab:hover {
+    background-color: #f3f4f6;
 }
 
 .user-tab.active {
-    border-bottom: 2px solid #3b82f6;
-    color: #3b82f6 !important;
+    border-bottom-color: #3b82f6;
+    color: #3b82f6;
 }
 
 /* Custom theme styling */
@@ -557,108 +408,211 @@ button.text-blue-500:hover,
     display: grid;
     grid-template-columns: repeat(6, 1fr);
     gap: 0.5rem;
-    margin-top: 0.5rem;
+    margin: 1rem 0;
 }
 
 .icon-option {
-    width: 36px;
-    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.25rem;
-    border: 1px solid #e0e0e0;
-    border-radius: 0.25rem;
+    padding: 0.75rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 0.5rem;
     cursor: pointer;
+    transition: all 0.2s;
+    font-size: 1.5rem;
+    background-color: #ffffff;
+}
+
+.icon-option:hover {
+    border-color: #3b82f6;
+    background-color: #eff6ff;
+    transform: scale(1.05);
 }
 
 .icon-option.selected {
-    background-color: #3b82f6;
-    color: white;
-    border-color: #2563eb;
+    border-color: #3b82f6;
+    background-color: #dbeafe;
 }
 
-/* Ensure the "Achterstallig" text is ALWAYS red regardless of theme */
-.task-card span:contains("Achterstallig") {
-    color: #ef4444 !important;
-    font-weight: bold !important;
-}
-
-/* Subtask styling improvements - UPDATED TO ENSURE VISIBILITY */
-.task-card .subtask-list {
-    margin-top: 0.5rem;
-    border-left: 2px solid #e5e7eb;
-    padding-left: 0.75rem;
-    width: calc(100% - 16px) !important;
-    margin: 0 8px 12px 8px !important;
-    box-sizing: border-box !important;
-}
-
-/* Auth error banner styling */
-.auth-error-banner {
-    background-color: #fee2e2;
-    border-left: 4px solid #ef4444;
-    color: #b91c1c;
-    padding: 1rem;
-    margin-bottom: 1rem;
-    border-radius: 0.25rem;
-    display: flex;
-    align-items: center;
-    width: 100% !important;
-}
-
-.auth-error-banner button {
-    margin-left: auto;
-    background-color: #fecaca;
-    color: #b91c1c;
-    font-weight: bold;
-    padding: 0.25rem 0.75rem;
-    border-radius: 0.25rem;
-    border: none;
-    cursor: pointer;
-}
-
-.auth-error-banner button:hover {
-    background-color: #fca5a5;
-}
-
-/* Fix success message for consistent alignment */
-.bg-green-100 {
-    width: 100% !important;
-    margin-bottom: 1rem !important;
-    box-sizing: border-box !important;
-}
-
-/* Fix the header and content spacing */
-#root > div {
-    padding-left: 1rem !important;
-    padding-right: 1rem !important;
-}
-
-/* Force fixes for parent-child relationships */
-.mb-4 {
-    margin-bottom: 1rem !important;
-    width: 100% !important;
-}
-
-/* Task container and its description relationship */
-.task-card + .task-description {
-    width: calc(100% - 16px) !important;
-    margin: 0 8px 12px 8px !important;
-    border-radius: 0 0 8px 8px !important;
-}
-
-/* Also fix text alignment icons in toggle buttons */
-.ml-1, .mr-1 {
-    margin-left: 0.25rem !important;
-    margin-right: 0.25rem !important;
-}
-
-/* Fix for task icon display */
-.task-icon {
+/* CONSISTENT TOGGLE BUTTONS for foldouts */
+.foldout-toggle-button {
     display: inline-flex !important;
     align-items: center !important;
-    justify-content: center !important;
+    font-size: 0.875rem !important;
+    color: #3b82f6 !important;
+    background: none !important;
+    border: none !important;
+    padding: 0.25rem 0.5rem !important;
+    cursor: pointer !important;
+    transition: color 0.2s !important;
+}
+
+.foldout-toggle-button:hover {
+    color: #2563eb !important;
+    text-decoration: underline !important;
+}
+
+.foldout-toggle-button > span {
+    margin-left: 0.25rem !important;
+}
+
+/* Fix for the task card container and description relationship */
+.mb-4 {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+}
+
+/* SUBTASKS STYLING - UPDATED TO MATCH DESCRIPTION STYLE */
+.task-card .subtask-list {
+    margin: 0 8px !important;
+    margin-top: 0.5rem !important;
+    padding-left: 0.75rem !important;
+    width: calc(100% - 16px) !important;
+    box-sizing: border-box !important;
+    border-left: 2px solid #e5e7eb !important;
+}
+
+/* CRITICAL: Fix Achterstallig text color - with highest priority override */
+span:contains("Achterstallig"),
+.flex-1 span:contains("Achterstallig"),
+.task-card span:contains("Achterstallig"),
+div:has(> span:contains("Achterstallig")) span,
+.text-red-600[innerHTML="Achterstallig"],
+span[innerHTML="Achterstallig"],
+.past-due span:contains("Achterstallig"),
+*[innerHTML*="Achterstallig"],
+span.text-gray-600.text-red-600,
+[class*="text-red"],
+span:has(> span:contains("Achterstallig")),
+span:after(> span:contains("Achterstallig")),
+.task-card .text-gray-600[innerHTML*="Achterstallig"],
+div > span:has(> span:contains("Achterstallig")) {
+    color: #ef4444 !important;
+    font-weight: bold !important;
+    text-shadow: none !important;
+}
+
+/* UPDATED: Action buttons styling for consistency */
+.task-action-button {
+    background-color: #f3f4f6 !important;
+    border: 1px solid #d1d5db !important;
+    color: var(--theme-primary-text, #000000) !important;
+    transition: all 0.2s ease !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.task-action-button:hover {
+    background-color: #e5e7eb !important;
+}
+
+.task-action-button:disabled {
+    opacity: 0.6 !important;
+    cursor: not-allowed !important;
+}
+
+/* Remove the orange color from the undo button */
+button.bg-orange-100, 
+button.bg-orange-200, 
+button[class*="bg-orange"] {
+    background-color: #f3f4f6 !important;
+    border-color: #d1d5db !important;
+    color: var(--theme-primary-text, #000000) !important;
+}
+
+button.bg-orange-100:hover, 
+button.bg-orange-200:hover, 
+button[class*="bg-orange"]:hover {
+    background-color: #e5e7eb !important;
+}
+
+/* Fix stats card grid layout */
+.grid.grid-cols-1, .grid.grid-cols-2, .grid.grid-cols-3 {
+    display: grid !important;
+    width: 100% !important;
+    gap: 1rem !important;
+    margin-bottom: 1rem !important;
+}
+
+/* Ensure task headings use theme variables */
+.task-card h3.text-xl, .task-card h3 {
+    color: var(--theme-primary-text, #000000) !important;
+}
+
+/* Reset and base styles */
+body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--theme-background, #ffffff) !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+#root {
+    min-height: 100vh;
+    padding: 1rem;
+    background-color: var(--theme-background, #ffffff) !important;
+}
+
+/* Force high contrast text throughout the application */
+h1, h2, h3, h4, h5, h6, p, div, span, label, button {
+    color: var(--theme-primary-text, #000000) !important;
+    text-shadow: none !important;
+}
+
+/* Card styling */
+.task-card {
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border-radius: 8px;
+    background-color: #f8f8f8 !important;
+    border: 1px solid #e0e0e0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 0;
+}
+
+.task-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Typography - High contrast */
+.text-gray-400, .text-gray-500, .text-gray-600 {
+    color: #555555 !important;
+}
+
+.text-gray-700, .text-gray-800, .text-gray-900 {
+    color: #000000 !important;
+}
+
+/* Section headers */
+.section-divider {
+    margin: 1.5rem 0;
+    border-top: 1px solid #e0e0e0;
+    position: relative;
+}
+
+.section-divider-text {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #ffffff;
+    padding: 0 1rem;
+    font-weight: 600;
+    color: #000000 !important;
+}
+
+/* Aankomende Taken section header */
+div > h2.text-xl.font-semibold.mb-4 {
+    color: #000000 !important;
+    font-weight: 600 !important;
+}
+
+/* Task card emoji icon consistency */
+.task-card .task-icon {
     font-size: 1.5rem !important;
     line-height: 1 !important;
     width: 2rem !important;
@@ -806,6 +760,20 @@ span[role="img"] {
     gap: 1rem;
 }
 
+/* Stats card enhancements */
+.stats-card {
+    background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+    border: 1px solid #e5e7eb;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stats-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
 /* Assignee colors - Updated to maintain readability */
 .bg-laura { background-color: rgba(59, 130, 246, 0.1) !important; }
 .bg-martijn { background-color: rgba(251, 146, 60, 0.1) !important; }
@@ -872,4 +840,43 @@ span[role="img"] {
 /* Grid gap */
 .grid.gap-4 {
     gap: 1rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+    #root > div {
+        padding: 0 0.5rem !important;
+    }
+
+    .task-card {
+        font-size: 0.875rem;
+    }
+
+    .task-header {
+        flex-direction: column;
+        gap: 0.75rem !important;
+    }
+
+    .task-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+    
+    .icon-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* Ensure no transform properties on body or html that would break fixed positioning */
+html, body {
+    transform: none !important;
+    perspective: none !important;
+    filter: none !important;
+}
+
+/* Mobile-specific modal adjustments */
+@media (max-width: 768px) {
+    .modal-overlay {
+        padding: 0.5rem !important;
+    }
 }
