@@ -586,6 +586,31 @@
                         )
                     ),
 
+                    // Duration and Icon selection
+                    h('div', { className: 'grid grid-cols-2 gap-4' },
+                        h('div', null,
+                            h('label', { className: 'block text-sm font-medium mb-1' }, 'Geschatte duur (minuten)'),
+                            h('input', {
+                                type: 'number',
+                                min: '1',
+                                max: '480',
+                                step: '5',
+                                value: formData.duration || 15,
+                                onChange: (e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 15 }),
+                                className: 'w-full p-2 border rounded',
+                                disabled: loading,
+                                placeholder: '15'
+                            })
+                        ),
+                        h('div', null,
+                            h('label', { className: 'block text-sm font-medium mb-1' }, 'Icoon'),
+                            h(IconSelector, {
+                                value: formData.icon || '📋',
+                                onChange: (icon) => setFormData({ ...formData, icon })
+                            })
+                        )
+                    ),
+
                     // Frequency settings
                     h('div', { className: 'space-y-4' },
                         h('div', { className: 'grid grid-cols-2 gap-4' },
