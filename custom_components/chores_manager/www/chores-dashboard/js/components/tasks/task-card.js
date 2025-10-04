@@ -1,6 +1,6 @@
 /**
- * COMPLETE TaskCard Component - Main task display card
- * This file was MISSING - that's why TaskCard wasn't loading!
+ * FIXED TaskCard Component - Properly handles dialog state through callbacks
+ * Uses app-level state management for dialogs instead of local rendering
  */
 
 (function() {
@@ -15,20 +15,21 @@
     const h = React.createElement;
     
     /**
-     * Complete TaskCard Component - Displays a single chore/task
+     * Fixed TaskCard Component - Displays a single chore/task
+     * Dialogs are triggered via callbacks to app-level state
      */
     const TaskCard = function({
         chore = {},
         onComplete,
         onEdit,
         onDelete,
+        onCompleteClick, // New: Callback to trigger completion dialog at app level
+        onSubtaskClick,  // New: Callback to trigger subtask dialog at app level
         assignees = [],
         showEditDelete = true,
         isProcessing = false
     }) {
-        // State management
-        const [showConfirm, setShowConfirm] = useState(false);
-        const [showSubtaskConfirm, setShowSubtaskConfirm] = useState(false);
+        // Local state only for UI interactions, not dialogs
         const [showDescription, setShowDescription] = useState(false);
         const [localProcessing, setLocalProcessing] = useState(false);
         
@@ -57,215 +58,169 @@
         const choreId = id || chore_id;
         const hasDescription = description && description.trim().length > 0;
         
-        // Filter assignees (remove "Wie kan" if it exists as a user)
-        const availableAssignees = assignees.filter(a => {
-            const name = a.name || a;
-            return name !== 'Wie kan';
-        });
+        // Filter active subtasks
+        const activeSubtasks = subtasks?.filter(st => !st.is_completed) || [];
+        const completedCount = completed_subtasks_count || 0;
+        const totalSubtasks = subtasks?.length || 0;
         
-        // Handlers
-        const handleComplete = useCallback(() => {
-            if (has_subtasks && subtasks && subtasks.length > 0) {
-                setShowSubtaskConfirm(true);
-            } else {
-                setShowConfirm(true);
-            }
-        }, [has_subtasks, subtasks]);
-        
-        const handleConfirmComplete = useCallback(async (userId) => {
-            setShowConfirm(false);
-            setLocalProcessing(true);
+        // Handle complete button click - triggers app-level dialog
+        const handleCompleteClick = useCallback(() => {
+            if (isDisabled) return;
             
-            try {
-                if (onComplete) {
-                    await onComplete(choreId, userId);
-                }
-            } catch (error) {
-                console.error('Error completing task:', error);
-            } finally {
-                setLocalProcessing(false);
+            // If we have the new callback, use it to trigger app-level dialog
+            if (onCompleteClick) {
+                onCompleteClick({
+                    choreId,
+                    name,
+                    defaultUser: assigned_to
+                });
+            } else if (onComplete) {
+                // Fallback: direct completion without dialog
+                setLocalProcessing(true);
+                onComplete(choreId, assigned_to)
+                    .finally(() => setLocalProcessing(false));
             }
-        }, [choreId, onComplete]);
+        }, [choreId, name, assigned_to, isDisabled, onComplete, onCompleteClick]);
         
-        const handleSubtaskCompletion = useCallback(async (selectedSubtasks, userId) => {
-            setShowSubtaskConfirm(false);
-            setLocalProcessing(true);
+        // Handle subtask completion - triggers app-level dialog
+        const handleSubtaskClick = useCallback(() => {
+            if (isDisabled || !has_subtasks) return;
             
-            try {
-                // Handle subtask completion logic here
-                if (window.ChoresAPI?.chores?.completeSubtask) {
-                    for (const subtaskId of selectedSubtasks) {
-                        await window.ChoresAPI.chores.completeSubtask(subtaskId, userId);
-                    }
-                }
-                
-                // Refresh if possible
-                if (window.refreshChoresData) {
-                    await window.refreshChoresData();
-                }
-            } catch (error) {
-                console.error('Error completing subtasks:', error);
-            } finally {
-                setLocalProcessing(false);
+            if (onSubtaskClick) {
+                onSubtaskClick(chore);
             }
-        }, []);
+        }, [chore, has_subtasks, isDisabled, onSubtaskClick]);
         
-        const toggleDescription = useCallback(() => {
-            setShowDescription(prev => !prev);
-        }, []);
-        
-        // Get assignee color
-        const getAssigneeColor = (assignee) => {
-            if (!assignee || assignee === 'Wie kan') return '#e5e7eb';
-            const colors = ['#dbeafe', '#fef3c7', '#d1fae5', '#fde2e8', '#e0e7ff', '#fed7d7'];
-            const hash = assignee.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-            return colors[hash % colors.length];
+        // Priority colors
+        const priorityColors = {
+            'Laag': 'text-green-600',
+            'Middel': 'text-yellow-600',
+            'Hoog': 'text-red-600'
         };
         
-        // Format frequency
-        const formatFrequency = () => {
-            if (frequency_type === 'Dagelijks') return 'Dagelijks';
-            if (frequency_type === 'Wekelijks') return 'Wekelijks';
-            if (frequency_type === 'Maandelijks') return 'Maandelijks';
-            if (frequency_days === 1) return 'Dagelijks';
-            if (frequency_days === 7) return 'Wekelijks';
-            if (frequency_days < 7) return `Elke ${frequency_days} dagen`;
-            if (frequency_days < 30) return `Elke ${Math.round(frequency_days/7)} weken`;
-            return `Elke ${Math.round(frequency_days/30)} maanden`;
+        // Assignee background colors
+        const assigneeColors = {
+            'Laura': 'bg-laura',
+            'Martijn': 'bg-martijn',
+            'Samen': 'bg-samen',
+            'Wie kan': 'bg-wie-kan'
         };
         
-        // Main render
-        return h('div', {
-            className: `task-card p-4 mb-3 border rounded-lg shadow-sm transition-all ${
-                is_overdue ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'
-            } ${isDisabled ? 'opacity-50' : 'hover:shadow-md'}`,
-            'data-chore-id': choreId
+        // Status styling
+        const getStatusClasses = () => {
+            if (is_overdue) return 'border-red-500 bg-red-50';
+            if (days_until === 0) return 'border-yellow-500 bg-yellow-50';
+            return 'border-gray-200 hover:shadow-md';
+        };
+        
+        // Format due date display
+        const getDueDisplay = () => {
+            if (days_until === null) return '';
+            if (days_until < 0) return `${Math.abs(days_until)} dagen te laat`;
+            if (days_until === 0) return 'Vandaag';
+            if (days_until === 1) return 'Morgen';
+            return `Over ${days_until} dagen`;
+        };
+        
+        return h('div', { 
+            className: `task-card bg-white rounded-lg shadow-sm border-2 transition-all duration-200 ${getStatusClasses()} ${isDisabled ? 'opacity-75' : ''}`,
+            style: { position: 'relative' }
         },
-            // Header row
-            h('div', { className: 'flex items-start justify-between mb-2' },
-                // Left side - icon and info
-                h('div', { className: 'flex items-center flex-1' },
-                    h('span', { className: 'text-2xl mr-3' }, icon),
-                    h('div', { className: 'flex-1' },
-                        h('h3', { className: 'font-semibold text-lg' }, name),
-                        h('div', { className: 'flex flex-wrap gap-2 mt-1' },
-                            // Priority indicator
-                            window.choreComponents?.PriorityIndicator && h(window.choreComponents.PriorityIndicator, { priority }),
+            // Card content
+            h('div', { className: 'p-4' },
+                // Header row
+                h('div', { className: 'task-header mb-3' },
+                    // Icon and title
+                    h('div', { className: 'flex items-start flex-1 min-w-0' },
+                        h('span', { className: 'task-card-icon mr-3 flex-shrink-0' }, icon),
+                        h('div', { className: 'flex-1 min-w-0' },
+                            h('h3', { className: 'task-title text-lg' }, name),
                             
-                            // Frequency
-                            h('span', { className: 'text-xs px-2 py-1 bg-gray-100 rounded' }, formatFrequency()),
+                            // Metadata
+                            h('div', { className: 'flex flex-wrap items-center gap-2 mt-1 text-sm' },
+                                // Priority
+                                h('span', { className: `font-medium ${priorityColors[priority]}` }, 
+                                    `⚡ ${priority}`
+                                ),
+                                
+                                // Assignee
+                                h('span', { 
+                                    className: `px-2 py-0.5 rounded ${assigneeColors[assigned_to] || 'bg-gray-100'}` 
+                                }, assigned_to),
+                                
+                                // Due date
+                                getDueDisplay() && h('span', { 
+                                    className: `font-medium ${is_overdue ? 'text-red-600' : days_until === 0 ? 'text-yellow-600' : 'text-gray-600'}` 
+                                }, getDueDisplay()),
+                                
+                                // Duration
+                                duration && h('span', { className: 'text-gray-500' }, `⏱️ ${duration} min`)
+                            ),
                             
-                            // Assignee
-                            h('span', {
-                                className: 'text-xs px-2 py-1 rounded',
-                                style: { backgroundColor: getAssigneeColor(assigned_to) }
-                            }, assigned_to),
-                            
-                            // Status badges
-                            is_overdue && h('span', { className: 'text-xs px-2 py-1 bg-red-500 text-white rounded' }, 'Te laat'),
-                            days_until !== null && days_until <= 0 && !is_overdue && 
-                                h('span', { className: 'text-xs px-2 py-1 bg-green-500 text-white rounded' }, 'Vandaag')
+                            // Subtasks progress
+                            has_subtasks && h('div', { className: 'mt-2' },
+                                h('div', { className: 'flex items-center justify-between mb-1' },
+                                    h('span', { className: 'text-sm text-gray-600' }, 
+                                        `Subtaken: ${completedCount}/${totalSubtasks}`
+                                    )
+                                ),
+                                h('div', { className: 'w-full bg-gray-200 rounded-full h-2' },
+                                    h('div', { 
+                                        className: 'bg-blue-500 h-2 rounded-full transition-all duration-300',
+                                        style: { width: `${totalSubtasks > 0 ? (completedCount / totalSubtasks * 100) : 0}%` }
+                                    })
+                                )
+                            )
                         )
+                    ),
+                    
+                    // Action buttons
+                    h('div', { className: 'task-actions' },
+                        // Complete button
+                        h('button', {
+                            className: `px-3 py-1.5 rounded text-white font-medium transition-colors ${
+                                has_subtasks && activeSubtasks.length > 0 ? 
+                                'bg-blue-500 hover:bg-blue-600' : 
+                                'bg-green-500 hover:bg-green-600'
+                            } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`,
+                            onClick: has_subtasks && activeSubtasks.length > 0 ? handleSubtaskClick : handleCompleteClick,
+                            disabled: isDisabled
+                        }, 
+                            isDisabled ? '⏳' : 
+                            has_subtasks && activeSubtasks.length > 0 ? '📝' : '✓'
+                        ),
+                        
+                        // Edit button
+                        showEditDelete && onEdit && h('button', {
+                            className: `ml-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded transition-colors ${
+                                isDisabled ? 'opacity-50 cursor-not-allowed' : ''
+                            }`,
+                            onClick: () => !isDisabled && onEdit(chore),
+                            disabled: isDisabled
+                        }, '✏️'),
+                        
+                        // Delete button
+                        showEditDelete && onDelete && h('button', {
+                            className: `ml-2 px-3 py-1.5 bg-red-100 hover:bg-red-200 rounded transition-colors ${
+                                isDisabled ? 'opacity-50 cursor-not-allowed' : ''
+                            }`,
+                            onClick: () => !isDisabled && onDelete(choreId),
+                            disabled: isDisabled
+                        }, '🗑️')
                     )
                 ),
                 
-                // Right side - action buttons
-                h('div', { className: 'flex items-center gap-2' },
-                    // Complete button
+                // Description section
+                hasDescription && h('div', { className: 'mt-3 pt-3 border-t' },
                     h('button', {
-                        onClick: handleComplete,
-                        disabled: isDisabled,
-                        className: `px-3 py-1 rounded transition-colors ${
-                            isDisabled ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600 text-white'
-                        }`
-                    }, '✓'),
-                    
-                    // Edit button
-                    showEditDelete && onEdit && h('button', {
-                        onClick: () => onEdit(chore),
-                        disabled: isDisabled,
-                        className: `px-3 py-1 rounded transition-colors ${
-                            isDisabled ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white'
-                        }`
-                    }, '✏️')
-                )
-            ),
-            
-            // Subtasks progress
-            has_subtasks && subtasks && subtasks.length > 0 && h('div', { className: 'mt-2' },
-                window.choreComponents?.SubtaskProgress ? 
-                    h(window.choreComponents.SubtaskProgress, { subtasks }) :
-                    h('div', { className: 'text-sm text-gray-600' },
-                        `${subtasks.filter(s => s.completed).length}/${subtasks.length} subtaken voltooid`
-                    )
-            ),
-            
-            // Description toggle
-            hasDescription && h('div', { className: 'mt-2' },
-                h('button', {
-                    onClick: toggleDescription,
-                    className: 'text-sm text-blue-600 hover:text-blue-800'
-                }, showDescription ? 'Verberg beschrijving' : 'Toon beschrijving')
-            ),
-            
-            // Description content
-            hasDescription && showDescription && h('div', { className: 'mt-3 p-3 bg-gray-50 rounded' },
-                window.choreComponents?.TaskDescription ? 
-                    h(window.choreComponents.TaskDescription, {
-                        description,
-                        choreId,
-                        inTaskCard: true
-                    }) : 
-                    h('p', { className: 'text-sm text-gray-700' }, description)
-            ),
-            
-            // Completion confirm dialog
-            showConfirm && (window.choreComponents?.CompletionConfirmDialog ? 
-                h(window.choreComponents.CompletionConfirmDialog, {
-                    isOpen: true,
-                    title: "Taak voltooien",
-                    message: `Markeer "${name}" als voltooid:`,
-                    onConfirm: handleConfirmComplete,
-                    onCancel: () => setShowConfirm(false),
-                    assignees: availableAssignees,
-                    defaultUser: assigned_to
-                }) :
-                h('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50' },
-                    h('div', { className: 'bg-white p-6 rounded-lg max-w-md' },
-                        h('h3', { className: 'text-lg font-medium mb-4' }, 'Taak voltooien'),
-                        h('p', { className: 'mb-4' }, `Markeer "${name}" als voltooid?`),
-                        h('div', { className: 'flex justify-end gap-2' },
-                            h('button', {
-                                onClick: () => setShowConfirm(false),
-                                className: 'px-4 py-2 bg-gray-300 rounded'
-                            }, 'Annuleren'),
-                            h('button', {
-                                onClick: () => handleConfirmComplete(assigned_to),
-                                className: 'px-4 py-2 bg-green-500 text-white rounded'
-                            }, 'Voltooien')
-                        )
-                    )
-                )
-            ),
-            
-            // Subtask completion dialog
-            showSubtaskConfirm && (window.choreComponents?.SubtaskCompletionDialog ?
-                h(window.choreComponents.SubtaskCompletionDialog, {
-                    isOpen: true,
-                    chore,
-                    onComplete: handleSubtaskCompletion,
-                    onCancel: () => setShowSubtaskConfirm(false),
-                    assignees: availableAssignees,
-                    defaultUser: assigned_to
-                }) :
-                h('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50' },
-                    h('div', { className: 'bg-white p-6 rounded-lg max-w-md' },
-                        h('h3', { className: 'text-lg font-medium mb-4' }, 'Subtaken voltooien'),
-                        h('p', { className: 'mb-4' }, 'Subtask dialog niet beschikbaar'),
-                        h('button', {
-                            onClick: () => setShowSubtaskConfirm(false),
-                            className: 'px-4 py-2 bg-gray-300 rounded'
-                        }, 'Sluiten')
+                        className: 'text-sm text-blue-600 hover:text-blue-700 flex items-center',
+                        onClick: () => setShowDescription(!showDescription)
+                    }, 
+                        h('span', { className: 'mr-1' }, showDescription ? '▼' : '▶'),
+                        'Beschrijving'
+                    ),
+                    showDescription && h('div', { className: 'mt-2 text-sm text-gray-700 whitespace-pre-wrap' },
+                        description
                     )
                 )
             )
@@ -276,5 +231,5 @@
     window.choreComponents = window.choreComponents || {};
     window.choreComponents.TaskCard = TaskCard;
     
-    console.log('✅ TaskCard component loaded successfully');
+    console.log('✅ FIXED TaskCard component - uses app-level dialog management');
 })();
