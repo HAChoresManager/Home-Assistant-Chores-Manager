@@ -188,10 +188,14 @@ window.ChoresApp = window.ChoresApp || {};
 
                     // Try to get data from sensor state first (most efficient)
                     const sensorState = await window.ChoresAPI.getSensorState();
-                    
                     if (sensorState?.attributes) {
-                        const { chores = [], assignees = [], stats = {} } = sensorState.attributes;
-                        
+                        // FIX: Tasks are in overdue_tasks, not chores
+                        const { 
+                            overdue_tasks: chores = [], 
+                            assignees = [], 
+                            stats = {} 
+                        } = sensorState.attributes;
+                    
                         setAppState(prev => ({
                             ...prev,
                             chores,
@@ -199,16 +203,8 @@ window.ChoresApp = window.ChoresApp || {};
                             stats,
                             loading: false
                         }));
-                        
-                        console.log('✅ Data loaded from sensor state');
-                        console.log('🔍 DEBUG: Chores loaded:', chores.length, chores);
-                        console.log('🔍 DEBUG: Assignees loaded:', assignees.length, assignees);
-                        console.log('🔍 Raw sensor state:', state.attributes);
-                        console.log('🔍 Checking fields:', {
-                        chores: state.attributes?.chores,
-                        overdue_tasks: state.attributes?.overdue_tasks,
-                        tasks: state.attributes?.tasks
-                    });
+                    
+                        console.log('✅ Data loaded:', chores.length, 'tasks');
                         return;
                     }
 
