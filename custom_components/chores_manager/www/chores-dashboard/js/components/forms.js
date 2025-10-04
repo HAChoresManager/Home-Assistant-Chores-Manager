@@ -1,13 +1,11 @@
 /**
  * COMPLETELY FIXED Form Components for the Chores Manager
- * Fixes all onSave/onSubmit function errors and handles different prop naming conventions
- * Includes comprehensive form validation and error handling
+ * Fixed modal positioning with inline styles to prevent CSS interference
  */
 
 (function() {
     'use strict';
 
-    // Check dependencies
     if (!window.React) {
         console.error('Form components require React');
         return;
@@ -16,8 +14,30 @@
     const h = React.createElement;
     const { useState, useCallback, useEffect, useRef } = React;
 
+    // CRITICAL: Overlay style for proper viewport-fixed positioning
+    const overlayStyle = {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        zIndex: 9999,
+        padding: '1rem',
+        overflowY: 'auto'
+    };
+
+    const modalContentStyle = {
+        maxHeight: '90vh',
+        overflow: 'hidden',
+        margin: 'auto'
+    };
+
     /**
-     * Icon selector component with enhanced visual selection
+     * Icon selector component
      */
     const IconSelector = ({ value = '📋', onChange }) => {
         const [showPicker, setShowPicker] = useState(false);
@@ -29,7 +49,6 @@
             '🍳', '🛒', '🧺', '🔌', '🪟', '🚪', '🛋️', '📦', '🧴', '🪴'
         ];
 
-        // Close picker when clicking outside
         useEffect(() => {
             const handleClickOutside = (event) => {
                 if (pickerRef.current && !pickerRef.current.contains(event.target)) {
@@ -151,7 +170,7 @@
     };
 
     /**
-     * User management component with comprehensive functionality
+     * User management component
      */
     const UserManagement = ({ 
         users = [], 
@@ -165,7 +184,6 @@
         const [loading, setLoading] = useState(false);
         const [error, setError] = useState(null);
 
-        // FIXED: Handle different callback naming conventions
         const saveHandler = onSave || onUpdate;
 
         const handleAddUser = useCallback(async (e) => {
@@ -184,7 +202,6 @@
                 setNewUser({ name: '', color: '#3b82f6' });
             } catch (err) {
                 setError(`Failed to add user: ${err.message}`);
-                console.error('Error adding user:', err);
             } finally {
                 setLoading(false);
             }
@@ -195,22 +212,21 @@
             setError(null);
 
             try {
-                if (onUpdate) {
-                    await onUpdate(user);
-                } else if (window.ChoresAPI?.users?.updateColor) {
-                    await window.ChoresAPI.users.updateColor(user.name, user.color);
+                if (saveHandler) {
+                    await saveHandler(user);
+                } else if (window.ChoresAPI?.users?.update) {
+                    await window.ChoresAPI.users.update(user.name, user.color);
                 }
                 setEditingUser(null);
             } catch (err) {
-                setError(`Failed to update user: ${err.message}`);
-                console.error('Error updating user:', err);
+                setError(`Failed to update color: ${err.message}`);
             } finally {
                 setLoading(false);
             }
-        }, [onUpdate]);
+        }, [saveHandler]);
 
         const handleDeleteUser = useCallback(async (userName) => {
-            if (!confirm(`Are you sure you want to delete user "${userName}"?`)) return;
+            if (!window.confirm(`Weet je zeker dat je ${userName} wilt verwijderen?`)) return;
 
             setLoading(true);
             setError(null);
@@ -223,100 +239,80 @@
                 }
             } catch (err) {
                 setError(`Failed to delete user: ${err.message}`);
-                console.error('Error deleting user:', err);
             } finally {
                 setLoading(false);
             }
         }, [onDelete]);
 
-        if (!window.choreComponents?.Modal) {
-            return h('div', { className: 'p-4 bg-red-100 text-red-700 rounded' },
-                'Modal component not available'
-            );
-        }
+        return h('div', { className: 'space-y-6' },
+            error && h('div', { className: 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded' }, error),
 
-        return h(window.choreComponents.Modal, { isOpen: true, onClose },
-            h('div', { className: 'space-y-6' },
-                h('h2', { className: 'text-xl font-semibold' }, 'Gebruikers beheren'),
-
-                // Error display
-                error && h('div', { className: 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded' },
-                    error
+            h('form', { onSubmit: handleAddUser, className: 'space-y-4' },
+                h('h3', { className: 'text-lg font-medium' }, 'Nieuwe gebruiker toevoegen'),
+                h('div', { className: 'grid grid-cols-2 gap-4' },
+                    h('input', {
+                        type: 'text',
+                        placeholder: 'Naam',
+                        value: newUser.name,
+                        onChange: (e) => setNewUser({ ...newUser, name: e.target.value }),
+                        className: 'p-2 border rounded',
+                        disabled: loading
+                    }),
+                    h('input', {
+                        type: 'color',
+                        value: newUser.color,
+                        onChange: (e) => setNewUser({ ...newUser, color: e.target.value }),
+                        className: 'p-2 border rounded h-full',
+                        disabled: loading
+                    })
                 ),
-
-                // Add new user form
-                h('form', { onSubmit: handleAddUser, className: 'space-y-4' },
-                    h('h3', { className: 'font-medium' }, 'Nieuwe gebruiker toevoegen'),
-                    h('div', { className: 'grid grid-cols-2 gap-4' },
-                        h('input', {
-                            type: 'text',
-                            placeholder: 'Naam',
-                            value: newUser.name,
-                            onChange: (e) => setNewUser({ ...newUser, name: e.target.value }),
-                            className: 'p-2 border rounded',
-                            disabled: loading
-                        }),
-                        h('input', {
-                            type: 'color',
-                            value: newUser.color,
-                            onChange: (e) => setNewUser({ ...newUser, color: e.target.value }),
-                            className: 'p-1 border rounded w-full h-10',
-                            disabled: loading
-                        })
-                    ),
-                    h('button', {
-                        type: 'submit',
-                        className: `px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
-                        disabled: loading || !newUser.name.trim()
-                    }, loading ? 'Toevoegen...' : 'Gebruiker toevoegen')
-                ),
-
-                // Users list
-                h('div', { className: 'space-y-2' },
-                    h('h3', { className: 'font-medium' }, 'Bestaande gebruikers'),
-                    users.length === 0 ? 
-                        h('p', { className: 'text-gray-500 italic' }, 'Geen gebruikers gevonden') :
-                        users.map(user => 
-                            h('div', { 
-                                key: user.name || user, 
-                                className: 'flex items-center justify-between p-3 bg-gray-50 rounded'
-                            },
-                                h('div', { className: 'flex items-center' },
-                                    h('div', {
-                                        className: 'w-6 h-6 rounded-full mr-3',
-                                        style: { backgroundColor: user.color || '#3b82f6' }
-                                    }),
-                                    h('span', { className: 'font-medium' }, user.name || user)
-                                ),
-                                h('div', { className: 'flex space-x-2' },
-                                    h('button', {
-                                        className: 'px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm',
-                                        onClick: () => setEditingUser(user),
-                                        disabled: loading
-                                    }, 'Bewerken'),
-                                    h('button', {
-                                        className: 'px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm',
-                                        onClick: () => handleDeleteUser(user.name || user),
-                                        disabled: loading
-                                    }, 'Verwijderen')
-                                )
-                            )
-                        )
-                ),
-
-                // Close button
-                h('div', { className: 'flex justify-end' },
-                    h('button', {
-                        type: 'button',
-                        className: 'px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400',
-                        onClick: onClose
-                    }, 'Sluiten')
-                )
+                h('button', {
+                    type: 'submit',
+                    className: `px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
+                    disabled: loading || !newUser.name.trim()
+                }, loading ? 'Toevoegen...' : 'Toevoegen')
             ),
 
-            // Edit user color dialog
-            editingUser && h('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50' },
-                h('div', { className: 'bg-white p-6 rounded-lg max-w-md w-full mx-4' },
+            h('div', { className: 'space-y-2' },
+                h('h3', { className: 'text-lg font-medium' }, 'Huidige gebruikers'),
+                users.length === 0 
+                    ? h('p', { className: 'text-gray-500' }, 'Geen gebruikers')
+                    : users.map(user => 
+                        h('div', { 
+                            key: user.name || user,
+                            className: 'flex items-center justify-between p-3 bg-gray-50 rounded'
+                        },
+                            h('div', { className: 'flex items-center space-x-3' },
+                                h('div', {
+                                    className: 'w-8 h-8 rounded-full',
+                                    style: { backgroundColor: user.color || '#3b82f6' }
+                                }),
+                                h('span', { className: 'font-medium' }, user.name || user)
+                            ),
+                            h('div', { className: 'flex space-x-2' },
+                                h('button', {
+                                    className: 'px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600',
+                                    onClick: () => setEditingUser(user),
+                                    disabled: loading
+                                }, 'Kleur'),
+                                h('button', {
+                                    className: 'px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600',
+                                    onClick: () => handleDeleteUser(user.name || user),
+                                    disabled: loading
+                                }, 'Verwijder')
+                            )
+                        )
+                    )
+            ),
+
+            onClose && h('button', {
+                className: 'w-full px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400',
+                onClick: onClose
+            }, 'Sluiten'),
+
+            // FIXED: Edit user color dialog with inline styles
+            editingUser && h('div', { style: overlayStyle },
+                h('div', { className: 'bg-white p-6 rounded-lg max-w-md w-full mx-4', style: modalContentStyle },
                     h('h3', { className: 'text-lg font-medium mb-4' }, 'Kleur bewerken'),
                     h('input', {
                         type: 'color',
@@ -341,8 +337,7 @@
     };
 
     /**
-     * COMPLETELY FIXED TaskForm component
-     * Handles all prop naming conventions and callback variations
+     * COMPLETELY FIXED TaskForm component with inline styled overlays
      */
     const TaskForm = ({ 
         task = null, 
@@ -357,7 +352,6 @@
         onCancel = null,
         onResetCompletion = null 
     }) => {
-        // FIXED: Handle different prop naming conventions
         const taskData = task || chore;
         const availableUsers = users || assignees || [];
         const saveHandler = onSave || onSubmit || onUpdate;
@@ -389,7 +383,6 @@
                     ...defaultFormData,
                     ...taskData,
                     chore_id: taskData.chore_id || taskData.id,
-                    // Ensure arrays are properly initialized
                     selected_weekdays: taskData.selected_weekdays || [],
                     active_monthdays: taskData.active_monthdays || [],
                     subtasks: taskData.subtasks || []
@@ -402,11 +395,9 @@
         const [loading, setLoading] = useState(false);
         const [error, setError] = useState(null);
 
-        // FIXED: Proper form submission handler
         const handleSubmit = useCallback(async (e) => {
             e.preventDefault();
             
-            // Validation
             if (!formData.name.trim()) {
                 setError('Taaknaam is verplicht');
                 return;
@@ -414,11 +405,6 @@
 
             if (!saveHandler) {
                 setError('No save handler available');
-                console.error('TaskForm: No save handler provided. Available props:', {
-                    onSave: !!onSave,
-                    onSubmit: !!onSubmit,
-                    onUpdate: !!onUpdate
-                });
                 return;
             }
 
@@ -426,12 +412,10 @@
             setError(null);
 
             try {
-                // Clean up form data
                 const cleanedData = {
                     ...formData,
                     name: formData.name.trim(),
                     description: formData.description.trim(),
-                    // Ensure numeric values
                     frequency_days: parseInt(formData.frequency_days) || 7,
                     duration: parseInt(formData.duration) || 15,
                     frequency_times: parseInt(formData.frequency_times) || 1
@@ -439,13 +423,11 @@
 
                 await saveHandler(cleanedData);
                 
-                // Close form on success
                 if (closeHandler) {
                     closeHandler();
                 }
             } catch (err) {
                 setError(`Failed to save task: ${err.message}`);
-                console.error('TaskForm save error:', err);
             } finally {
                 setLoading(false);
             }
@@ -470,7 +452,6 @@
                 }
             } catch (err) {
                 setError(`Failed to delete task: ${err.message}`);
-                console.error('TaskForm delete error:', err);
             } finally {
                 setLoading(false);
             }
@@ -486,16 +467,15 @@
                 await onResetCompletion(taskData.chore_id || taskData.id);
             } catch (err) {
                 setError(`Failed to reset completion: ${err.message}`);
-                console.error('TaskForm reset error:', err);
             } finally {
                 setLoading(false);
             }
         }, [onResetCompletion, taskData]);
 
-        // Check if Modal component is available
+        // FIXED: Fallback with inline styles
         if (!window.choreComponents?.Modal) {
-            return h('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50' },
-                h('div', { className: 'bg-white p-6 rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto' },
+            return h('div', { style: overlayStyle },
+                h('div', { className: 'bg-white p-6 rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto', style: modalContentStyle },
                     h('div', { className: 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4' },
                         'Modal component not available. Please reload the page.'
                     ),
@@ -507,242 +487,227 @@
             );
         }
 
-        return h(window.choreComponents.Modal, { isOpen: true, onClose: closeHandler },
-            h('div', { className: 'space-y-6' },
-                h('h2', { className: 'text-xl font-semibold mb-4' }, 
-                    taskData ? 'Taak bewerken' : 'Nieuwe taak toevoegen'
+        const formContent = h('div', { className: 'space-y-6' },
+            h('h2', { className: 'text-xl font-semibold mb-4' }, 
+                taskData ? 'Taak bewerken' : 'Nieuwe taak toevoegen'
+            ),
+
+            error && h('div', { className: 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded' }, error),
+
+            h('form', { onSubmit: handleSubmit, className: 'space-y-4' },
+                // Basic info
+                h('div', { className: 'grid grid-cols-2 gap-4' },
+                    h('div', null,
+                        h('label', { className: 'block text-sm font-medium mb-1' }, 'Taaknaam *'),
+                        h('input', {
+                            type: 'text',
+                            value: formData.name,
+                            onChange: (e) => setFormData({ ...formData, name: e.target.value }),
+                            className: 'w-full p-2 border rounded',
+                            required: true,
+                            disabled: loading
+                        })
+                    ),
+                    h('div', null,
+                        h(IconSelector, {
+                            value: formData.icon,
+                            onChange: (icon) => setFormData({ ...formData, icon })
+                        })
+                    )
                 ),
 
-                // Error display
-                error && h('div', { className: 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded' },
-                    error
+                // Description
+                h('div', null,
+                    h('label', { className: 'block text-sm font-medium mb-1' }, 'Beschrijving'),
+                    h('textarea', {
+                        value: formData.description,
+                        onChange: (e) => setFormData({ ...formData, description: e.target.value }),
+                        className: 'w-full p-2 border rounded h-20 resize-vertical',
+                        disabled: loading
+                    })
                 ),
 
-                // Main form
-                h('form', { onSubmit: handleSubmit, className: 'space-y-4' },
-                    // Basic info
-                    h('div', { className: 'grid grid-cols-2 gap-4' },
-                        h('div', null,
-                            h('label', { className: 'block text-sm font-medium mb-1' }, 'Taaknaam *'),
-                            h('input', {
-                                type: 'text',
-                                value: formData.name,
-                                onChange: (e) => setFormData({ ...formData, name: e.target.value }),
-                                className: 'w-full p-2 border rounded',
-                                required: true,
-                                disabled: loading
-                            })
-                        ),
-                        h('div', null,
-                            h(IconSelector, {
-                                value: formData.icon,
-                                onChange: (icon) => setFormData({ ...formData, icon })
-                            })
+                // Assignment and priority
+                h('div', { className: 'grid grid-cols-2 gap-4' },
+                    h('div', null,
+                        h('label', { className: 'block text-sm font-medium mb-1' }, 'Toegewezen aan'),
+                        h('select', {
+                            value: formData.assigned_to,
+                            onChange: (e) => setFormData({ ...formData, assigned_to: e.target.value }),
+                            className: 'w-full p-2 border rounded',
+                            disabled: loading
+                        },
+                            h('option', { value: 'Wie kan' }, 'Wie kan'),
+                            availableUsers.map(user => 
+                                h('option', { 
+                                    key: user.name || user, 
+                                    value: user.name || user 
+                                }, user.name || user)
+                            )
                         )
                     ),
-
-                    // Description
                     h('div', null,
-                        h('label', { className: 'block text-sm font-medium mb-1' }, 'Beschrijving'),
-                        h('textarea', {
-                            value: formData.description,
-                            onChange: (e) => setFormData({ ...formData, description: e.target.value }),
-                            className: 'w-full p-2 border rounded h-20 resize-vertical',
+                        h('label', { className: 'block text-sm font-medium mb-1' }, 'Prioriteit'),
+                        h('select', {
+                            value: formData.priority,
+                            onChange: (e) => setFormData({ ...formData, priority: e.target.value }),
+                            className: 'w-full p-2 border rounded',
+                            disabled: loading
+                        },
+                            h('option', { value: 'Laag' }, 'Laag'),
+                            h('option', { value: 'Middel' }, 'Middel'),
+                            h('option', { value: 'Hoog' }, 'Hoog')
+                        )
+                    )
+                ),
+
+                // Duration
+                h('div', null,
+                    h('label', { className: 'block text-sm font-medium mb-1' }, 'Geschatte duur (minuten)'),
+                    h('input', {
+                        type: 'number',
+                        min: '1',
+                        value: formData.duration,
+                        onChange: (e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 15 }),
+                        className: 'w-full p-2 border rounded',
+                        disabled: loading
+                    })
+                ),
+
+                // Frequency
+                h('div', { className: 'space-y-3' },
+                    h('label', { className: 'block text-sm font-medium mb-1' }, 'Frequentie'),
+                    h('select', {
+                        value: formData.frequency_type,
+                        onChange: (e) => setFormData({ ...formData, frequency_type: e.target.value }),
+                        className: 'w-full p-2 border rounded',
+                        disabled: loading
+                    },
+                        h('option', { value: 'Dagelijks' }, 'Dagelijks'),
+                        h('option', { value: 'Wekelijks' }, 'Wekelijks'),
+                        h('option', { value: 'Maandelijks' }, 'Maandelijks'),
+                        h('option', { value: 'Custom' }, 'Aangepast')
+                    ),
+
+                    formData.frequency_type === 'Custom' && h('div', null,
+                        h('label', { className: 'block text-sm font-medium mb-1' }, 'Elke X dagen'),
+                        h('input', {
+                            type: 'number',
+                            min: '1',
+                            value: formData.frequency_days,
+                            onChange: (e) => setFormData({ ...formData, frequency_days: parseInt(e.target.value) || 1 }),
+                            className: 'w-full p-2 border rounded',
                             disabled: loading
                         })
                     ),
 
-                    // Assignment and priority
-                    h('div', { className: 'grid grid-cols-2 gap-4' },
-                        h('div', null,
-                            h('label', { className: 'block text-sm font-medium mb-1' }, 'Toegewezen aan'),
-                            h('select', {
-                                value: formData.assigned_to,
-                                onChange: (e) => setFormData({ ...formData, assigned_to: e.target.value }),
-                                className: 'w-full p-2 border rounded',
-                                disabled: loading
-                            },
-                                h('option', { value: 'Wie kan' }, 'Wie kan'),
-                                availableUsers.map(user => 
-                                    h('option', { 
-                                        key: user.name || user, 
-                                        value: user.name || user 
-                                    }, user.name || user)
-                                )
-                            )
-                        ),
-                        h('div', null,
-                            h('label', { className: 'block text-sm font-medium mb-1' }, 'Prioriteit'),
-                            h('select', {
-                                value: formData.priority,
-                                onChange: (e) => setFormData({ ...formData, priority: e.target.value }),
-                                className: 'w-full p-2 border rounded',
-                                disabled: loading
-                            },
-                                h('option', { value: 'Laag' }, 'Laag'),
-                                h('option', { value: 'Middel' }, 'Middel'),
-                                h('option', { value: 'Hoog' }, 'Hoog')
-                            )
-                        )
-                    ),
+                    formData.frequency_type === 'Wekelijks' && h(WeekDayPicker, {
+                        value: formData.selected_weekdays,
+                        onChange: (weekdays) => setFormData({ ...formData, selected_weekdays: weekdays })
+                    }),
 
-                    // Duration field only (icon selector already exists elsewhere)
-                    h('div', null,
-                        h('label', { className: 'block text-sm font-medium mb-1' }, 'Geschatte duur (minuten)'),
+                    formData.frequency_type === 'Maandelijks' && h(MonthDayPicker, {
+                        value: formData.active_monthdays,
+                        onChange: (monthdays) => setFormData({ ...formData, active_monthdays: monthdays })
+                    })
+                ),
+
+                // Subtasks
+                h('div', { className: 'space-y-3' },
+                    h('label', { className: 'flex items-center' },
                         h('input', {
-                            type: 'number',
-                            min: '1',
-                            max: '480',
-                            // NO STEP ATTRIBUTE - allows any integer
-                            value: formData.duration || 15,
-                            onChange: (e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 15 }),
-                            className: 'w-full p-2 border rounded',
-                            disabled: loading,
-                            placeholder: '15'
-                        })
+                            type: 'checkbox',
+                            checked: formData.has_subtasks,
+                            onChange: (e) => setFormData({ 
+                                ...formData, 
+                                has_subtasks: e.target.checked,
+                                subtasks: e.target.checked ? (formData.subtasks || []) : []
+                            }),
+                            className: 'mr-2',
+                            disabled: loading
+                        }),
+                        h('span', { className: 'text-sm font-medium' }, 'Heeft subtaken')
                     ),
 
-                    // Frequency settings
-                    h('div', { className: 'space-y-4' },
-                        h('div', { className: 'grid grid-cols-2 gap-4' },
-                            h('div', null,
-                                h('label', { className: 'block text-sm font-medium mb-1' }, 'Frequentie type'),
-                                h('select', {
-                                    value: formData.frequency_type,
-                                    onChange: (e) => setFormData({ ...formData, frequency_type: e.target.value }),
-                                    className: 'w-full p-2 border rounded',
-                                    disabled: loading
-                                },
-                                    h('option', { value: 'Dagelijks' }, 'Dagelijks'),
-                                    h('option', { value: 'Wekelijks' }, 'Wekelijks'),
-                                    h('option', { value: 'Maandelijks' }, 'Maandelijks'),
-                                    h('option', { value: 'Aangepast' }, 'Aangepast')
-                                )
-                            ),
-                            formData.frequency_type === 'Aangepast' && h('div', null,
-                                h('label', { className: 'block text-sm font-medium mb-1' }, 'Elke X dagen'),
+                    formData.has_subtasks && h('div', { className: 'space-y-2 pl-6' },
+                        h('label', { className: 'block text-sm font-medium mb-1' }, 'Subtaken'),
+                        (formData.subtasks || []).map((subtask, index) =>
+                            h('div', { key: index, className: 'flex items-center space-x-2' },
                                 h('input', {
-                                    type: 'number',
-                                    min: '1',
-                                    value: formData.frequency_days,
-                                    onChange: (e) => setFormData({ ...formData, frequency_days: parseInt(e.target.value) || 1 }),
-                                    className: 'w-full p-2 border rounded',
+                                    type: 'text',
+                                    className: 'flex-1 p-2 border rounded',
+                                    value: typeof subtask === 'string' ? subtask : subtask.name || '',
+                                    onChange: (e) => {
+                                        const newSubtasks = [...formData.subtasks];
+                                        newSubtasks[index] = typeof subtask === 'string' 
+                                            ? e.target.value 
+                                            : { ...subtask, name: e.target.value };
+                                        setFormData({ ...formData, subtasks: newSubtasks });
+                                    },
+                                    placeholder: 'Subtaak naam',
                                     disabled: loading
-                                })
+                                }),
+                                h('button', {
+                                    type: 'button',
+                                    className: 'px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600',
+                                    onClick: () => {
+                                        const newSubtasks = formData.subtasks.filter((_, i) => i !== index);
+                                        setFormData({ ...formData, subtasks: newSubtasks });
+                                    },
+                                    disabled: loading
+                                }, '×')
                             )
                         ),
-
-                        // Weekday selection for weekly tasks
-                        formData.frequency_type === 'Wekelijks' && h(WeekDayPicker, {
-                            value: formData.selected_weekdays,
-                            onChange: (weekdays) => setFormData({ ...formData, selected_weekdays: weekdays })
-                        }),
-
-                        // Month day selection for monthly tasks
-                        formData.frequency_type === 'Maandelijks' && h(MonthDayPicker, {
-                            value: formData.active_monthdays,
-                            onChange: (monthdays) => setFormData({ ...formData, active_monthdays: monthdays })
-                        })
-                    ),
-
-                    // Additional options
-                    h('div', { className: 'space-y-3' },
-                        h('label', { className: 'flex items-center' },
-                            h('input', {
-                                type: 'checkbox',
-                                checked: formData.has_subtasks,
-                                onChange: (e) => setFormData({ 
+                        h('button', {
+                            type: 'button',
+                            className: 'px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm',
+                            onClick: () => {
+                                setFormData({ 
                                     ...formData, 
-                                    has_subtasks: e.target.checked,
-                                    subtasks: e.target.checked ? (formData.subtasks || []) : []
-                                }),
-                                className: 'mr-2',
-                                disabled: loading
-                            }),
-                            h('span', { className: 'text-sm font-medium' }, 'Heeft subtaken')
-                        ),
+                                    subtasks: [...(formData.subtasks || []), '']
+                                });
+                            },
+                            disabled: loading
+                        }, 'Subtaak toevoegen')
+                    )
+                ),
 
-                        // Subtask management
-                        formData.has_subtasks && h('div', { className: 'space-y-2 pl-6' },
-                            h('label', { className: 'block text-sm font-medium mb-1' }, 'Subtaken'),
-                            (formData.subtasks || []).map((subtask, index) =>
-                                h('div', { key: index, className: 'flex items-center space-x-2' },
-                                    h('input', {
-                                        type: 'text',
-                                        className: 'flex-1 p-2 border rounded',
-                                        value: typeof subtask === 'string' ? subtask : subtask.name || '',
-                                        onChange: (e) => {
-                                            const newSubtasks = [...formData.subtasks];
-                                            newSubtasks[index] = typeof subtask === 'string' 
-                                                ? e.target.value 
-                                                : { ...subtask, name: e.target.value };
-                                            setFormData({ ...formData, subtasks: newSubtasks });
-                                        },
-                                        placeholder: 'Subtaak naam',
-                                        disabled: loading
-                                    }),
-                                    h('button', {
-                                        type: 'button',
-                                        className: 'px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600',
-                                        onClick: () => {
-                                            const newSubtasks = formData.subtasks.filter((_, i) => i !== index);
-                                            setFormData({ ...formData, subtasks: newSubtasks });
-                                        },
-                                        disabled: loading
-                                    }, '×')
-                                )
-                            ),
-                            h('button', {
-                                type: 'button',
-                                className: 'px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm',
-                                onClick: () => {
-                                    setFormData({ 
-                                        ...formData, 
-                                        subtasks: [...(formData.subtasks || []), '']
-                                    });
-                                },
-                                disabled: loading
-                            }, 'Subtaak toevoegen')
-                        )
+                // Action buttons
+                h('div', { className: 'flex justify-between pt-4 border-t' },
+                    h('div', { className: 'flex space-x-2' },
+                        h('button', {
+                            type: 'submit',
+                            className: `px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
+                            disabled: loading
+                        }, loading ? 'Opslaan...' : (taskData ? 'Bijwerken' : 'Toevoegen')),
+                        h('button', {
+                            type: 'button',
+                            className: 'px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400',
+                            onClick: closeHandler,
+                            disabled: loading
+                        }, 'Annuleren')
                     ),
-
-                    // Action buttons
-                    h('div', { className: 'flex justify-between pt-4 border-t' },
-                        h('div', { className: 'flex space-x-2' },
-                            h('button', {
-                                type: 'submit',
-                                className: `px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
-                                disabled: loading
-                            }, loading ? 'Opslaan...' : (taskData ? 'Bijwerken' : 'Toevoegen')),
-                            h('button', {
-                                type: 'button',
-                                className: 'px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400',
-                                onClick: closeHandler,
-                                disabled: loading
-                            }, 'Annuleren')
-                        ),
-                        
-                        taskData && h('div', { className: 'flex space-x-2' },
-                            taskData.completed_today && h('button', {
-                                type: 'button',
-                                className: `px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
-                                onClick: handleResetCompletion,
-                                disabled: loading
-                            }, 'Reset Voltooiing'),
-                            h('button', {
-                                type: 'button',
-                                className: `px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
-                                onClick: handleDelete,
-                                disabled: loading
-                            }, 'Verwijderen')
-                        )
+                    
+                    taskData && h('div', { className: 'flex space-x-2' },
+                        taskData.completed_today && h('button', {
+                            type: 'button',
+                            className: `px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
+                            onClick: handleResetCompletion,
+                            disabled: loading
+                        }, 'Reset Voltooiing'),
+                        h('button', {
+                            type: 'button',
+                            className: `px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
+                            onClick: handleDelete,
+                            disabled: loading
+                        }, 'Verwijderen')
                     )
                 )
             ),
 
-            // Delete confirmation dialog
-            showDeleteConfirm && h('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50' },
-                h('div', { className: 'bg-white p-6 rounded-lg max-w-md mx-4' },
+            // FIXED: Delete confirmation dialog with inline styles
+            showDeleteConfirm && h('div', { style: overlayStyle },
+                h('div', { className: 'bg-white p-6 rounded-lg max-w-md mx-4', style: modalContentStyle },
                     h('h3', { className: 'text-lg font-medium mb-2' }, 'Taak verwijderen'),
                     h('p', { className: 'text-gray-600 mb-4' }, 
                         'Weet je zeker dat je deze taak permanent wilt verwijderen?'
@@ -762,6 +727,11 @@
                 )
             )
         );
+
+        return h(window.choreComponents.Modal, { 
+            isOpen: true, 
+            onClose: closeHandler 
+        }, formContent);
     };
 
     // Export all form components
@@ -774,5 +744,5 @@
         MonthDayPicker
     });
 
-    console.log('✅ FIXED Form components loaded successfully with comprehensive error handling');
+    console.log('✅ FIXED Form components loaded with inline-styled overlays for proper positioning');
 })();

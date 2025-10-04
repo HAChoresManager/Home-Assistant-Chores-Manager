@@ -2,6 +2,7 @@
  * COMPLETELY FIXED Dialog Components for the Chores Manager
  * Includes confirmation dialogs, completion dialogs, and subtask dialogs
  * Enhanced with proper dependency checking and error handling
+ * FIXED: Inline styles for proper modal positioning
  */
 
 (function() {
@@ -15,6 +16,22 @@
 
     const h = React.createElement;
     const { useState, useCallback, useEffect } = React;
+
+    // CRITICAL: Inline style for proper viewport-fixed positioning
+    const overlayStyle = {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        zIndex: 9999,
+        padding: '1rem',
+        overflowY: 'auto'
+    };
 
     /**
      * Basic confirmation dialog component
@@ -38,9 +55,9 @@
             primary: 'bg-blue-500 hover:bg-blue-600'
         };
 
-        // Check if Modal is available
+        // Check if Modal is available - FIXED: Use inline style
         if (!window.choreComponents?.Modal) {
-            return h('div', { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" },
+            return h('div', { style: overlayStyle },
                 h('div', { className: "bg-white p-6 rounded-lg max-w-md mx-4" },
                     h('h3', { className: "text-lg font-medium mb-2" }, title),
                     h('p', { className: "text-gray-600 mb-4" }, message),
@@ -115,9 +132,9 @@
 
         if (!isOpen) return null;
 
-        // Fallback modal if Modal component not available
+        // Fallback modal if Modal component not available - FIXED: Use inline style
         if (!window.choreComponents?.Modal) {
-            return h('div', { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" },
+            return h('div', { style: overlayStyle },
                 h('div', { className: "bg-white p-6 rounded-lg max-w-md mx-4" },
                     h('h3', { className: "text-lg font-medium mb-2" }, title),
                     h('p', { className: "text-gray-600 mb-4" }, message),
@@ -253,9 +270,9 @@
 
         if (!isOpen) return null;
 
-        // Fallback modal if Modal component not available
+        // Fallback modal if Modal component not available - FIXED: Use inline style
         if (!window.choreComponents?.Modal) {
-            return h('div', { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" },
+            return h('div', { style: overlayStyle },
                 h('div', { className: "bg-white p-6 rounded-lg max-w-md mx-4 max-h-[80vh] overflow-y-auto" },
                     h('h3', { className: "text-lg font-medium mb-4" }, "Complete Subtasks"),
                     
@@ -430,8 +447,9 @@
             )
         );
 
+        // FIXED: Use inline style for fallback
         if (!window.choreComponents?.Modal) {
-            return h('div', { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" },
+            return h('div', { style: overlayStyle },
                 h('div', { className: "bg-white p-6 rounded-lg max-w-md mx-4" }, modalContent)
             );
         }
@@ -463,8 +481,9 @@
             )
         );
 
+        // FIXED: Use inline style for fallback
         if (!window.choreComponents?.Modal) {
-            return h('div', { className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" },
+            return h('div', { style: overlayStyle },
                 h('div', { className: "bg-white p-6 rounded-lg max-w-md mx-4" }, modalContent)
             );
         }
