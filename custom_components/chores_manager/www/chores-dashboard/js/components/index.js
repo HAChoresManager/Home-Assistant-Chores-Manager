@@ -1,387 +1,439 @@
 /**
- * COMPLETELY FIXED Base UI Components for the Chores Manager
- * Provides all essential, reusable components used throughout the application
- * Fixed Modal implementation and enhanced error handling
+ * RESILIENT Component Loader for the Chores Manager
+ * Fixed to continue loading even if API fails, ensuring TaskCard always loads
  */
 
 (function() {
     'use strict';
 
-    // Check dependencies
-    if (!window.React) {
-        console.error('Base components require React');
-        return;
+    // Component loading configuration
+    const COMPONENT_CONFIG = {
+        maxRetries: 3,
+        retryDelay: 1000,
+        timeout: 15000,
+        version: window.CHORES_APP_VERSION || '1.4.2-20250915-comprehensive-fix'
+    };
+
+    // FIXED: More resilient loading order - removed dependency on API being ready
+    const componentManifest = [
+        {
+            name: 'error-boundary',
+            file: 'components/error-boundary.js',
+            dependencies: ['React', 'ReactDOM'],
+            exports: ['ErrorBoundary', 'withErrorBoundary'],
+            critical: true
+        },
+        {
+            name: 'base',
+            file: 'components/base.js',
+            dependencies: ['React', 'ReactDOM'],
+            exports: ['Loading', 'ErrorMessage', 'Alert', 'Modal', 'EmptyState', 'Badge', 'ProgressBar', 'Tooltip', 'Button', 'Card'],
+            critical: true
+        },
+        {
+            name: 'dialogs',
+            file: 'components/dialogs.js',
+            dependencies: ['React', 'ReactDOM', 'choreComponents.Modal'],
+            exports: ['ConfirmDialog', 'CompletionConfirmDialog', 'SubtaskCompletionDialog', 'ErrorDialog', 'SuccessDialog'],
+            critical: true
+        },
+        // FIXED: Make TaskCard loading more resilient by reducing strict dependencies
+        {
+            name: 'task-card',
+            file: 'components/tasks/task-card.js',
+            dependencies: ['React', 'ReactDOM'], // Removed strict dialog dependencies
+            exports: ['TaskCard'],
+            critical: true,
+            softDependencies: ['choreComponents.CompletionConfirmDialog', 'choreComponents.SubtaskCompletionDialog'] // These can be missing initially
+        },
+        {
+            name: 'tasks',
+            file: 'components/tasks.js',
+            dependencies: ['React', 'ReactDOM'],
+            exports: ['TaskDescription', 'PriorityIndicator', 'TaskStatusBadge', 'TaskFrequencyBadge', 'TaskAssigneeBadge', 'SubtaskProgress'],
+            critical: false
+        },
+        {
+            name: 'forms',
+            file: 'components/forms.js',
+            dependencies: ['React', 'ReactDOM', 'choreComponents.Modal'],
+            exports: ['TaskForm', 'UserManagement', 'IconSelector', 'WeekDayPicker', 'MonthDayPicker'],
+            critical: true
+        },
+        {
+            name: 'stats',
+            file: 'components/stats.js',
+            dependencies: ['React', 'ReactDOM'],
+            exports: ['StatsCard', 'UserStatsCard', 'ThemeSettings'],
+            critical: false
+        }
+    ];
+
+    // Track loading state
+    const loadingState = {
+        loaded: new Set(),
+        failed: new Set(),
+        retryCount: new Map(),
+        startTime: Date.now()
+    };
+
+    /**
+     * Check if a dependency is available
+     */
+    function isDependencyAvailable(dep) {
+        const parts = dep.split('.');
+        let obj = window;
+        
+        for (const part of parts) {
+            if (!obj || typeof obj[part] === 'undefined') {
+                return false;
+            }
+            obj = obj[part];
+        }
+        
+        return true;
     }
 
-    const h = React.createElement;
-    const { useState, useEffect, useRef, useCallback } = React;
-
     /**
-     * Loading spinner component with enhanced visuals
+     * RESILIENT: Wait for dependencies with graceful fallback
      */
-    const Loading = ({ message = 'Loading...', size = 'medium', overlay = false }) => {
-        const sizeClasses = {
-            small: 'h-6 w-6',
-            medium: 'h-12 w-12',
-            large: 'h-16 w-16'
-        };
-
-        const content = h('div', { 
-            className: `flex flex-col items-center justify-center ${overlay ? 'p-8' : 'p-4'}` 
-        },
-            h('div', {
-                className: `animate-spin rounded-full border-b-2 border-blue-500 ${sizeClasses[size]}`
-            }),
-            message && h('p', { 
-                className: `mt-4 text-gray-600 ${size === 'small' ? 'text-sm' : ''}` 
-            }, message)
-        );
-
-        if (overlay) {
-            return h('div', { 
-                className: 'fixed inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50' 
-            }, content);
-        }
-
-        return content;
-    };
-
-    /**
-     * Enhanced error message component with comprehensive error handling
-     */
-    const ErrorMessage = ({ error, message, onRetry, onDismiss, title = 'Error' }) => {
-        // Handle different types of error input
-        let errorMessage = '';
-        let errorDetails = null;
+    async function waitForDependencies(dependencies, timeout = 5000, allowPartial = false) {
+        const startTime = Date.now();
+        const checkInterval = 100;
         
-        if (message) {
-            errorMessage = message;
-        } else if (error) {
-            if (typeof error === 'string') {
-                errorMessage = error;
-            } else if (error.message) {
-                errorMessage = error.message;
-                errorDetails = error.stack;
-            } else if (error.toString) {
-                errorMessage = error.toString();
-            } else {
-                errorMessage = 'An unknown error occurred';
+        while (Date.now() - startTime < timeout) {
+            const missing = dependencies.filter(dep => !isDependencyAvailable(dep));
+            
+            if (missing.length === 0) {
+                return { success: true, missing: [] };
             }
-        } else {
-            errorMessage = 'An error occurred';
-        }
-
-        return h('div', { className: 'bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded mb-4' },
-            h('div', { className: 'flex items-start' },
-                h('span', { className: 'text-xl mr-3 flex-shrink-0' }, '⚠️'),
-                h('div', { className: 'flex-1' },
-                    h('p', { className: 'font-medium' }, title),
-                    h('p', { className: 'text-sm mt-1' }, errorMessage),
-                    errorDetails && h('details', { className: 'mt-2' },
-                        h('summary', { className: 'text-xs cursor-pointer text-red-600' }, 'Technical details'),
-                        h('pre', { className: 'text-xs mt-1 bg-red-50 p-2 rounded overflow-auto' }, 
-                            errorDetails.slice(0, 500) + (errorDetails.length > 500 ? '...' : '')
-                        )
-                    )
-                ),
-                h('div', { className: 'flex items-center ml-4 space-x-2' },
-                    onRetry && h('button', {
-                        className: 'bg-red-200 hover:bg-red-300 text-red-800 font-bold py-1 px-3 rounded text-sm transition-colors',
-                        onClick: onRetry
-                    }, 'Retry'),
-                    onDismiss && h('button', {
-                        className: 'bg-red-200 hover:bg-red-300 text-red-800 font-bold py-1 px-3 rounded text-sm transition-colors',
-                        onClick: onDismiss
-                    }, '×')
-                )
-            )
-        );
-    };
-
-    /**
-     * Alert component for various message types
-     */
-    const Alert = ({ type = 'info', title, message, onClose, children }) => {
-        const alertStyles = {
-            info: 'bg-blue-100 border-blue-500 text-blue-700',
-            success: 'bg-green-100 border-green-500 text-green-700',
-            warning: 'bg-yellow-100 border-yellow-500 text-yellow-700',
-            error: 'bg-red-100 border-red-500 text-red-700'
-        };
-
-        const icons = {
-            info: 'ℹ️',
-            success: '✅',
-            warning: '⚠️',
-            error: '❌'
-        };
-
-        return h('div', { 
-            className: `border-l-4 p-4 rounded ${alertStyles[type]} mb-4` 
-        },
-            h('div', { className: 'flex items-start' },
-                h('span', { className: 'text-lg mr-3 flex-shrink-0' }, icons[type]),
-                h('div', { className: 'flex-1' },
-                    title && h('p', { className: 'font-medium' }, title),
-                    message && h('p', { className: title ? 'text-sm mt-1' : '' }, message),
-                    children
-                ),
-                onClose && h('button', {
-                    className: 'ml-4 text-lg hover:bg-black hover:bg-opacity-10 rounded p-1',
-                    onClick: onClose
-                }, '×')
-            )
-        );
-    };
-
-    /**
-     * COMPLETELY FIXED Modal component with proper portal implementation
-     */
-    const Modal = ({ isOpen, onClose, children, title, size = 'medium', closeOnOverlay = true }) => {
-        const modalRef = useRef(null);
-        const [isVisible, setIsVisible] = useState(false);
-
-        const sizeClasses = {
-            small: 'max-w-md',
-            medium: 'max-w-2xl',
-            large: 'max-w-4xl',
-            full: 'max-w-full mx-4'
-        };
-
-        // Handle ESC key
-        useEffect(() => {
-            const handleEscape = (e) => {
-                if (e.key === 'Escape' && isOpen && onClose) {
-                    onClose();
+            
+            // For partial loading, check if we have at least the critical dependencies (React)
+            if (allowPartial && dependencies.includes('React') && isDependencyAvailable('React')) {
+                const criticalMissing = missing.filter(dep => dep.includes('React'));
+                if (criticalMissing.length === 0) {
+                    console.warn(`⚠️ Partial dependency load - missing: ${missing.join(', ')}`);
+                    return { success: true, missing, partial: true };
                 }
-            };
-
-            if (isOpen) {
-                document.addEventListener('keydown', handleEscape);
-                document.body.style.overflow = 'hidden';
-                
-                // Animate in
-                setTimeout(() => setIsVisible(true), 10);
-            } else {
-                setIsVisible(false);
-                document.body.style.overflow = '';
             }
-
-            return () => {
-                document.removeEventListener('keydown', handleEscape);
-                document.body.style.overflow = '';
-            };
-        }, [isOpen, onClose]);
-
-        // Handle overlay click
-        const handleOverlayClick = useCallback((e) => {
-            if (closeOnOverlay && e.target === e.currentTarget && onClose) {
-                onClose();
-            }
-        }, [closeOnOverlay, onClose]);
-
-        if (!isOpen) return null;
-
-        return h('div', {
-            className: `fixed inset-0 z-50 flex items-center justify-center p-4 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`,
-            style: { backgroundColor: 'rgba(0, 0, 0, 0.5)' },
-            onClick: handleOverlayClick
-        },
-            h('div', {
-                ref: modalRef,
-                className: `bg-white rounded-lg shadow-xl w-full ${sizeClasses[size]} max-h-[90vh] overflow-hidden transform transition-transform duration-300 ${isVisible ? 'scale-100' : 'scale-95'}`,
-                onClick: (e) => e.stopPropagation()
-            },
-                // Header
-                (title || onClose) && h('div', { className: 'flex items-center justify-between p-6 border-b' },
-                    h('h2', { className: 'text-xl font-semibold' }, title || ''),
-                    onClose && h('button', {
-                        className: 'text-gray-400 hover:text-gray-600 text-2xl leading-none',
-                        onClick: onClose
-                    }, '×')
-                ),
-                
-                // Content
-                h('div', { className: 'p-6 overflow-y-auto max-h-[calc(90vh-120px)]' },
-                    children
-                )
-            )
-        );
-    };
-
-    /**
-     * Empty state component for when no data is available
-     */
-    const EmptyState = ({ icon = '📭', title = 'No data', message, action, onAction }) => {
-        return h('div', { className: 'text-center py-12 px-4' },
-            h('div', { className: 'text-6xl mb-4' }, icon),
-            h('h3', { className: 'text-lg font-medium text-gray-900 mb-2' }, title),
-            message && h('p', { className: 'text-gray-500 mb-4' }, message),
-            action && onAction && h('button', {
-                className: 'bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition-colors',
-                onClick: onAction
-            }, action)
-        );
-    };
-
-    /**
-     * Badge component for status indicators
-     */
-    const Badge = ({ variant = 'default', size = 'medium', children, className = '' }) => {
-        const variants = {
-            default: 'bg-gray-100 text-gray-800',
-            primary: 'bg-blue-100 text-blue-800',
-            success: 'bg-green-100 text-green-800',
-            warning: 'bg-yellow-100 text-yellow-800',
-            error: 'bg-red-100 text-red-800',
-            info: 'bg-blue-100 text-blue-800'
-        };
-
-        const sizes = {
-            small: 'px-2 py-1 text-xs',
-            medium: 'px-3 py-1 text-sm',
-            large: 'px-4 py-2 text-base'
-        };
-
-        return h('span', {
-            className: `inline-flex items-center font-medium rounded-full ${variants[variant]} ${sizes[size]} ${className}`
-        }, children);
-    };
-
-    /**
-     * Progress bar component
-     */
-    const ProgressBar = ({ value = 0, max = 100, label, color = 'blue', size = 'medium' }) => {
-        const percentage = Math.min(Math.max((value / max) * 100, 0), 100);
+            
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
         
-        const colors = {
-            blue: 'bg-blue-500',
-            green: 'bg-green-500',
-            yellow: 'bg-yellow-500',
-            red: 'bg-red-500'
-        };
-
-        const sizes = {
-            small: 'h-2',
-            medium: 'h-4',
-            large: 'h-6'
-        };
-
-        return h('div', { className: 'w-full' },
-            label && h('div', { className: 'flex justify-between items-center mb-1' },
-                h('span', { className: 'text-sm font-medium text-gray-700' }, label),
-                h('span', { className: 'text-sm text-gray-500' }, `${Math.round(percentage)}%`)
-            ),
-            h('div', { className: `w-full bg-gray-200 rounded-full ${sizes[size]}` },
-                h('div', {
-                    className: `${colors[color]} ${sizes[size]} rounded-full transition-all duration-300 ease-out`,
-                    style: { width: `${percentage}%` }
-                })
-            )
-        );
-    };
+        const missing = dependencies.filter(dep => !isDependencyAvailable(dep));
+        console.warn(`⏰ Dependency timeout - missing: ${missing.join(', ')}`);
+        return { success: false, missing };
+    }
 
     /**
-     * Tooltip component
+     * Load a single script file with enhanced error handling
      */
-    const Tooltip = ({ content, position = 'top', children }) => {
-        const [isVisible, setIsVisible] = useState(false);
+    function loadScript(url) {
+        return new Promise((resolve, reject) => {
+            // Check if script is already loaded
+            const existingScript = document.querySelector(`script[src*="${url.split('?')[0]}"]`);
+            if (existingScript) {
+                console.log(`♻️ Script already loaded: ${url}`);
+                resolve();
+                return;
+            }
 
-        const positions = {
-            top: 'bottom-full left-1/2 transform -translate-x-1/2 mb-2',
-            bottom: 'top-full left-1/2 transform -translate-x-1/2 mt-2',
-            left: 'right-full top-1/2 transform -translate-y-1/2 mr-2',
-            right: 'left-full top-1/2 transform -translate-y-1/2 ml-2'
-        };
+            const script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.async = false;
+            
+            // Add cache busting and version
+            const separator = url.includes('?') ? '&' : '?';
+            script.src = `${url}${separator}v=${COMPONENT_CONFIG.version}&t=${Date.now()}`;
+            
+            script.onload = () => {
+                console.log(`✅ Script loaded: ${url}`);
+                resolve();
+            };
+            
+            script.onerror = (error) => {
+                console.error(`❌ Script failed to load: ${url}`, error);
+                reject(new Error(`Failed to load script: ${url}`));
+            };
+            
+            document.head.appendChild(script);
+        });
+    }
 
-        return h('div', { 
-            className: 'relative inline-block',
-            onMouseEnter: () => setIsVisible(true),
-            onMouseLeave: () => setIsVisible(false)
-        },
-            children,
-            isVisible && h('div', {
-                className: `absolute z-50 px-2 py-1 text-sm text-white bg-gray-800 rounded shadow-lg whitespace-nowrap ${positions[position]}`
+    /**
+     * RESILIENT: Load and validate a single component with graceful error handling
+     */
+    async function loadComponent(component) {
+        const { name, file, dependencies, exports, critical, softDependencies } = component;
+        
+        try {
+            console.log(`🔄 Loading component: ${name}`);
+            
+            // Wait for hard dependencies
+            if (dependencies && dependencies.length > 0) {
+                const depResult = await waitForDependencies(dependencies, 5000, !critical);
+                if (!depResult.success && critical) {
+                    throw new Error(`Critical dependencies not ready for ${name}: ${depResult.missing.join(', ')}`);
+                } else if (!depResult.success) {
+                    console.warn(`⚠️ Loading ${name} with missing dependencies: ${depResult.missing.join(', ')}`);
+                }
+            }
+            
+            // Load the component script
+            await loadScript(`js/${file}`);
+            
+            // Wait for script execution
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Verify exports with resilient checking
+            if (exports && exports.length > 0) {
+                const missing = exports.filter(exportName => 
+                    !window.choreComponents || !window.choreComponents[exportName]
+                );
+                
+                if (missing.length > 0) {
+                    if (critical) {
+                        throw new Error(`Missing critical exports from ${name}: ${missing.join(', ')}`);
+                    } else {
+                        console.warn(`⚠️ Missing non-critical exports from ${name}: ${missing.join(', ')}`);
+                    }
+                }
+            }
+            
+            // Check soft dependencies (for TaskCard)
+            if (softDependencies && softDependencies.length > 0) {
+                const missingSoft = softDependencies.filter(dep => !isDependencyAvailable(dep));
+                if (missingSoft.length > 0) {
+                    console.warn(`⚠️ ${name} loaded with missing soft dependencies: ${missingSoft.join(', ')} - will use fallbacks`);
+                }
+            }
+            
+            loadingState.loaded.add(component.name);
+            console.log(`✅ Component ${name} loaded successfully`);
+            return true;
+            
+        } catch (error) {
+            console.error(`❌ Failed to load component ${name}:`, error);
+            loadingState.failed.add(component.name);
+            
+            // Enhanced retry logic for critical components
+            const retryCount = loadingState.retryCount.get(name) || 0;
+            const maxRetries = critical ? COMPONENT_CONFIG.maxRetries + 2 : COMPONENT_CONFIG.maxRetries;
+            
+            if (retryCount < maxRetries) {
+                console.log(`🔄 Retrying ${name} (attempt ${retryCount + 1}/${maxRetries})`);
+                loadingState.retryCount.set(name, retryCount + 1);
+                
+                const retryDelay = COMPONENT_CONFIG.retryDelay * (retryCount + 1);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                return loadComponent(component);
+            }
+            
+            // For TaskCard specifically, try to create a fallback
+            if (name === 'task-card' && critical) {
+                console.warn(`⚠️ Creating fallback TaskCard component`);
+                createFallbackTaskCard();
+                loadingState.loaded.add(component.name);
+                return true;
+            }
+            
+            return false;
+        }
+    }
+
+    /**
+     * Create a fallback TaskCard component if loading fails
+     */
+    function createFallbackTaskCard() {
+        if (!window.choreComponents) window.choreComponents = {};
+        
+        window.choreComponents.TaskCard = function FallbackTaskCard({ chore = {}, onComplete, onEdit, onDelete, assignees = [] }) {
+            const h = React.createElement;
+            
+            return h('div', {
+                className: 'p-4 bg-yellow-100 border border-yellow-400 rounded-lg mb-3'
             },
-                content,
-                h('div', { 
-                    className: `absolute w-2 h-2 bg-gray-800 transform rotate-45 ${
-                        position === 'top' ? 'top-full left-1/2 -translate-x-1/2 -mt-1' :
-                        position === 'bottom' ? 'bottom-full left-1/2 -translate-x-1/2 -mb-1' :
-                        position === 'left' ? 'left-full top-1/2 -translate-y-1/2 -ml-1' :
-                        'right-full top-1/2 -translate-y-1/2 -mr-1'
-                    }`
-                })
-            )
-        );
-    };
+                h('div', { className: 'flex items-center justify-between' },
+                    h('div', null,
+                        h('h3', { className: 'font-medium text-yellow-800' }, chore.name || 'Task'),
+                        h('p', { className: 'text-sm text-yellow-700' }, 'TaskCard fallback mode - some features unavailable')
+                    ),
+                    h('div', { className: 'flex gap-2' },
+                        onComplete && h('button', {
+                            onClick: () => onComplete(chore.id || chore.chore_id, 'Wie kan'),
+                            className: 'px-3 py-1 bg-green-500 text-white rounded text-sm'
+                        }, 'Complete'),
+                        onEdit && h('button', {
+                            onClick: () => onEdit(chore),
+                            className: 'px-3 py-1 bg-blue-500 text-white rounded text-sm'
+                        }, 'Edit')
+                    )
+                )
+            );
+        };
+        
+        console.log('⚠️ Fallback TaskCard component created');
+    }
 
     /**
-     * Button component with various styles
+     * RESILIENT: Load all components with graceful error handling
      */
-    const Button = ({ 
-        variant = 'primary', 
-        size = 'medium', 
-        loading = false, 
-        disabled = false, 
-        children, 
-        className = '',
-        ...props 
-    }) => {
-        const variants = {
-            primary: 'bg-blue-500 hover:bg-blue-600 text-white',
-            secondary: 'bg-gray-500 hover:bg-gray-600 text-white',
-            success: 'bg-green-500 hover:bg-green-600 text-white',
-            danger: 'bg-red-500 hover:bg-red-600 text-white',
-            warning: 'bg-yellow-500 hover:bg-yellow-600 text-white',
-            outline: 'border border-gray-300 hover:bg-gray-50 text-gray-700'
+    async function loadAllComponents() {
+        console.log('🚀 Starting RESILIENT component loader...');
+        
+        const results = {
+            total: componentManifest.length,
+            loaded: 0,
+            failed: [],
+            critical_failed: []
         };
+        
+        // Ensure choreComponents object exists
+        window.choreComponents = window.choreComponents || {};
+        
+        // Load components in order, but don't let failures stop the process
+        for (const component of componentManifest) {
+            try {
+                const success = await loadComponent(component);
+                
+                if (success) {
+                    results.loaded++;
+                } else {
+                    results.failed.push(component.name);
+                    if (component.critical) {
+                        results.critical_failed.push(component.name);
+                    }
+                }
+            } catch (error) {
+                console.error(`💥 Critical error loading ${component.name}:`, error);
+                results.failed.push(component.name);
+                
+                // Even if critical component fails, try to continue
+                if (component.critical && component.name === 'task-card') {
+                    createFallbackTaskCard();
+                    results.loaded++;
+                } else if (component.critical) {
+                    results.critical_failed.push(component.name);
+                }
+            }
+        }
+        
+        // Log comprehensive results
+        const totalTime = Date.now() - loadingState.startTime;
+        console.log(`📊 Component loading completed in ${totalTime}ms`);
+        console.log(`✅ Loaded ${results.loaded}/${results.total} components`);
+        
+        if (results.failed.length > 0) {
+            console.warn('⚠️ Failed components:', results.failed);
+        }
+        
+        // RESILIENT: Don't fail completely even if some critical components fail
+        const availableComponents = Object.keys(window.choreComponents);
+        console.log(`📋 Available components: ${availableComponents.join(', ')}`);
+        
+        // Verify essential components are available (at least Loading and Modal)
+        const essentialComponents = ['Loading', 'Modal'];
+        const missingEssential = essentialComponents.filter(name => !window.choreComponents[name]);
+        
+        if (missingEssential.length > 0) {
+            console.error('💥 Missing essential components:', missingEssential);
+            return false;
+        }
+        
+        // If TaskCard is missing, ensure we have a fallback
+        if (!window.choreComponents.TaskCard) {
+            console.warn('⚠️ TaskCard missing, creating fallback');
+            createFallbackTaskCard();
+        }
+        
+        return true;
+    }
 
-        const sizes = {
-            small: 'px-3 py-1 text-sm',
-            medium: 'px-4 py-2',
-            large: 'px-6 py-3 text-lg'
-        };
+    /**
+     * RESILIENT: Initialize the component loader
+     */
+    async function init() {
+        try {
+            // Check if React is available
+            if (!window.React || !window.ReactDOM) {
+                throw new Error('React or ReactDOM not found. Please ensure they are loaded before components.');
+            }
+            
+            console.log(`🎯 React ${React.version} detected, starting resilient component loading...`);
+            
+            // Load all components
+            const success = await loadAllComponents();
+            
+            console.log('🎉 Component system initialized!');
+            
+            // Always dispatch event - let the app decide if it can continue
+            window.dispatchEvent(new CustomEvent('choreComponentsReady', {
+                detail: {
+                    loadedComponents: Array.from(loadingState.loaded),
+                    failedComponents: Array.from(loadingState.failed),
+                    loadTime: Date.now() - loadingState.startTime,
+                    componentCount: Object.keys(window.choreComponents).length,
+                    success
+                }
+            }));
+            
+            // Log component summary
+            console.log(`📋 Available components:`, Object.keys(window.choreComponents));
+            
+        } catch (error) {
+            console.error('💥 Component loader initialization failed:', error);
+            
+            // Create minimal fallback system
+            window.choreComponents = window.choreComponents || {};
+            
+            // Ensure at least basic components exist
+            if (!window.choreComponents.Loading) {
+                window.choreComponents.Loading = function() {
+                    return React.createElement('div', { className: 'p-4' }, 'Loading...');
+                };
+            }
+            
+            if (!window.choreComponents.TaskCard) {
+                createFallbackTaskCard();
+            }
+            
+            // Still dispatch event so app can continue
+            window.dispatchEvent(new CustomEvent('choreComponentsReady', {
+                detail: {
+                    loadedComponents: ['Loading', 'TaskCard'],
+                    failedComponents: [],
+                    loadTime: Date.now() - loadingState.startTime,
+                    componentCount: Object.keys(window.choreComponents).length,
+                    success: false,
+                    fallback: true,
+                    error: error.message
+                }
+            }));
+        }
+    }
 
-        const isDisabled = disabled || loading;
-
-        return h('button', {
-            className: `inline-flex items-center justify-center font-medium rounded transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${variants[variant]} ${sizes[size]} ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`,
-            disabled: isDisabled,
-            ...props
+    // Store functions for external access and debugging
+    window.ChoreComponentLoader = {
+        init,
+        loadComponent,
+        getLoadingState: () => ({ ...loadingState }),
+        getManifest: () => [...componentManifest],
+        reload: () => {
+            loadingState.loaded.clear();
+            loadingState.failed.clear();
+            loadingState.retryCount.clear();
+            loadingState.startTime = Date.now();
+            return init();
         },
-            loading && h('div', { className: 'animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2' }),
-            children
-        );
+        createFallbackTaskCard
     };
-
-    /**
-     * Card component for content containers
-     */
-    const Card = ({ title, children, className = '', header, footer }) => {
-        return h('div', { className: `bg-white rounded-lg shadow-sm border border-gray-200 ${className}` },
-            (title || header) && h('div', { className: 'px-6 py-4 border-b border-gray-200' },
-                header || h('h3', { className: 'text-lg font-medium' }, title)
-            ),
-            h('div', { className: 'px-6 py-4' }, children),
-            footer && h('div', { className: 'px-6 py-4 border-t border-gray-200 bg-gray-50' }, footer)
-        );
-    };
-
-    // Export all base components
-    window.choreComponents = window.choreComponents || {};
-    Object.assign(window.choreComponents, {
-        Loading,
-        ErrorMessage,
-        Alert,
-        Modal,
-        EmptyState,
-        Badge,
-        ProgressBar,
-        Tooltip,
-        Button,
-        Card
-    });
-
-    console.log('✅ FIXED Base components loaded successfully with comprehensive functionality');
+    
+    // Auto-initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        setTimeout(init, 10);
+    }
+    
+    console.log('🔧 RESILIENT component loader initialized');
 })();
