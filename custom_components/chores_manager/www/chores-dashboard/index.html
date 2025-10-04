@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Huishoudelijke Taken Dashboard</title>
     
-    <!-- FIXED: Updated version with comprehensive cache busting -->
+    <!-- CORRECTED: Updated version for the fix -->
     <script type="text/javascript">
-        window.CHORES_APP_VERSION = '1.4.2-20250915-comprehensive-fix';
+        window.CHORES_APP_VERSION = '1.4.2-20250915-corrected-api-fix';
         console.log('🏠 Chores Manager Dashboard v' + window.CHORES_APP_VERSION);
     </script>
     
@@ -132,37 +132,12 @@
                 margin: 0.5rem;
             }
         }
-
-        /* Print styles */
-        @media print {
-            .modal-container,
-            button,
-            .no-print {
-                display: none !important;
-            }
-        }
-
-        /* Accessibility improvements */
-        @media (prefers-reduced-motion: reduce) {
-            * {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }
-        }
-
-        /* High contrast mode support */
-        @media (prefers-contrast: high) {
-            .task-card {
-                border-width: 2px;
-            }
-        }
     </style>
 </head>
 <body>
     <!-- App root element -->
     <div id="root">
-        <div style="display: flex; items-center: justify-center; min-height: 100vh; background: #f9fafb;">
+        <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f9fafb;">
             <div style="text-align: center; padding: 2rem;">
                 <div style="width: 64px; height: 64px; border: 4px solid #e5e7eb; border-top: 4px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem;"></div>
                 <h2 style="color: #374151; margin-bottom: 0.5rem;">Loading Dashboard...</h2>
@@ -171,16 +146,15 @@
         </div>
     </div>
 
-    <!-- FIXED: Load React and ReactDOM with version pinning -->
+    <!-- Load React and ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
 
-    <!-- FIXED: Enhanced dependency verification -->
+    <!-- Verify React is loaded -->
     <script type="text/javascript">
         (function() {
             'use strict';
             
-            // Verify React is loaded
             if (!window.React || !window.ReactDOM) {
                 console.error('❌ React libraries failed to load');
                 document.getElementById('root').innerHTML = `
@@ -201,16 +175,19 @@
         })();
     </script>
 
-    <!-- FIXED: Load utility functions first -->
-    <script src="js/utils.js?v=1.4.2-20250915-comprehensive-fix" type="text/javascript"></script>
-    <script src="js/auth-helper.js?v=1.4.2-20250915-comprehensive-fix" type="text/javascript"></script>
+    <!-- Load utility functions -->
+    <script src="js/utils.js?v=1.4.2-20250915-corrected-api-fix" type="text/javascript"></script>
+    <script src="js/auth-helper.js?v=1.4.2-20250915-corrected-api-fix" type="text/javascript"></script>
 
-    <!-- FIXED: Load API modules in correct dependency order -->
+    <!-- CORRECTED: Load components FIRST, independent of API -->
+    <script src="js/components/index.js?v=1.4.2-20250915-corrected-api-fix" type="text/javascript"></script>
+
+    <!-- Load API modules in background (non-blocking) -->
     <script type="text/javascript">
         (function() {
             'use strict';
             
-            console.log('🔧 Loading API modules...');
+            console.log('🔧 Loading API modules in background...');
             
             const apiModules = [
                 'js/api/base.js',
@@ -224,7 +201,7 @@
 
             function loadAPIModule(index) {
                 if (index >= apiModules.length) {
-                    console.log('✅ All API modules loaded');
+                    console.log('✅ All API modules loaded (or attempted)');
                     window.dispatchEvent(new CustomEvent('chores-api-modules-loaded'));
                     return;
                 }
@@ -241,28 +218,19 @@
                 };
                 
                 script.onerror = (error) => {
-                    console.error(`❌ Failed to load ${apiModules[index]}:`, error);
-                    document.getElementById('root').innerHTML = `
-                        <div class="error-container">
-                            <h2>API Loading Error</h2>
-                            <p>Failed to load API module: ${apiModules[index]}</p>
-                            <p>Please check the browser console for more details.</p>
-                            <button onclick="window.location.reload()">Reload Page</button>
-                        </div>`;
+                    console.warn(`⚠️ Failed to load ${apiModules[index]}, continuing...`);
+                    loadAPIModule(index + 1); // Continue even if one fails
                 };
                 
                 document.head.appendChild(script);
             }
             
-            // Start loading API modules
+            // Start loading API modules (non-blocking)
             loadAPIModule(0);
         })();
     </script>
 
-    <!-- FIXED: Load components using the enhanced component loader -->
-    <script src="js/components/index.js?v=1.4.2-20250915-comprehensive-fix" type="text/javascript"></script>
-
-    <!-- FIXED: Load app modules in correct dependency order -->
+    <!-- Load app modules -->
     <script type="text/javascript">
         (function() {
             'use strict';
@@ -295,9 +263,8 @@
                     };
                     
                     script.onerror = (error) => {
-                        console.error(`❌ Failed to load ${appModules[index]}:`, error);
-                        // Continue loading other modules
-                        loadModule(index + 1);
+                        console.warn(`⚠️ Failed to load ${appModules[index]}, continuing...`);
+                        loadModule(index + 1); // Continue even if one fails
                     };
                     
                     document.head.appendChild(script);
@@ -306,7 +273,7 @@
                 loadModule(0);
             }
 
-            // Initialize the app once everything is loaded
+            // CORRECTED: Initialize the app with better error handling
             function initializeApp() {
                 console.log('🎯 Initializing Chores Dashboard App...');
                 
@@ -317,11 +284,16 @@
                     }
                     
                     if (!window.choreComponents) {
-                        throw new Error('Components not loaded');
+                        console.warn('⚠️ Components not fully loaded, will use fallbacks');
+                        window.choreComponents = {};
                     }
                     
-                    if (!window.ChoresApp?.getApp) {
-                        throw new Error('Main app component not available');
+                    // Ensure TaskCard is available (critical for app function)
+                    if (!window.choreComponents.TaskCard) {
+                        console.warn('⚠️ TaskCard not available, creating fallback');
+                        if (window.ChoreComponentLoader?.createFallbackTaskCard) {
+                            window.ChoreComponentLoader.createFallbackTaskCard();
+                        }
                     }
 
                     // Get the root element
@@ -331,12 +303,16 @@
                     }
 
                     // Get the main app component
-                    const App = window.ChoresApp.getApp();
+                    let App = null;
+                    if (window.ChoresApp?.getApp) {
+                        App = window.ChoresApp.getApp();
+                    }
+                    
                     if (!App) {
-                        throw new Error('Failed to get app component');
+                        throw new Error('Main app component not available');
                     }
 
-                    // Create error boundary wrapper
+                    // Create error boundary wrapper if available
                     const ErrorBoundary = window.choreComponents.ErrorBoundary;
                     const AppWithErrorBoundary = ErrorBoundary ? 
                         React.createElement(ErrorBoundary, { showDetails: true }, React.createElement(App)) :
@@ -402,44 +378,30 @@
                 }
             }
 
-            // Wait for both API and components to be ready before loading app
-            let apiReady = false;
+            // CORRECTED: Wait for components to be ready, but don't wait indefinitely for API
             let componentsReady = false;
-
-            function checkIfReady() {
-                if (apiReady && componentsReady) {
-                    loadAppModules();
-                }
-            }
-
-            // Listen for API ready event
-            window.addEventListener('chores-api-ready', () => {
-                console.log('✅ API system ready');
-                apiReady = true;
-                checkIfReady();
-            });
 
             // Listen for components ready event
             window.addEventListener('choreComponentsReady', (event) => {
                 console.log('✅ Component system ready:', event.detail);
                 componentsReady = true;
-                checkIfReady();
+                
+                // Load app modules immediately when components are ready
+                loadAppModules();
             });
 
-            // Fallback timeout in case events don't fire
+            // Fallback timeout - proceed even if components aren't perfect
             setTimeout(() => {
-                if (!apiReady || !componentsReady) {
-                    console.warn('⚠️ Timeout waiting for dependencies, attempting to load anyway...');
-                    apiReady = true;
-                    componentsReady = true;
-                    checkIfReady();
+                if (!componentsReady) {
+                    console.warn('⚠️ Components taking too long, proceeding with fallback mode...');
+                    loadAppModules();
                 }
-            }, 10000);
+            }, 8000);
 
         })();
     </script>
 
-    <!-- FIXED: Enhanced error handling and debugging -->
+    <!-- Enhanced error handling and debugging -->
     <script type="text/javascript">
         // Global error handler
         window.addEventListener('error', function(event) {
@@ -450,46 +412,51 @@
                 return;
             }
             
-            // Show user-friendly error message
-            const rootElement = document.getElementById('root');
-            if (rootElement && !document.querySelector('.error-container')) {
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'error-container';
-                errorDiv.innerHTML = `
-                    <h2>Unexpected Error</h2>
-                    <p>An unexpected error occurred in the application.</p>
-                    <p><strong>Error:</strong> ${event.message || 'Unknown error'}</p>
-                    <button onclick="location.reload()">Reload Page</button>
-                    <button onclick="this.parentElement.style.display='none'">Dismiss</button>
-                `;
-                document.body.appendChild(errorDiv);
+            // Only show error if app hasn't loaded yet
+            if (!document.body.classList.contains('app-loaded')) {
+                const rootElement = document.getElementById('root');
+                if (rootElement && !document.querySelector('.error-container')) {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'error-container';
+                    errorDiv.innerHTML = `
+                        <h2>Unexpected Error</h2>
+                        <p>An unexpected error occurred during initialization.</p>
+                        <p><strong>Error:</strong> ${event.message || 'Unknown error'}</p>
+                        <button onclick="location.reload()">Reload Page</button>
+                        <button onclick="this.parentElement.style.display='none'">Dismiss</button>
+                    `;
+                    document.body.appendChild(errorDiv);
+                }
             }
         });
 
         // Unhandled promise rejection handler
         window.addEventListener('unhandledrejection', function(event) {
             console.error('💥 Unhandled promise rejection:', event.reason);
-            
-            // Prevent the default browser behavior
             event.preventDefault();
         });
 
-        // Debug helpers (only in development)
-        if (window.location.hostname === 'localhost' || window.location.hostname.includes('dev')) {
-            window.choresdebug = {
-                components: () => Object.keys(window.choreComponents || {}),
-                api: () => Object.keys(window.ChoresAPI || {}),
-                reload: () => location.reload(),
-                state: () => console.log({
-                    React: !!window.React,
-                    ReactDOM: !!window.ReactDOM,
-                    choreComponents: Object.keys(window.choreComponents || {}),
-                    ChoresAPI: !!window.ChoresAPI,
-                    ChoresApp: !!window.ChoresApp
-                })
-            };
-            console.log('🔧 Debug helpers available at window.choresdebug');
-        }
+        // Debug helpers
+        window.choresdebug = {
+            components: () => Object.keys(window.choreComponents || {}),
+            api: () => Object.keys(window.ChoresAPI || {}),
+            reload: () => location.reload(),
+            state: () => console.log({
+                React: !!window.React,
+                ReactDOM: !!window.ReactDOM,
+                choreComponents: Object.keys(window.choreComponents || {}),
+                ChoresAPI: !!window.ChoresAPI,
+                ChoresApp: !!window.ChoresApp
+            }),
+            retryComponents: () => {
+                if (window.ChoreComponentLoader?.reload) {
+                    window.ChoreComponentLoader.reload();
+                } else {
+                    console.log('Component loader not available');
+                }
+            }
+        };
+        console.log('🔧 Debug helpers available at window.choresdebug');
     </script>
 </body>
 </html>
