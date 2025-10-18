@@ -1,14 +1,10 @@
 /**
- * COMPLETELY FIXED Dialog Components for the Chores Manager
- * Includes confirmation dialogs, completion dialogs, and subtask dialogs
- * Enhanced with proper dependency checking and error handling
- * FIXED: Inline styles for proper modal positioning
+ * Dialog Components - Fixed with explicit viewport centering
  */
 
 (function() {
     'use strict';
 
-    // Check dependencies
     if (!window.React) {
         console.error('Dialog components require React');
         return;
@@ -17,24 +13,32 @@
     const h = React.createElement;
     const { useState, useCallback, useEffect } = React;
 
-    // CRITICAL: Inline style for proper viewport-fixed positioning
+    // FIXED: Overlay for fallback modals (modal itself will be explicitly positioned)
     const overlayStyle = {
         position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
         zIndex: 9999,
-        padding: '1rem',
-        overflowY: 'auto'
+        overflow: 'auto'
+    };
+
+    // FIXED: Explicit positioning for modal content
+    const modalContentStyle = {
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        maxHeight: '90vh',
+        maxWidth: '90vw',
+        width: '100%',
+        zIndex: 10000
     };
 
     /**
-     * Basic confirmation dialog component
+     * Basic confirmation dialog
      */
     const ConfirmDialog = ({ 
         isOpen, 
@@ -55,10 +59,12 @@
             primary: 'bg-blue-500 hover:bg-blue-600'
         };
 
-        // Check if Modal is available - FIXED: Use inline style
         if (!window.choreComponents?.Modal) {
             return h('div', { style: overlayStyle },
-                h('div', { className: "bg-white p-6 rounded-lg max-w-md mx-4" },
+                h('div', { 
+                    className: "bg-white p-6 rounded-lg max-w-md",
+                    style: modalContentStyle
+                },
                     h('h3', { className: "text-lg font-medium mb-2" }, title),
                     h('p', { className: "text-gray-600 mb-4" }, message),
                     h('div', { className: "flex justify-end space-x-2" },
@@ -98,7 +104,7 @@
     };
 
     /**
-     * FIXED Completion confirmation dialog with user selection
+     * Completion confirmation dialog with user selection
      */
     const CompletionConfirmDialog = ({ 
         isOpen, 
@@ -112,7 +118,6 @@
         const [selectedUser, setSelectedUser] = useState(defaultUser);
         const [loading, setLoading] = useState(false);
 
-        // Update selected user when default changes
         useEffect(() => {
             setSelectedUser(defaultUser);
         }, [defaultUser]);
@@ -132,45 +137,48 @@
 
         if (!isOpen) return null;
 
-        // Fallback modal if Modal component not available - FIXED: Use inline style
-        if (!window.choreComponents?.Modal) {
-            return h('div', { style: overlayStyle },
-                h('div', { className: "bg-white p-6 rounded-lg max-w-md mx-4" },
-                    h('h3', { className: "text-lg font-medium mb-2" }, title),
-                    h('p', { className: "text-gray-600 mb-4" }, message),
-                    
-                    // User selection
-                    assignees.length > 0 && h('div', { className: "mb-4" },
-                        h('label', { className: "block text-sm font-medium mb-2" }, "Who completed this task?"),
-                        h('select', {
-                            value: selectedUser,
-                            onChange: (e) => setSelectedUser(e.target.value),
-                            className: "w-full p-2 border border-gray-300 rounded-md",
-                            disabled: loading
-                        },
-                            h('option', { value: 'Wie kan' }, 'Wie kan'),
-                            assignees.map(assignee => 
-                                h('option', { 
-                                    key: assignee.name || assignee, 
-                                    value: assignee.name || assignee 
-                                }, assignee.name || assignee)
-                            )
-                        )
-                    ),
-                    
-                    h('div', { className: "flex justify-end space-x-2" },
-                        h('button', {
-                            className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors",
-                            onClick: onCancel,
-                            disabled: loading
-                        }, "Cancel"),
-                        h('button', {
-                            className: `px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
-                            onClick: handleConfirm,
-                            disabled: loading
-                        }, loading ? 'Completing...' : 'Complete')
+        const content = h('div', { className: "space-y-4" },
+            h('h3', { className: "text-lg font-medium mb-2" }, title),
+            h('p', { className: "text-gray-600 mb-4" }, message),
+            
+            assignees.length > 0 && h('div', { className: "mb-4" },
+                h('label', { className: "block text-sm font-medium mb-2" }, "Who completed this task?"),
+                h('select', {
+                    value: selectedUser,
+                    onChange: (e) => setSelectedUser(e.target.value),
+                    className: "w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500",
+                    disabled: loading
+                },
+                    h('option', { value: 'Wie kan' }, 'Wie kan'),
+                    assignees.map(assignee => 
+                        h('option', { 
+                            key: assignee.name || assignee, 
+                            value: assignee.name || assignee 
+                        }, assignee.name || assignee)
                     )
                 )
+            ),
+            
+            h('div', { className: "flex justify-end space-x-2 pt-4" },
+                h('button', {
+                    className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors",
+                    onClick: onCancel,
+                    disabled: loading
+                }, "Cancel"),
+                h('button', {
+                    className: `px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
+                    onClick: handleConfirm,
+                    disabled: loading
+                }, loading ? 'Completing...' : 'Complete')
+            )
+        );
+
+        if (!window.choreComponents?.Modal) {
+            return h('div', { style: overlayStyle },
+                h('div', { 
+                    className: "bg-white p-6 rounded-lg max-w-md overflow-y-auto",
+                    style: modalContentStyle
+                }, content)
             );
         }
 
@@ -179,47 +187,11 @@
             onClose: onCancel,
             title: title,
             size: 'small'
-        },
-            h('div', { className: "space-y-4" },
-                h('p', { className: "text-gray-600" }, message),
-                
-                // User selection
-                assignees.length > 0 && h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-2" }, "Who completed this task?"),
-                    h('select', {
-                        value: selectedUser,
-                        onChange: (e) => setSelectedUser(e.target.value),
-                        className: "w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
-                        disabled: loading
-                    },
-                        h('option', { value: 'Wie kan' }, 'Wie kan'),
-                        assignees.map(assignee => 
-                            h('option', { 
-                                key: assignee.name || assignee, 
-                                value: assignee.name || assignee 
-                            }, assignee.name || assignee)
-                        )
-                    )
-                ),
-                
-                h('div', { className: "flex justify-end space-x-2 pt-4" },
-                    h('button', {
-                        className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors",
-                        onClick: onCancel,
-                        disabled: loading
-                    }, "Cancel"),
-                    h('button', {
-                        className: `px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
-                        onClick: handleConfirm,
-                        disabled: loading
-                    }, loading ? 'Completing...' : 'Complete')
-                )
-            )
-        );
+        }, content);
     };
 
     /**
-     * FIXED Subtask completion dialog with enhanced functionality
+     * Subtask completion dialog
      */
     const SubtaskCompletionDialog = ({ 
         isOpen, 
@@ -231,7 +203,6 @@
         onComplete, 
         onCancel 
     }) => {
-        // Use chore.subtasks if available, fallback to subtasks prop
         const taskSubtasks = chore?.subtasks || subtasks || [];
         const availableUsers = users || assignees || [];
         
@@ -239,7 +210,6 @@
         const [selectedUser, setSelectedUser] = useState(defaultUser);
         const [loading, setLoading] = useState(false);
 
-        // Reset state when dialog opens
         useEffect(() => {
             if (isOpen) {
                 setSelectedSubtasks([]);
@@ -270,72 +240,75 @@
 
         if (!isOpen) return null;
 
-        // Fallback modal if Modal component not available - FIXED: Use inline style
-        if (!window.choreComponents?.Modal) {
-            return h('div', { style: overlayStyle },
-                h('div', { className: "bg-white p-6 rounded-lg max-w-md mx-4 max-h-[80vh] overflow-y-auto" },
-                    h('h3', { className: "text-lg font-medium mb-4" }, "Complete Subtasks"),
+        const content = h('div', { className: "space-y-4" },
+            h('h3', { className: "text-lg font-medium mb-4" }, "Complete Subtasks"),
+            
+            taskSubtasks.length > 0 ? h('div', { className: "space-y-2 max-h-60 overflow-y-auto" },
+                taskSubtasks.map((subtask, index) => {
+                    const subtaskId = subtask.id || `subtask-${index}`;
+                    const subtaskName = subtask.name || subtask;
+                    const isSelected = selectedSubtasks.includes(subtaskId);
+                    const isCompleted = subtask.completed || false;
                     
-                    // Subtasks list
-                    taskSubtasks.length > 0 ? h('div', { className: "space-y-2 mb-4" },
-                        h('p', { className: "text-sm text-gray-600 mb-2" }, "Select subtasks to complete:"),
-                        taskSubtasks.map((subtask, index) => {
-                            const subtaskId = subtask.id || index;
-                            const subtaskName = subtask.name || subtask;
-                            const isCompleted = subtask.completed || false;
-                            
-                            return h('label', { 
-                                key: subtaskId, 
-                                className: `flex items-center p-2 border rounded hover:bg-gray-50 ${isCompleted ? 'bg-green-50 border-green-200' : ''}`
-                            },
-                                h('input', {
-                                    type: 'checkbox',
-                                    checked: selectedSubtasks.includes(subtaskId),
-                                    onChange: () => toggleSubtask(subtaskId),
-                                    className: 'mr-3',
-                                    disabled: isCompleted || loading
-                                }),
-                                h('span', { 
-                                    className: `flex-1 ${isCompleted ? 'text-green-600 line-through' : ''}` 
-                                }, subtaskName),
-                                isCompleted && h('span', { className: 'text-green-500 text-sm' }, '✓')
-                            );
-                        })
-                    ) : h('p', { className: "text-gray-500 italic mb-4" }, "No subtasks available"),
-                    
-                    // User selection
-                    availableUsers.length > 0 && h('div', { className: "mb-4" },
-                        h('label', { className: "block text-sm font-medium mb-2" }, "Completed by:"),
-                        h('select', {
-                            value: selectedUser,
-                            onChange: (e) => setSelectedUser(e.target.value),
-                            className: "w-full p-2 border border-gray-300 rounded-md",
-                            disabled: loading
-                        },
-                            h('option', { value: 'Wie kan' }, 'Wie kan'),
-                            availableUsers.map(user => 
-                                h('option', { 
-                                    key: user.name || user, 
-                                    value: user.name || user 
-                                }, user.name || user)
-                            )
-                        )
-                    ),
-                    
-                    // Action buttons
-                    h('div', { className: "flex justify-end space-x-2" },
-                        h('button', {
-                            className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors",
-                            onClick: onCancel,
-                            disabled: loading
-                        }, "Cancel"),
-                        h('button', {
-                            className: `px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors ${(loading || selectedSubtasks.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`,
-                            onClick: handleConfirm,
-                            disabled: loading || selectedSubtasks.length === 0
-                        }, loading ? 'Completing...' : `Complete (${selectedSubtasks.length})`)
+                    return h('label', {
+                        key: subtaskId,
+                        className: `flex items-center p-3 border rounded hover:bg-gray-50 cursor-pointer ${isSelected ? 'bg-blue-50 border-blue-300' : ''}`
+                    },
+                        h('input', {
+                            type: 'checkbox',
+                            checked: isSelected,
+                            onChange: () => toggleSubtask(subtaskId),
+                            disabled: isCompleted || loading,
+                            className: 'mr-3'
+                        }),
+                        h('span', { 
+                            className: `flex-1 ${isCompleted ? 'text-green-600 line-through' : ''}` 
+                        }, subtaskName),
+                        isCompleted && h('span', { className: 'text-green-500 ml-2' }, '✓')
+                    );
+                })
+            ) : h('div', { className: "text-center py-8" },
+                h('p', { className: "text-gray-500 italic" }, "No subtasks available.")
+            ),
+            
+            availableUsers.length > 0 && h('div', null,
+                h('label', { className: "block text-sm font-medium mb-2" }, "Completed by:"),
+                h('select', {
+                    value: selectedUser,
+                    onChange: (e) => setSelectedUser(e.target.value),
+                    className: "w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500",
+                    disabled: loading
+                },
+                    h('option', { value: 'Wie kan' }, 'Wie kan'),
+                    availableUsers.map(user => 
+                        h('option', { 
+                            key: user.name || user, 
+                            value: user.name || user 
+                        }, user.name || user)
                     )
                 )
+            ),
+            
+            h('div', { className: "flex justify-end space-x-2 pt-4 border-t" },
+                h('button', {
+                    className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400",
+                    onClick: onCancel,
+                    disabled: loading
+                }, "Cancel"),
+                h('button', {
+                    className: `px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 ${(loading || selectedSubtasks.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`,
+                    onClick: handleConfirm,
+                    disabled: loading || selectedSubtasks.length === 0
+                }, loading ? 'Completing...' : `Complete Selected (${selectedSubtasks.length})`)
+            )
+        );
+
+        if (!window.choreComponents?.Modal) {
+            return h('div', { style: overlayStyle },
+                h('div', { 
+                    className: "bg-white p-6 rounded-lg max-w-md overflow-y-auto",
+                    style: modalContentStyle
+                }, content)
             );
         }
 
@@ -344,80 +317,11 @@
             onClose: onCancel,
             title: "Complete Subtasks",
             size: 'medium'
-        },
-            h('div', { className: "space-y-4" },
-                // Subtasks list
-                taskSubtasks.length > 0 ? h('div', { className: "space-y-2" },
-                    h('p', { className: "text-sm text-gray-600 mb-3" }, "Select subtasks to complete:"),
-                    h('div', { className: "max-h-60 overflow-y-auto space-y-2" },
-                        taskSubtasks.map((subtask, index) => {
-                            const subtaskId = subtask.id || index;
-                            const subtaskName = subtask.name || subtask;
-                            const isCompleted = subtask.completed || false;
-                            
-                            return h('label', { 
-                                key: subtaskId, 
-                                className: `flex items-center p-3 border rounded hover:bg-gray-50 cursor-pointer transition-colors ${
-                                    isCompleted ? 'bg-green-50 border-green-200' : 
-                                    selectedSubtasks.includes(subtaskId) ? 'bg-blue-50 border-blue-200' : ''
-                                }`
-                            },
-                                h('input', {
-                                    type: 'checkbox',
-                                    checked: selectedSubtasks.includes(subtaskId),
-                                    onChange: () => toggleSubtask(subtaskId),
-                                    className: 'mr-3 h-4 w-4 text-blue-600',
-                                    disabled: isCompleted || loading
-                                }),
-                                h('span', { 
-                                    className: `flex-1 ${isCompleted ? 'text-green-600 line-through' : ''}` 
-                                }, subtaskName),
-                                isCompleted && h('span', { className: 'text-green-500 ml-2' }, '✓')
-                            );
-                        })
-                    )
-                ) : h('div', { className: "text-center py-8" },
-                    h('p', { className: "text-gray-500 italic" }, "No subtasks available for this task.")
-                ),
-                
-                // User selection
-                availableUsers.length > 0 && h('div', null,
-                    h('label', { className: "block text-sm font-medium mb-2" }, "Completed by:"),
-                    h('select', {
-                        value: selectedUser,
-                        onChange: (e) => setSelectedUser(e.target.value),
-                        className: "w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
-                        disabled: loading
-                    },
-                        h('option', { value: 'Wie kan' }, 'Wie kan'),
-                        availableUsers.map(user => 
-                            h('option', { 
-                                key: user.name || user, 
-                                value: user.name || user 
-                            }, user.name || user)
-                        )
-                    )
-                ),
-                
-                // Action buttons
-                h('div', { className: "flex justify-end space-x-2 pt-4 border-t" },
-                    h('button', {
-                        className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors",
-                        onClick: onCancel,
-                        disabled: loading
-                    }, "Cancel"),
-                    h('button', {
-                        className: `px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors ${(loading || selectedSubtasks.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`,
-                        onClick: handleConfirm,
-                        disabled: loading || selectedSubtasks.length === 0
-                    }, loading ? 'Completing...' : `Complete Selected (${selectedSubtasks.length})`)
-                )
-            )
-        );
+        }, content);
     };
 
     /**
-     * Error dialog component
+     * Error dialog
      */
     const ErrorDialog = ({ isOpen, title = 'Error', message, onClose, error }) => {
         if (!isOpen) return null;
@@ -427,7 +331,7 @@
             errorMessage = typeof error === 'string' ? error : error.message || 'An unknown error occurred';
         }
 
-        const modalContent = h('div', { className: "space-y-4" },
+        const content = h('div', { className: "space-y-4" },
             h('div', { className: "flex items-center mb-3" },
                 h('span', { className: "text-red-500 text-2xl mr-3" }, "⚠️"),
                 h('h3', { className: "text-lg font-medium text-red-800" }, title)
@@ -441,16 +345,18 @@
             ),
             h('div', { className: "flex justify-end pt-4" },
                 h('button', {
-                    className: "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors",
+                    className: "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600",
                     onClick: onClose
                 }, "Close")
             )
         );
 
-        // FIXED: Use inline style for fallback
         if (!window.choreComponents?.Modal) {
             return h('div', { style: overlayStyle },
-                h('div', { className: "bg-white p-6 rounded-lg max-w-md mx-4" }, modalContent)
+                h('div', { 
+                    className: "bg-white p-6 rounded-lg max-w-md overflow-y-auto",
+                    style: modalContentStyle
+                }, content)
             );
         }
 
@@ -458,16 +364,16 @@
             isOpen: true, 
             onClose: onClose,
             size: 'medium'
-        }, modalContent);
+        }, content);
     };
 
     /**
-     * Success dialog component
+     * Success dialog
      */
     const SuccessDialog = ({ isOpen, title = 'Success', message, onClose }) => {
         if (!isOpen) return null;
 
-        const modalContent = h('div', { className: "space-y-4 text-center" },
+        const content = h('div', { className: "space-y-4 text-center" },
             h('div', { className: "flex justify-center mb-4" },
                 h('span', { className: "text-green-500 text-4xl" }, "✅")
             ),
@@ -475,16 +381,18 @@
             h('p', { className: "text-gray-700" }, message),
             h('div', { className: "flex justify-center pt-4" },
                 h('button', {
-                    className: "px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors",
+                    className: "px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600",
                     onClick: onClose
                 }, "OK")
             )
         );
 
-        // FIXED: Use inline style for fallback
         if (!window.choreComponents?.Modal) {
             return h('div', { style: overlayStyle },
-                h('div', { className: "bg-white p-6 rounded-lg max-w-md mx-4" }, modalContent)
+                h('div', { 
+                    className: "bg-white p-6 rounded-lg max-w-md overflow-y-auto",
+                    style: modalContentStyle
+                }, content)
             );
         }
 
@@ -492,10 +400,10 @@
             isOpen: true, 
             onClose: onClose,
             size: 'small'
-        }, modalContent);
+        }, content);
     };
 
-    // Export all dialog components
+    // Export
     window.choreComponents = window.choreComponents || {};
     Object.assign(window.choreComponents, {
         ConfirmDialog,
@@ -505,5 +413,5 @@
         SuccessDialog
     });
 
-    console.log('✅ FIXED Dialog components loaded successfully with comprehensive functionality');
+    console.log('✅ Dialog components loaded with explicit centering');
 })();
