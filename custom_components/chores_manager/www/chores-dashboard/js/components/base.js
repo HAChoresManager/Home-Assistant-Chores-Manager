@@ -1,13 +1,11 @@
 /**
- * FIXED Base UI Components for the Chores Manager
- * Provides all essential, reusable components used throughout the application
- * FIXED: Modal implementation with proper viewport-centered positioning
+ * PROPERLY FIXED Base UI Components for the Chores Manager
+ * Modal now correctly centers in viewport
  */
 
 (function() {
     'use strict';
 
-    // Check dependencies
     if (!window.React) {
         console.error('Base components require React');
         return;
@@ -17,7 +15,7 @@
     const { useState, useEffect, useRef, useCallback } = React;
 
     /**
-     * Loading spinner component with enhanced visuals
+     * Loading spinner component
      */
     const Loading = ({ message = 'Loading...', size = 'medium', overlay = false }) => {
         const sizeClasses = {
@@ -47,7 +45,7 @@
     };
 
     /**
-     * Error message component with retry functionality
+     * Error message component
      */
     const ErrorMessage = ({ message, onRetry, className = '' }) => {
         return h('div', { className: `bg-red-50 border border-red-200 rounded-lg p-4 ${className}` },
@@ -70,7 +68,7 @@
     };
 
     /**
-     * Alert component for info/success/warning/error messages
+     * Alert component
      */
     const Alert = ({ type = 'info', message, children, onClose, className = '' }) => {
         const types = {
@@ -100,8 +98,7 @@
     };
 
     /**
-     * FIXED Modal component with proper viewport-centered positioning
-     * This ensures modals stay centered in the visible viewport regardless of scroll position
+     * PROPERLY FIXED Modal component - truly viewport-centered
      */
     const Modal = ({ isOpen, onClose, children, title, size = 'medium', closeOnOverlay = true }) => {
         const modalRef = useRef(null);
@@ -114,7 +111,6 @@
             full: 'max-w-full mx-4'
         };
 
-        // Handle ESC key and prevent body scroll - FIXED approach
         useEffect(() => {
             const handleEscape = (e) => {
                 if (e.key === 'Escape' && isOpen && onClose) {
@@ -124,37 +120,19 @@
 
             if (isOpen) {
                 document.addEventListener('keydown', handleEscape);
-                // FIXED: Only prevent overflow, don't manipulate body position
                 document.body.style.overflow = 'hidden';
-                document.body.style.position = 'fixed';
-                document.body.style.top = `-${scrollY}px`;
-                document.body.style.width = '100%';
-                
-                // Animate in
                 setTimeout(() => setIsVisible(true), 10);
             } else {
                 setIsVisible(false);
-                // Restore overflow
                 document.body.style.overflow = '';
-                document.body.style.position = '';
-                document.body.style.top = '';
-                document.body.style.width = '';
-                if (scrollY) {
-                    window.scrollTo(0, parseInt(scrollY || '0') * -1);
-                }
             }
 
             return () => {
                 document.removeEventListener('keydown', handleEscape);
-                // Ensure cleanup
                 document.body.style.overflow = '';
-                document.body.style.position = '';
-                document.body.style.top = '';
-                document.body.style.width = '';
             };
         }, [isOpen, onClose]);
 
-        // Handle overlay click
         const handleOverlayClick = useCallback((e) => {
             if (closeOnOverlay && e.target === e.currentTarget && onClose) {
                 onClose();
@@ -163,26 +141,27 @@
 
         if (!isOpen) return null;
 
-        // CRITICAL FIX: Use inline styles to ensure viewport-fixed positioning
+        // CRITICAL: Proper viewport-centered positioning
         const overlayStyle = {
             position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
+            top: '0',
+            left: '0',
+            right: '0',
+            bottom: '0',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: '9999',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 9999,
-            padding: '1rem',
-            overflowY: 'auto'
+            padding: '1rem'
         };
 
-        const modalContentStyle = {
+        // Container for proper scrolling if modal is too tall
+        const modalContainerStyle = {
             maxHeight: '90vh',
-            overflow: 'hidden',
-            // REMOVED: margin: 'auto' which can interfere with flex centering
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
         };
 
         return h('div', {
@@ -190,31 +169,41 @@
             className: `modal-overlay transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`,
             onClick: handleOverlayClick
         },
-            h('div', {
-                ref: modalRef,
-                className: `bg-white rounded-lg shadow-xl w-full ${sizeClasses[size]} transform transition-transform duration-300 ${isVisible ? 'scale-100' : 'scale-95'}`,
-                style: modalContentStyle,
-                onClick: (e) => e.stopPropagation()
-            },
-                // Header
-                (title || onClose) && h('div', { className: 'flex items-center justify-between p-6 border-b' },
-                    h('h2', { className: 'text-xl font-semibold' }, title || ''),
-                    onClose && h('button', {
-                        className: 'text-gray-400 hover:text-gray-600 text-2xl leading-none',
-                        onClick: onClose
-                    }, '×')
-                ),
-                
-                // Content
-                h('div', { className: 'p-6 overflow-y-auto', style: { maxHeight: 'calc(90vh - 120px)' } },
-                    children
+            h('div', { style: modalContainerStyle },
+                h('div', {
+                    ref: modalRef,
+                    className: `bg-white rounded-lg shadow-xl w-full ${sizeClasses[size]} transform transition-transform duration-300 ${isVisible ? 'scale-100' : 'scale-95'}`,
+                    style: {
+                        maxHeight: '90vh',
+                        display: 'flex',
+                        flexDirection: 'column'
+                    },
+                    onClick: (e) => e.stopPropagation()
+                },
+                    // Header
+                    (title || onClose) && h('div', { 
+                        className: 'flex items-center justify-between p-6 border-b',
+                        style: { flexShrink: 0 }
+                    },
+                        h('h2', { className: 'text-xl font-semibold' }, title || ''),
+                        onClose && h('button', {
+                            className: 'text-gray-400 hover:text-gray-600 text-2xl leading-none',
+                            onClick: onClose
+                        }, '×')
+                    ),
+                    
+                    // Content - scrollable
+                    h('div', { 
+                        className: 'p-6 overflow-y-auto',
+                        style: { flex: '1 1 auto' }
+                    }, children)
                 )
             )
         );
     };
 
     /**
-     * Empty state component for when no data is available
+     * Empty state component
      */
     const EmptyState = ({ icon = '📭', title = 'No data', message, action, onAction }) => {
         return h('div', { className: 'text-center py-12 px-4' },
@@ -229,7 +218,7 @@
     };
 
     /**
-     * Badge component for status indicators
+     * Badge component
      */
     const Badge = ({ children, variant = 'default', className = '' }) => {
         const variants = {
@@ -281,8 +270,8 @@
 
         return h('div', { 
             className: 'relative inline-block',
-            onMouseEnter: () => setIsVisible(true),
-            onMouseLeave: () => setIsVisible(false)
+            onMouseEnter: () => setShow(true),
+            onMouseLeave: () => setShow(false)
         },
             children,
             show && h('div', {
@@ -297,7 +286,7 @@
     };
 
     /**
-     * Button component with various styles
+     * Button component
      */
     const Button = ({ 
         variant = 'primary', 
@@ -336,7 +325,7 @@
     };
 
     /**
-     * Card component for content containers
+     * Card component
      */
     const Card = ({ title, children, className = '', header, footer }) => {
         return h('div', { className: `bg-white rounded-lg shadow-sm border border-gray-200 ${className}` },
@@ -348,7 +337,7 @@
         );
     };
 
-    // Export all base components
+    // Export all components
     window.choreComponents = window.choreComponents || {};
     Object.assign(window.choreComponents, {
         Loading,
@@ -363,5 +352,5 @@
         Card
     });
 
-    console.log('✅ FIXED Base components loaded with viewport-centered modals');
+    console.log('✅ Base components loaded with properly centered modals');
 })();
