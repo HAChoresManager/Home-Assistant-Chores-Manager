@@ -1,6 +1,5 @@
 /**
- * PROPERLY FIXED Base UI Components for the Chores Manager
- * Modal now correctly centers in viewport
+ * Base UI Components - Modal with explicit viewport centering
  */
 
 (function() {
@@ -98,7 +97,7 @@
     };
 
     /**
-     * PROPERLY FIXED Modal component - truly viewport-centered
+     * Modal with EXPLICIT viewport centering - no flex dependencies
      */
     const Modal = ({ isOpen, onClose, children, title, size = 'medium', closeOnOverlay = true }) => {
         const modalRef = useRef(null);
@@ -141,27 +140,29 @@
 
         if (!isOpen) return null;
 
-        // CRITICAL: Proper viewport-centered positioning
+        // CRITICAL: Explicit centering using position + transform
         const overlayStyle = {
             position: 'fixed',
-            top: '0',
-            left: '0',
-            right: '0',
-            bottom: '0',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: '9999',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1rem'
+            zIndex: 9999,
+            overflow: 'auto'
         };
 
-        // Container for proper scrolling if modal is too tall
-        const modalContainerStyle = {
+        const modalStyle = {
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
             maxHeight: '90vh',
+            maxWidth: '90vw',
+            width: '100%',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+            flexDirection: 'column',
+            zIndex: 10000
         };
 
         return h('div', {
@@ -169,35 +170,29 @@
             className: `modal-overlay transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`,
             onClick: handleOverlayClick
         },
-            h('div', { style: modalContainerStyle },
-                h('div', {
-                    ref: modalRef,
-                    className: `bg-white rounded-lg shadow-xl w-full ${sizeClasses[size]} transform transition-transform duration-300 ${isVisible ? 'scale-100' : 'scale-95'}`,
-                    style: {
-                        maxHeight: '90vh',
-                        display: 'flex',
-                        flexDirection: 'column'
-                    },
-                    onClick: (e) => e.stopPropagation()
+            h('div', {
+                ref: modalRef,
+                className: `bg-white rounded-lg shadow-xl ${sizeClasses[size]} transform transition-transform duration-300 ${isVisible ? 'scale-100' : 'scale-95'}`,
+                style: modalStyle,
+                onClick: (e) => e.stopPropagation()
+            },
+                // Header
+                (title || onClose) && h('div', { 
+                    className: 'flex items-center justify-between p-6 border-b',
+                    style: { flexShrink: 0 }
                 },
-                    // Header
-                    (title || onClose) && h('div', { 
-                        className: 'flex items-center justify-between p-6 border-b',
-                        style: { flexShrink: 0 }
-                    },
-                        h('h2', { className: 'text-xl font-semibold' }, title || ''),
-                        onClose && h('button', {
-                            className: 'text-gray-400 hover:text-gray-600 text-2xl leading-none',
-                            onClick: onClose
-                        }, '×')
-                    ),
-                    
-                    // Content - scrollable
-                    h('div', { 
-                        className: 'p-6 overflow-y-auto',
-                        style: { flex: '1 1 auto' }
-                    }, children)
-                )
+                    h('h2', { className: 'text-xl font-semibold' }, title || ''),
+                    onClose && h('button', {
+                        className: 'text-gray-400 hover:text-gray-600 text-2xl leading-none',
+                        onClick: onClose
+                    }, '×')
+                ),
+                
+                // Content
+                h('div', { 
+                    className: 'p-6 overflow-y-auto',
+                    style: { flex: '1 1 auto' }
+                }, children)
             )
         );
     };
@@ -352,5 +347,5 @@
         Card
     });
 
-    console.log('✅ Base components loaded with properly centered modals');
+    console.log('✅ Base components loaded with explicit viewport centering');
 })();
