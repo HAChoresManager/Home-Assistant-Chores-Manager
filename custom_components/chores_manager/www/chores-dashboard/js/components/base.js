@@ -1,7 +1,7 @@
 /**
- * COMPLETELY FIXED Base UI Components for the Chores Manager
+ * FIXED Base UI Components for the Chores Manager
  * Provides all essential, reusable components used throughout the application
- * Fixed Modal implementation with proper viewport-fixed positioning
+ * FIXED: Modal implementation with proper viewport-centered positioning
  */
 
 (function() {
@@ -38,7 +38,9 @@
         );
 
         if (overlay) {
-            return h('div', { className: 'fixed inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50' }, content);
+            return h('div', { 
+                className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50' 
+            }, content);
         }
 
         return content;
@@ -47,48 +49,47 @@
     /**
      * Error message component with retry functionality
      */
-    const ErrorMessage = ({ message, onRetry, onDismiss }) => {
-        return h('div', { className: 'bg-red-50 border border-red-200 rounded-lg p-4 my-4' },
+    const ErrorMessage = ({ message, onRetry, className = '' }) => {
+        return h('div', { className: `bg-red-50 border border-red-200 rounded-lg p-4 ${className}` },
             h('div', { className: 'flex items-start' },
                 h('div', { className: 'flex-shrink-0' },
-                    h('svg', { className: 'h-5 w-5 text-red-400', viewBox: '0 0 20 20', fill: 'currentColor' },
-                        h('path', { fillRule: 'evenodd', d: 'M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z', clipRule: 'evenodd' })
-                    )
+                    h('span', { className: 'text-red-500 text-xl' }, '⚠️')
                 ),
                 h('div', { className: 'ml-3 flex-1' },
-                    h('p', { className: 'text-sm text-red-700' }, message)
+                    h('h3', { className: 'text-sm font-medium text-red-800' }, 'Error'),
+                    h('p', { className: 'mt-1 text-sm text-red-700' }, message)
                 ),
-                (onRetry || onDismiss) && h('div', { className: 'ml-3 flex space-x-2' },
-                    onRetry && h('button', {
-                        className: 'text-sm font-medium text-red-600 hover:text-red-500',
+                onRetry && h('div', { className: 'ml-auto pl-3' },
+                    h('button', {
+                        className: 'px-3 py-1 text-sm bg-red-100 hover:bg-red-200 text-red-800 rounded transition-colors',
                         onClick: onRetry
-                    }, 'Retry'),
-                    onDismiss && h('button', {
-                        className: 'text-sm font-medium text-red-600 hover:text-red-500',
-                        onClick: onDismiss
-                    }, 'Dismiss')
+                    }, 'Retry')
                 )
             )
         );
     };
 
     /**
-     * Alert component for notifications
+     * Alert component for info/success/warning/error messages
      */
-    const Alert = ({ type = 'info', message, children, onClose }) => {
-        const styles = {
-            info: 'bg-blue-50 border-blue-200 text-blue-700',
-            success: 'bg-green-50 border-green-200 text-green-700',
-            warning: 'bg-yellow-50 border-yellow-200 text-yellow-700',
-            error: 'bg-red-50 border-red-200 text-red-700'
+    const Alert = ({ type = 'info', message, children, onClose, className = '' }) => {
+        const types = {
+            info: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800', icon: 'ℹ️' },
+            success: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-800', icon: '✅' },
+            warning: { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-800', icon: '⚠️' },
+            error: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-800', icon: '❌' }
         };
 
-        return h('div', { className: `border rounded-lg p-4 my-2 ${styles[type]}` },
-            h('div', { className: 'flex justify-between items-start' },
-                h('div', { className: 'flex-1' },
-                    message && h('p', { className: message && children ? 'font-medium' : '' }, message),
-                    children && h('div', { className: message ? 'text-sm mt-1' : '' }, message),
-                    children
+        const config = types[type] || types.info;
+
+        return h('div', { 
+            className: `${config.bg} ${config.border} border rounded-lg p-4 ${className}` 
+        },
+            h('div', { className: 'flex items-start justify-between' },
+                h('div', { className: 'flex items-start' },
+                    h('span', { className: 'text-xl mr-3' }, config.icon),
+                    h('span', { className: `${config.text} ${children ? 'font-medium' : ''}` }, message),
+                    children && h('div', { className: message ? 'text-sm mt-1' : '' }, children)
                 ),
                 onClose && h('button', {
                     className: 'ml-4 text-lg hover:bg-black hover:bg-opacity-10 rounded p-1',
@@ -99,8 +100,8 @@
     };
 
     /**
-     * COMPLETELY FIXED Modal component with proper viewport-fixed positioning
-     * This ensures modals stay centered regardless of scroll position or device
+     * FIXED Modal component with proper viewport-centered positioning
+     * This ensures modals stay centered in the visible viewport regardless of scroll position
      */
     const Modal = ({ isOpen, onClose, children, title, size = 'medium', closeOnOverlay = true }) => {
         const modalRef = useRef(null);
@@ -113,7 +114,7 @@
             full: 'max-w-full mx-4'
         };
 
-        // Handle ESC key and prevent body scroll
+        // Handle ESC key and prevent body scroll - FIXED approach
         useEffect(() => {
             const handleEscape = (e) => {
                 if (e.key === 'Escape' && isOpen && onClose) {
@@ -122,10 +123,8 @@
             };
 
             if (isOpen) {
-                // Save current scroll position
-                const scrollY = window.scrollY;
-                
                 document.addEventListener('keydown', handleEscape);
+                // FIXED: Only prevent overflow, don't manipulate body position
                 document.body.style.overflow = 'hidden';
                 document.body.style.position = 'fixed';
                 document.body.style.top = `-${scrollY}px`;
@@ -135,9 +134,7 @@
                 setTimeout(() => setIsVisible(true), 10);
             } else {
                 setIsVisible(false);
-                
-                // Restore scroll position
-                const scrollY = document.body.style.top;
+                // Restore overflow
                 document.body.style.overflow = '';
                 document.body.style.position = '';
                 document.body.style.top = '';
@@ -149,6 +146,7 @@
 
             return () => {
                 document.removeEventListener('keydown', handleEscape);
+                // Ensure cleanup
                 document.body.style.overflow = '';
                 document.body.style.position = '';
                 document.body.style.top = '';
@@ -165,7 +163,7 @@
 
         if (!isOpen) return null;
 
-        // CRITICAL FIX: Use inline styles to override any CSS that might break positioning
+        // CRITICAL FIX: Use inline styles to ensure viewport-fixed positioning
         const overlayStyle = {
             position: 'fixed',
             top: 0,
@@ -181,6 +179,12 @@
             overflowY: 'auto'
         };
 
+        const modalContentStyle = {
+            maxHeight: '90vh',
+            overflow: 'hidden',
+            // REMOVED: margin: 'auto' which can interfere with flex centering
+        };
+
         return h('div', {
             style: overlayStyle,
             className: `modal-overlay transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`,
@@ -189,11 +193,7 @@
             h('div', {
                 ref: modalRef,
                 className: `bg-white rounded-lg shadow-xl w-full ${sizeClasses[size]} transform transition-transform duration-300 ${isVisible ? 'scale-100' : 'scale-95'}`,
-                style: {
-                    maxHeight: '90vh',
-                    overflow: 'hidden',
-                    margin: 'auto'
-                },
+                style: modalContentStyle,
                 onClick: (e) => e.stopPropagation()
             },
                 // Header
@@ -220,9 +220,9 @@
         return h('div', { className: 'text-center py-12 px-4' },
             h('div', { className: 'text-6xl mb-4' }, icon),
             h('h3', { className: 'text-lg font-medium text-gray-900 mb-2' }, title),
-            message && h('p', { className: 'text-gray-500 mb-4' }, message),
+            message && h('p', { className: 'text-gray-600 mb-6' }, message),
             action && onAction && h('button', {
-                className: 'bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition-colors',
+                className: 'px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors',
                 onClick: onAction
             }, action)
         );
@@ -231,7 +231,7 @@
     /**
      * Badge component for status indicators
      */
-    const Badge = ({ variant = 'default', children, className = '' }) => {
+    const Badge = ({ children, variant = 'default', className = '' }) => {
         const variants = {
             default: 'bg-gray-100 text-gray-800',
             primary: 'bg-blue-100 text-blue-800',
@@ -249,9 +249,9 @@
     /**
      * Progress bar component
      */
-    const ProgressBar = ({ value = 0, max = 100, variant = 'primary', showLabel = false, className = '' }) => {
+    const ProgressBar = ({ value, max = 100, variant = 'primary', showLabel = false, className = '' }) => {
         const percentage = Math.min(100, Math.max(0, (value / max) * 100));
-
+        
         const variants = {
             primary: 'bg-blue-500',
             success: 'bg-green-500',
@@ -260,8 +260,9 @@
         };
 
         return h('div', { className: `w-full ${className}` },
-            showLabel && h('div', { className: 'flex justify-between mb-1' },
-                h('span', { className: 'text-sm font-medium text-gray-700' }, `${Math.round(percentage)}%`)
+            showLabel && h('div', { className: 'flex justify-between mb-1 text-sm' },
+                h('span', null, `${value} / ${max}`),
+                h('span', null, `${Math.round(percentage)}%`)
             ),
             h('div', { className: 'w-full bg-gray-200 rounded-full h-2.5' },
                 h('div', {
@@ -275,8 +276,8 @@
     /**
      * Tooltip component
      */
-    const Tooltip = ({ content, children, position = 'top' }) => {
-        const [isVisible, setIsVisible] = useState(false);
+    const Tooltip = ({ children, content, position = 'top' }) => {
+        const [show, setShow] = useState(false);
 
         return h('div', { 
             className: 'relative inline-block',
@@ -284,8 +285,8 @@
             onMouseLeave: () => setIsVisible(false)
         },
             children,
-            isVisible && h('div', {
-                className: `absolute z-10 px-3 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg shadow-sm whitespace-nowrap ${
+            show && h('div', {
+                className: `absolute z-50 px-2 py-1 text-xs text-white bg-gray-900 rounded whitespace-nowrap ${
                     position === 'top' ? 'bottom-full left-1/2 -translate-x-1/2 -mb-1' :
                     position === 'bottom' ? 'top-full left-1/2 -translate-x-1/2 -mt-1' :
                     position === 'left' ? 'left-full top-1/2 -translate-y-1/2 -ml-1' :
@@ -362,5 +363,5 @@
         Card
     });
 
-    console.log('✅ FIXED Base components loaded successfully with viewport-fixed modals');
+    console.log('✅ FIXED Base components loaded with viewport-centered modals');
 })();
