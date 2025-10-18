@@ -1,5 +1,6 @@
 /**
- * Base UI Components - Modal with explicit viewport centering
+ * PROPERLY FIXED Base UI Components
+ * Modal now renders correctly without nesting issues
  */
 
 (function() {
@@ -30,7 +31,7 @@
                 className: `animate-spin rounded-full border-b-2 border-blue-500 ${sizeClasses[size]}`
             }),
             message && h('p', { 
-                className: `mt-4 text-gray-600 ${size === 'small' ? 'text-sm' : size === 'large' ? 'text-lg' : ''}` 
+                className: `mt-4 text-gray-600 ${size === 'small' ? 'text-sm' : size === 'large' ? 'text-xl' : ''}` 
             }, message)
         );
 
@@ -46,21 +47,17 @@
     /**
      * Error message component
      */
-    const ErrorMessage = ({ message, onRetry, className = '' }) => {
-        return h('div', { className: `bg-red-50 border border-red-200 rounded-lg p-4 ${className}` },
+    const ErrorMessage = ({ message, onRetry, details }) => {
+        return h('div', { className: 'bg-red-50 border border-red-200 rounded-lg p-4 mb-4' },
             h('div', { className: 'flex items-start' },
-                h('div', { className: 'flex-shrink-0' },
-                    h('span', { className: 'text-red-500 text-xl' }, '⚠️')
-                ),
-                h('div', { className: 'ml-3 flex-1' },
-                    h('h3', { className: 'text-sm font-medium text-red-800' }, 'Error'),
-                    h('p', { className: 'mt-1 text-sm text-red-700' }, message)
-                ),
-                onRetry && h('div', { className: 'ml-auto pl-3' },
-                    h('button', {
-                        className: 'px-3 py-1 text-sm bg-red-100 hover:bg-red-200 text-red-800 rounded transition-colors',
+                h('div', { className: 'text-red-600 mr-3 text-xl' }, '⚠️'),
+                h('div', { className: 'flex-1' },
+                    h('h4', { className: 'text-red-800 font-medium mb-1' }, message || 'An error occurred'),
+                    details && h('p', { className: 'text-red-600 text-sm' }, details),
+                    onRetry && h('button', {
+                        className: 'mt-2 text-sm text-red-700 underline hover:text-red-900',
                         onClick: onRetry
-                    }, 'Retry')
+                    }, 'Try again')
                 )
             )
         );
@@ -69,24 +66,25 @@
     /**
      * Alert component
      */
-    const Alert = ({ type = 'info', message, children, onClose, className = '' }) => {
+    const Alert = ({ type = 'info', title, message, children, onClose }) => {
         const types = {
             info: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800', icon: 'ℹ️' },
-            success: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-800', icon: '✅' },
+            success: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-800', icon: '✓' },
             warning: { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-800', icon: '⚠️' },
-            error: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-800', icon: '❌' }
+            error: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-800', icon: '✗' }
         };
 
-        const config = types[type] || types.info;
+        const style = types[type] || types.info;
 
-        return h('div', { 
-            className: `${config.bg} ${config.border} border rounded-lg p-4 ${className}` 
-        },
+        return h('div', { className: `${style.bg} ${style.border} border rounded-lg p-4 mb-4` },
             h('div', { className: 'flex items-start justify-between' },
-                h('div', { className: 'flex items-start' },
-                    h('span', { className: 'text-xl mr-3' }, config.icon),
-                    h('span', { className: `${config.text} ${children ? 'font-medium' : ''}` }, message),
-                    children && h('div', { className: message ? 'text-sm mt-1' : '' }, children)
+                h('div', { className: 'flex items-start flex-1' },
+                    h('div', { className: `${style.text} mr-3 text-xl` }, style.icon),
+                    h('div', { className: 'flex-1' },
+                        title && h('h4', { className: `${style.text} font-medium mb-1` }, title),
+                        message && h('p', { className: 'text-sm mt-1' }, message),
+                        children
+                    )
                 ),
                 onClose && h('button', {
                     className: 'ml-4 text-lg hover:bg-black hover:bg-opacity-10 rounded p-1',
@@ -97,7 +95,7 @@
     };
 
     /**
-     * Modal with EXPLICIT viewport centering - no flex dependencies
+     * PROPERLY FIXED Modal - overlay and content are siblings, not nested
      */
     const Modal = ({ isOpen, onClose, children, title, size = 'medium', closeOnOverlay = true }) => {
         const modalRef = useRef(null);
@@ -140,40 +138,47 @@
 
         if (!isOpen) return null;
 
-        // CRITICAL: Explicit centering using position + transform
-        const overlayStyle = {
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 9999,
-            overflow: 'auto'
-        };
-
-        const modalStyle = {
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            maxHeight: '90vh',
-            maxWidth: '90vw',
-            width: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            zIndex: 10000
-        };
-
+        // CRITICAL FIX: Render as a flat structure, not nested
+        // Both overlay and modal are position: fixed at root level
         return h('div', {
-            style: overlayStyle,
-            className: `modal-overlay transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`,
-            onClick: handleOverlayClick
+            style: {
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 9999
+            }
         },
+            // Background overlay
+            h('div', {
+                style: {
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)'
+                },
+                className: `transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`,
+                onClick: handleOverlayClick
+            }),
+            
+            // Modal content - absolutely positioned, centered
             h('div', {
                 ref: modalRef,
-                className: `bg-white rounded-lg shadow-xl ${sizeClasses[size]} transform transition-transform duration-300 ${isVisible ? 'scale-100' : 'scale-95'}`,
-                style: modalStyle,
+                style: {
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    maxHeight: '90vh',
+                    maxWidth: '90vw',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column'
+                },
+                className: `bg-white rounded-lg shadow-xl w-full ${sizeClasses[size]} transition-transform duration-300 ${isVisible ? 'scale-100' : 'scale-95'}`,
                 onClick: (e) => e.stopPropagation()
             },
                 // Header
@@ -188,10 +193,14 @@
                     }, '×')
                 ),
                 
-                // Content
+                // Content - scrollable
                 h('div', { 
-                    className: 'p-6 overflow-y-auto',
-                    style: { flex: '1 1 auto' }
+                    className: 'p-6',
+                    style: { 
+                        flex: '1 1 auto',
+                        overflowY: 'auto',
+                        overflowX: 'hidden'
+                    }
                 }, children)
             )
         );
@@ -233,7 +242,7 @@
     /**
      * Progress bar component
      */
-    const ProgressBar = ({ value, max = 100, variant = 'primary', showLabel = false, className = '' }) => {
+    const ProgressBar = ({ value = 0, max = 100, variant = 'primary', showLabel = false, className = '' }) => {
         const percentage = Math.min(100, Math.max(0, (value / max) * 100));
         
         const variants = {
@@ -263,6 +272,13 @@
     const Tooltip = ({ children, content, position = 'top' }) => {
         const [show, setShow] = useState(false);
 
+        const positionClasses = {
+            top: 'bottom-full left-1/2 -translate-x-1/2 -mb-1',
+            bottom: 'top-full left-1/2 -translate-x-1/2 -mt-1',
+            left: 'left-full top-1/2 -translate-y-1/2 -ml-1',
+            right: 'right-full top-1/2 -translate-y-1/2 -mr-1'
+        };
+
         return h('div', { 
             className: 'relative inline-block',
             onMouseEnter: () => setShow(true),
@@ -270,12 +286,7 @@
         },
             children,
             show && h('div', {
-                className: `absolute z-50 px-2 py-1 text-xs text-white bg-gray-900 rounded whitespace-nowrap ${
-                    position === 'top' ? 'bottom-full left-1/2 -translate-x-1/2 -mb-1' :
-                    position === 'bottom' ? 'top-full left-1/2 -translate-x-1/2 -mt-1' :
-                    position === 'left' ? 'left-full top-1/2 -translate-y-1/2 -ml-1' :
-                    'right-full top-1/2 -translate-y-1/2 -mr-1'
-                }`
+                className: `absolute z-50 px-2 py-1 text-xs text-white bg-gray-900 rounded whitespace-nowrap ${positionClasses[position]}`
             }, content)
         );
     };
@@ -332,7 +343,7 @@
         );
     };
 
-    // Export all components
+    // Export all base components
     window.choreComponents = window.choreComponents || {};
     Object.assign(window.choreComponents, {
         Loading,
@@ -347,5 +358,5 @@
         Card
     });
 
-    console.log('✅ Base components loaded with explicit viewport centering');
+    console.log('✅ PROPERLY FIXED Base components - modals no longer nested');
 })();

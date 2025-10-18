@@ -1,5 +1,6 @@
 /**
- * Dialog Components - Fixed with explicit viewport centering
+ * PROPERLY FIXED Dialog Components
+ * Fallback modals now use non-nested structure like the main Modal component
  */
 
 (function() {
@@ -13,32 +14,49 @@
     const h = React.createElement;
     const { useState, useCallback, useEffect } = React;
 
-    // FIXED: Overlay for fallback modals (modal itself will be explicitly positioned)
-    const overlayStyle = {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        zIndex: 9999,
-        overflow: 'auto'
-    };
-
-    // FIXED: Explicit positioning for modal content
-    const modalContentStyle = {
-        position: 'fixed',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        maxHeight: '90vh',
-        maxWidth: '90vw',
-        width: '100%',
-        zIndex: 10000
+    /**
+     * Fallback modal renderer - non-nested structure
+     */
+    const renderFallbackModal = (content, maxWidth = 'max-w-md') => {
+        return h('div', {
+            style: {
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 9999
+            }
+        },
+            // Background
+            h('div', {
+                style: {
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)'
+                }
+            }),
+            // Content
+            h('div', {
+                style: {
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    maxHeight: '90vh',
+                    maxWidth: '90vw',
+                    overflowY: 'auto'
+                },
+                className: `bg-white p-6 rounded-lg ${maxWidth} w-full mx-4`
+            }, content)
+        );
     };
 
     /**
-     * Basic confirmation dialog
+     * Confirmation dialog
      */
     const ConfirmDialog = ({ 
         isOpen, 
@@ -59,52 +77,35 @@
             primary: 'bg-blue-500 hover:bg-blue-600'
         };
 
+        const content = h('div', null,
+            h('h3', { className: 'text-lg font-medium mb-2' }, title),
+            h('p', { className: 'text-gray-600 mb-4' }, message),
+            h('div', { className: 'flex justify-end space-x-2' },
+                h('button', {
+                    className: 'px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400',
+                    onClick: onCancel
+                }, cancelText),
+                h('button', {
+                    className: `px-4 py-2 text-white rounded ${variants[variant]}`,
+                    onClick: onConfirm
+                }, confirmText)
+            )
+        );
+
         if (!window.choreComponents?.Modal) {
-            return h('div', { style: overlayStyle },
-                h('div', { 
-                    className: "bg-white p-6 rounded-lg max-w-md",
-                    style: modalContentStyle
-                },
-                    h('h3', { className: "text-lg font-medium mb-2" }, title),
-                    h('p', { className: "text-gray-600 mb-4" }, message),
-                    h('div', { className: "flex justify-end space-x-2" },
-                        h('button', {
-                            className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors",
-                            onClick: onCancel
-                        }, cancelText),
-                        h('button', {
-                            className: `px-4 py-2 text-white rounded transition-colors ${variants[variant]}`,
-                            onClick: onConfirm
-                        }, confirmText)
-                    )
-                )
-            );
+            return renderFallbackModal(content);
         }
 
         return h(window.choreComponents.Modal, { 
             isOpen: true, 
             onClose: onCancel,
+            title: title,
             size: 'small'
-        },
-            h('div', { className: "space-y-4" },
-                h('h3', { className: "text-lg font-medium" }, title),
-                h('p', { className: "text-gray-600" }, message),
-                h('div', { className: "flex justify-end space-x-2 pt-4" },
-                    h('button', {
-                        className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors",
-                        onClick: onCancel
-                    }, cancelText),
-                    h('button', {
-                        className: `px-4 py-2 text-white rounded transition-colors ${variants[variant]}`,
-                        onClick: onConfirm
-                    }, confirmText)
-                )
-            )
-        );
+        }, content);
     };
 
     /**
-     * Completion confirmation dialog with user selection
+     * Completion confirmation dialog
      */
     const CompletionConfirmDialog = ({ 
         isOpen, 
@@ -124,12 +125,11 @@
 
         const handleConfirm = useCallback(async () => {
             if (!onConfirm) return;
-            
             setLoading(true);
             try {
                 await onConfirm(selectedUser);
             } catch (error) {
-                console.error('Error in completion confirm:', error);
+                console.error('Error:', error);
             } finally {
                 setLoading(false);
             }
@@ -137,36 +137,33 @@
 
         if (!isOpen) return null;
 
-        const content = h('div', { className: "space-y-4" },
-            h('h3', { className: "text-lg font-medium mb-2" }, title),
-            h('p', { className: "text-gray-600 mb-4" }, message),
-            
-            assignees.length > 0 && h('div', { className: "mb-4" },
-                h('label', { className: "block text-sm font-medium mb-2" }, "Who completed this task?"),
+        const content = h('div', null,
+            h('p', { className: 'text-gray-600 mb-4' }, message),
+            assignees.length > 0 && h('div', { className: 'mb-6' },
+                h('label', { className: 'block text-sm font-medium mb-2' }, 'Who completed this task?'),
                 h('select', {
                     value: selectedUser,
                     onChange: (e) => setSelectedUser(e.target.value),
-                    className: "w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500",
+                    className: 'w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500',
                     disabled: loading
                 },
                     h('option', { value: 'Wie kan' }, 'Wie kan'),
-                    assignees.map(assignee => 
+                    assignees.map(user => 
                         h('option', { 
-                            key: assignee.name || assignee, 
-                            value: assignee.name || assignee 
-                        }, assignee.name || assignee)
+                            key: user.name || user, 
+                            value: user.name || user 
+                        }, user.name || user)
                     )
                 )
             ),
-            
-            h('div', { className: "flex justify-end space-x-2 pt-4" },
+            h('div', { className: 'flex justify-end space-x-2 pt-4 border-t' },
                 h('button', {
-                    className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors",
+                    className: 'px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400',
                     onClick: onCancel,
                     disabled: loading
-                }, "Cancel"),
+                }, 'Cancel'),
                 h('button', {
-                    className: `px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
+                    className: `px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`,
                     onClick: handleConfirm,
                     disabled: loading
                 }, loading ? 'Completing...' : 'Complete')
@@ -174,12 +171,7 @@
         );
 
         if (!window.choreComponents?.Modal) {
-            return h('div', { style: overlayStyle },
-                h('div', { 
-                    className: "bg-white p-6 rounded-lg max-w-md overflow-y-auto",
-                    style: modalContentStyle
-                }, content)
-            );
+            return renderFallbackModal(content);
         }
 
         return h(window.choreComponents.Modal, { 
@@ -195,88 +187,86 @@
      */
     const SubtaskCompletionDialog = ({ 
         isOpen, 
-        chore = null,
-        subtasks = [],
-        users = [], 
-        assignees = [],
-        defaultUser = 'Wie kan', 
-        onComplete, 
-        onCancel 
+        title = 'Complete Subtasks', 
+        subtasks = [], 
+        onConfirm, 
+        onCancel,
+        availableUsers = [],
+        defaultUser = 'Wie kan'
     }) => {
-        const taskSubtasks = chore?.subtasks || subtasks || [];
-        const availableUsers = users || assignees || [];
-        
-        const [selectedSubtasks, setSelectedSubtasks] = useState([]);
+        const [selectedSubtasks, setSelectedSubtasks] = useState(new Set());
         const [selectedUser, setSelectedUser] = useState(defaultUser);
         const [loading, setLoading] = useState(false);
 
         useEffect(() => {
             if (isOpen) {
-                setSelectedSubtasks([]);
+                const incomplete = new Set(subtasks.filter(st => !st.completed).map(st => st.id));
+                setSelectedSubtasks(incomplete);
                 setSelectedUser(defaultUser);
             }
-        }, [isOpen, defaultUser]);
+        }, [isOpen, subtasks, defaultUser]);
 
-        const toggleSubtask = useCallback((subtaskId) => {
-            setSelectedSubtasks(prev => 
-                prev.includes(subtaskId) 
-                    ? prev.filter(id => id !== subtaskId)
-                    : [...prev, subtaskId]
-            );
+        const toggleSubtask = useCallback((id) => {
+            setSelectedSubtasks(prev => {
+                const next = new Set(prev);
+                if (next.has(id)) {
+                    next.delete(id);
+                } else {
+                    next.add(id);
+                }
+                return next;
+            });
         }, []);
 
         const handleConfirm = useCallback(async () => {
-            if (!onComplete || selectedSubtasks.length === 0) return;
-            
+            if (!onConfirm || selectedSubtasks.size === 0) return;
             setLoading(true);
             try {
-                await onComplete(selectedSubtasks, selectedUser);
+                await onConfirm(Array.from(selectedSubtasks), selectedUser);
             } catch (error) {
-                console.error('Error completing subtasks:', error);
+                console.error('Error:', error);
             } finally {
                 setLoading(false);
             }
-        }, [onComplete, selectedSubtasks, selectedUser]);
+        }, [onConfirm, selectedSubtasks, selectedUser]);
 
         if (!isOpen) return null;
 
-        const content = h('div', { className: "space-y-4" },
-            h('h3', { className: "text-lg font-medium mb-4" }, "Complete Subtasks"),
-            
-            taskSubtasks.length > 0 ? h('div', { className: "space-y-2 max-h-60 overflow-y-auto" },
-                taskSubtasks.map((subtask, index) => {
-                    const subtaskId = subtask.id || `subtask-${index}`;
-                    const subtaskName = subtask.name || subtask;
-                    const isSelected = selectedSubtasks.includes(subtaskId);
-                    const isCompleted = subtask.completed || false;
-                    
+        const content = h('div', null,
+            subtasks.length > 0 ? h('div', { className: 'space-y-2 mb-4' },
+                subtasks.map(st => {
+                    const id = st.id || st.name;
+                    const isCompleted = st.completed;
+                    const isSelected = selectedSubtasks.has(id);
+
                     return h('label', {
-                        key: subtaskId,
-                        className: `flex items-center p-3 border rounded hover:bg-gray-50 cursor-pointer ${isSelected ? 'bg-blue-50 border-blue-300' : ''}`
+                        key: id,
+                        className: `flex items-center p-3 border rounded cursor-pointer ${
+                            isCompleted ? 'bg-green-50 border-green-300 cursor-not-allowed' : 
+                            isSelected ? 'bg-blue-50 border-blue-300' : ''}`
                     },
                         h('input', {
                             type: 'checkbox',
                             checked: isSelected,
-                            onChange: () => toggleSubtask(subtaskId),
+                            onChange: () => toggleSubtask(id),
                             disabled: isCompleted || loading,
                             className: 'mr-3'
                         }),
                         h('span', { 
                             className: `flex-1 ${isCompleted ? 'text-green-600 line-through' : ''}` 
-                        }, subtaskName),
+                        }, st.name),
                         isCompleted && h('span', { className: 'text-green-500 ml-2' }, '✓')
                     );
                 })
-            ) : h('div', { className: "text-center py-8" },
-                h('p', { className: "text-gray-500 italic" }, "No subtasks available.")
+            ) : h('div', { className: 'text-center py-8' },
+                h('p', { className: 'text-gray-500 italic' }, 'No subtasks available')
             ),
-            
             availableUsers.length > 0 && h('div', null,
-                h('label', { className: "block text-sm font-medium mb-2" }, "Completed by:"),
+                h('label', { className: 'block text-sm font-medium mb-2' }, 'Completed by:'),
                 h('select', {
                     value: selectedUser,
                     onChange: (e) => setSelectedUser(e.target.value),
-                    className: "w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500",
+                    className: 'w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500',
                     disabled: loading
                 },
                     h('option', { value: 'Wie kan' }, 'Wie kan'),
@@ -288,34 +278,28 @@
                     )
                 )
             ),
-            
-            h('div', { className: "flex justify-end space-x-2 pt-4 border-t" },
+            h('div', { className: 'flex justify-end space-x-2 pt-4 border-t' },
                 h('button', {
-                    className: "px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400",
+                    className: 'px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400',
                     onClick: onCancel,
                     disabled: loading
-                }, "Cancel"),
+                }, 'Cancel'),
                 h('button', {
-                    className: `px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 ${(loading || selectedSubtasks.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`,
+                    className: `px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 ${(loading || selectedSubtasks.size === 0) ? 'opacity-50 cursor-not-allowed' : ''}`,
                     onClick: handleConfirm,
-                    disabled: loading || selectedSubtasks.length === 0
-                }, loading ? 'Completing...' : `Complete Selected (${selectedSubtasks.length})`)
+                    disabled: loading || selectedSubtasks.size === 0
+                }, loading ? 'Completing...' : `Complete ${selectedSubtasks.size} subtask${selectedSubtasks.size !== 1 ? 's' : ''}`)
             )
         );
 
         if (!window.choreComponents?.Modal) {
-            return h('div', { style: overlayStyle },
-                h('div', { 
-                    className: "bg-white p-6 rounded-lg max-w-md overflow-y-auto",
-                    style: modalContentStyle
-                }, content)
-            );
+            return renderFallbackModal(content, 'max-w-md');
         }
 
         return h(window.choreComponents.Modal, { 
             isOpen: true, 
             onClose: onCancel,
-            title: "Complete Subtasks",
+            title: title,
             size: 'medium'
         }, content);
     };
@@ -323,46 +307,35 @@
     /**
      * Error dialog
      */
-    const ErrorDialog = ({ isOpen, title = 'Error', message, onClose, error }) => {
+    const ErrorDialog = ({ isOpen, title = 'Error', message, details, onClose }) => {
         if (!isOpen) return null;
 
-        let errorMessage = message;
-        if (!errorMessage && error) {
-            errorMessage = typeof error === 'string' ? error : error.message || 'An unknown error occurred';
-        }
-
-        const content = h('div', { className: "space-y-4" },
-            h('div', { className: "flex items-center mb-3" },
-                h('span', { className: "text-red-500 text-2xl mr-3" }, "⚠️"),
-                h('h3', { className: "text-lg font-medium text-red-800" }, title)
-            ),
-            h('p', { className: "text-gray-700" }, errorMessage),
-            error?.stack && h('details', { className: "mt-3" },
-                h('summary', { className: "cursor-pointer text-sm text-gray-600" }, "Technical details"),
-                h('pre', { className: "mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto" }, 
-                    error.stack.slice(0, 500)
+        const content = h('div', null,
+            h('div', { className: 'flex items-start mb-4' },
+                h('div', { className: 'text-red-600 text-4xl mr-4' }, '⚠️'),
+                h('div', { className: 'flex-1' },
+                    h('p', { className: 'text-gray-700 mb-2' }, message),
+                    details && h('pre', { 
+                        className: 'mt-3 p-3 bg-gray-100 rounded text-xs overflow-x-auto text-red-600' 
+                    }, details)
                 )
             ),
-            h('div', { className: "flex justify-end pt-4" },
+            h('div', { className: 'flex justify-end' },
                 h('button', {
-                    className: "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600",
+                    className: 'px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600',
                     onClick: onClose
-                }, "Close")
+                }, 'Close')
             )
         );
 
         if (!window.choreComponents?.Modal) {
-            return h('div', { style: overlayStyle },
-                h('div', { 
-                    className: "bg-white p-6 rounded-lg max-w-md overflow-y-auto",
-                    style: modalContentStyle
-                }, content)
-            );
+            return renderFallbackModal(content);
         }
 
         return h(window.choreComponents.Modal, { 
             isOpen: true, 
             onClose: onClose,
+            title: title,
             size: 'medium'
         }, content);
     };
@@ -373,27 +346,23 @@
     const SuccessDialog = ({ isOpen, title = 'Success', message, onClose }) => {
         if (!isOpen) return null;
 
-        const content = h('div', { className: "space-y-4 text-center" },
-            h('div', { className: "flex justify-center mb-4" },
-                h('span', { className: "text-green-500 text-4xl" }, "✅")
+        const content = h('div', null,
+            h('div', { className: 'flex items-start mb-6' },
+                h('div', { className: 'text-green-600 text-4xl mr-4' }, '✓'),
+                h('div', { className: 'flex-1' },
+                    h('p', { className: 'text-gray-700' }, message)
+                )
             ),
-            h('h3', { className: "text-lg font-medium text-green-800" }, title),
-            h('p', { className: "text-gray-700" }, message),
-            h('div', { className: "flex justify-center pt-4" },
+            h('div', { className: 'flex justify-end' },
                 h('button', {
-                    className: "px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600",
+                    className: 'px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600',
                     onClick: onClose
-                }, "OK")
+                }, 'OK')
             )
         );
 
         if (!window.choreComponents?.Modal) {
-            return h('div', { style: overlayStyle },
-                h('div', { 
-                    className: "bg-white p-6 rounded-lg max-w-md overflow-y-auto",
-                    style: modalContentStyle
-                }, content)
-            );
+            return renderFallbackModal(content);
         }
 
         return h(window.choreComponents.Modal, { 
@@ -413,5 +382,5 @@
         SuccessDialog
     });
 
-    console.log('✅ Dialog components loaded with explicit centering');
+    console.log('✅ FIXED Dialog components - non-nested structure');
 })();
