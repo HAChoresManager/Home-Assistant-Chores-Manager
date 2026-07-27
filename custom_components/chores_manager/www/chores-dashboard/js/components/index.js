@@ -179,12 +179,11 @@
                 }
             }
             
-            // Load the component script
+            // Load the component script. loadScript resolves on script.onload,
+            // which for a classic script fires after the file has fully executed,
+            // so the exports are already registered here.
             await loadScript(`js/${file}`);
-            
-            // Wait for script execution
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+
             // Verify exports with resilient checking
             if (exports && exports.length > 0) {
                 const missing = exports.filter(exportName => 
