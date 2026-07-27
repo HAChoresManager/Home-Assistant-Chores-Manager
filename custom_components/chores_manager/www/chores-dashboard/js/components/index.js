@@ -142,9 +142,9 @@
             script.type = 'text/javascript';
             script.async = false;
             
-            // Add cache busting and version
+            // Add version for cache invalidation
             const separator = url.includes('?') ? '&' : '?';
-            script.src = `${url}${separator}v=${COMPONENT_CONFIG.version}&t=${Date.now()}`;
+            script.src = `${url}${separator}v=${COMPONENT_CONFIG.version}`;
             
             script.onload = () => {
                 console.log(`✅ Script loaded: ${url}`);
