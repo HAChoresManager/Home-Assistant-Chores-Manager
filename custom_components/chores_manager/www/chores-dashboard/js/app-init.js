@@ -191,16 +191,6 @@ window.ChoresApp = window.ChoresApp || {};
      * Listen for component ready events
      */
     function setupEventListeners() {
-        window.addEventListener('chores-components-ready', (event) => {
-            console.log('📦 Components ready event received:', event.detail);
-            setTimeout(() => {
-                if (window.ChoresApp && window.ChoresApp.getApp && !document.body.classList.contains('app-loaded')) {
-                    console.log('🔄 Triggering initialization after components ready');
-                    window.ChoresApp.initApp();
-                }
-            }, 100);
-        });
-
         window.addEventListener('chores-app-initialized', (event) => {
             console.log('🎉 App initialization complete:', event.detail);
         });
