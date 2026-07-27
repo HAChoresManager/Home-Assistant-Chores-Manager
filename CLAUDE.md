@@ -131,9 +131,15 @@ gelijk:
 | Plek | Wat er staat |
 |---|---|
 | `www/chores-dashboard/index.html` | `window.CHORES_APP_VERSION` — **de bron** |
+| `www/chores-dashboard/index.html` | de `?v=` in de drie statische `<script src>`-tags (`js/utils.js`, `js/auth-helper.js`, `js/components/index.js`) |
 | `www/chores-dashboard/js/components/index.js` | de fallbackwaarde in `COMPONENT_CONFIG.version` |
 | `panel.py` | de `?v=`-parameter achter `js_url` |
 | `manifest.json` | het `version`-veld (alleen het `x.y.z`-deel) |
+
+De drie statische script-tags staan in de HTML zelf en kunnen
+`window.CHORES_APP_VERSION` niet interpoleren; die moet je met de hand
+meenemen. De rest van de bestanden wordt dynamisch geladen en pikt de constante
+vanzelf op.
 
 **Hoog dit op bij elke wijziging aan een frontendbestand.** Sinds
 `&t=${Date.now()}` uit de componentlader is, is dit versienummer het enige dat

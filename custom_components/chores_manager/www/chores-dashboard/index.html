@@ -5,9 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Huishoudelijke Taken Dashboard</title>
     
-    <!-- CORRECTED: Updated version for the fix -->
+    <!--
+        BRON VAN HET VERSIENUMMER. Hoog dit op bij elke wijziging aan een
+        frontendbestand; sinds de tijdstempel uit de componentlader is, is dit
+        het enige dat caching invalideert. Spiegel dezelfde waarde in
+        js/components/index.js, panel.py (?v=) en manifest.json.
+        Zie CLAUDE.md, "Versiediscipline".
+    -->
     <script type="text/javascript">
-        window.CHORES_APP_VERSION = '1.4.2-20250915-corrected-api-fix';
+        window.CHORES_APP_VERSION = '1.5.0-20260727-fase1';
         console.log('🏠 Chores Manager Dashboard v' + window.CHORES_APP_VERSION);
     </script>
     
@@ -175,12 +181,17 @@
         })();
     </script>
 
+    <!--
+        De ?v= hieronder staat in statische script-tags en kan
+        window.CHORES_APP_VERSION niet interpoleren. Werk deze drie regels dus
+        mee bij bij elke versieophoging. Zie CLAUDE.md, "Versiediscipline".
+    -->
     <!-- Load utility functions -->
-    <script src="js/utils.js?v=1.4.2-20250915-corrected-api-fix" type="text/javascript"></script>
-    <script src="js/auth-helper.js?v=1.4.2-20250915-corrected-api-fix" type="text/javascript"></script>
+    <script src="js/utils.js?v=1.5.0-20260727-fase1" type="text/javascript"></script>
+    <script src="js/auth-helper.js?v=1.5.0-20260727-fase1" type="text/javascript"></script>
 
     <!-- CORRECTED: Load components FIRST, independent of API -->
-    <script src="js/components/index.js?v=1.4.2-20250915-corrected-api-fix" type="text/javascript"></script>
+    <script src="js/components/index.js?v=1.5.0-20260727-fase1" type="text/javascript"></script>
 
     <!-- Load API modules in background (non-blocking) -->
     <script type="text/javascript">

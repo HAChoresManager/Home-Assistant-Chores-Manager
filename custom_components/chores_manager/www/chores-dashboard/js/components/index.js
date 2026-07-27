@@ -11,7 +11,9 @@
         maxRetries: 3,
         retryDelay: 1000,
         timeout: 15000,
-        version: window.CHORES_APP_VERSION || '1.4.2-20250915-comprehensive-fix'
+        // Fallback moet gelijk blijven aan window.CHORES_APP_VERSION in
+        // index.html. Zie CLAUDE.md, "Versiediscipline".
+        version: window.CHORES_APP_VERSION || '1.5.0-20260727-fase1'
     };
 
     // FIXED: More resilient loading order - removed dependency on API being ready
