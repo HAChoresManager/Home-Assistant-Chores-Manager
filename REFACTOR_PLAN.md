@@ -50,15 +50,29 @@ in plaats van er bovenop te liggen.
 
 **Besluit:** `panel_custom` met `module_url` en `embed_iframe: false`.
 
+**Er zijn nu twee geneste iframes, niet één.** Beide moeten weg:
+
+1. **De buitenste.** `panel.py` registreert het panel met `embed_iframe: True`
+   (regel 28), dus HA zet er zelf een iframe omheen.
+2. **De binnenste.** `chores-dashboard.js` — het webcomponent dat als `js_url`
+   geregistreerd staat — bouwt in zijn `connectedCallback` een eigen
+   `<iframe src="/local/chores-dashboard/index.html?v=${timestamp}">` (regels 11,
+   17 en 77-83), inclusief een `Date.now()`-cachebuster.
+
+`chores-dashboard.js` verdwijnt dus in zijn geheel en wordt vervangen door
+`chores-panel.js`, dat rechtstreeks in de HA-DOM rendert. Dat het niet op de
+oorspronkelijke verwijderlijst stond, was een omissie; zie §7.
+
 **Gevolgen — allemaal winst:**
 
 | Nu | Straks |
 |---|---|
 | Long-lived admin-token, localStorage, URL-parameters | HA injecteert `hass`; geen tokens |
-| `auth-helper.js` (280 regels) | Weg |
+| `auth-helper.js` (272 regels) | Weg |
 | `theme-integration.js` + eigen theme-editor | Weg; HA-CSS-variabelen worden geërfd |
 | Wit vlak in een donker thema | Frosted Glass Dark werkt vanzelf |
-| iframe met opgeheven sandbox | Geen iframe |
+| Twee geneste iframes | Geen iframe |
+| React + Tailwind vanaf CDN (`unpkg.com`, `cdn.tailwindcss.com`) | Geen externe requests |
 | REST-calls met `Bearer`-header | `hass.connection` (WebSocket, al open) |
 
 Het wordt een eigen item in de zijbalk: een losstaande app, geen Lovelace-kaarten.
@@ -410,6 +424,7 @@ custom_components/chores_manager/
 │   ├── __init__.py
 │   ├── schema.py         # DDL op één plek
 │   ├── connection.py
+│   ├── migrations.py     # schemamigraties; blijft bestaan
 │   ├── chores.py
 │   ├── assignees.py
 │   ├── completions.py    # voltooiingen, ranglijst, feed, streaks
@@ -443,11 +458,72 @@ www/chores-dashboard/
 └── styles.css
 ```
 
-**Te verwijderen** (dood, dubbel of overbodig): `database.py`, `services.py` in
-zijn huidige compatibiliteitsvorm, `components.js`, `js/state/store.js`,
-`app-state.js`, `app-handlers.js`, `app-init.js`, `auth-helper.js`,
-`theme-integration.js`, `theme_service.py`, de `theme_settings`-tabel, de hele
-`js/api/`-map, `TECHNICAL_DESCRIPTION.md` (dubbel).
+### Te verwijderen
+
+Gecontroleerd tegen de repo op 27-07-2026. Alle onderstaande bestanden bestaan
+daadwerkelijk.
+
+**Backend**
+
+| Bestand | Regels | Waarom |
+|---|---:|---|
+| `services.py` | 21 | Compatibiliteitsvorm; onbereikbaar door het gelijknamige pakket `services/` |
+| `utils.py` | 399 | Onbereikbaar door het gelijknamige pakket `utils/` |
+| `theme_service.py` | 104 | Eigen themasysteem |
+| de `theme_settings`-tabel | — | Idem |
+
+**Frontend**
+
+| Bestand | Regels | Waarom |
+|---|---:|---|
+| `css/styles.css` | 881 | Wordt nergens geladen — geen `<link>` in `index.html`, geen import |
+| `js/utils.js` | 386 | Wordt geladen, maar `window.choreUtils` wordt nergens gebruikt |
+| `js/app-handlers.js` | 366 | Wordt geladen, maar `useEventHandlers` wordt nergens aangeroepen |
+| `js/auth-helper.js` | 272 | Eigen authenticatie |
+| `js/app-init.js` | 223 | Gaat op in `chores-panel.js` |
+| `js/state/store.js` | 213 | Nooit geladen; vervangen door `core/store.js` |
+| `js/app-state.js` | 135 | Wordt geladen, maar `useAppState` wordt nergens aangeroepen |
+| `chores-dashboard.js` | 126 | Bouwt de binnenste iframe (§2.2); vervangen door `chores-panel.js` |
+| `js/theme-integration.js` | 70 | Nooit geladen; eigen themasysteem |
+| `js/components/fallback.js` | 65 | Staat niet in de componentmanifest; nooit geladen |
+| `js/components.js` | 37 | Nooit geladen |
+| de map `js/api/` | 1428 | REST met bearer-tokens |
+
+**Documentatie**
+
+- `TECHNICAL_DESCRIPTION.md` — dubbel.
+
+### `database.py` verhuist, het verdwijnt niet
+
+`database.py` (384 regels) stond eerder op deze lijst. Dat was onjuist.
+
+`database.py` en `db/` hebben **verschillende namen**, dus er is geen
+pakketschaduwing zoals bij `services.py` en `utils.py`. `database.py` is een
+levende facade over `db/` en wordt vanuit acht plekken geïmporteerd:
+
+| Plek | Wat |
+|---|---|
+| `__init__.py:46` | `init_database`, `verify_database` bij setup |
+| `sensor.py:15` | chore- en statistiekfuncties |
+| `services/__init__.py:39` | `get_database_stats`, `vacuum_database`, `export_database_to_dict`, `import_database_from_dict` |
+| `services/chore_services.py:17` | chorefuncties |
+| `services/chore_services.py:249` | `get_ha_user_id_for_assignee` |
+| `services/user_services.py:9` | `add_user`, `delete_user` |
+| `services/notification_services.py:9` | notificatiefuncties |
+| `utils/notifications.py:13` | `get_pending_notifications`, `mark_notifications_sent` |
+
+Vier functies bestaan **alleen** in `database.py` en niet in `db/`:
+`get_database_stats`, `vacuum_database`, `export_database_to_dict` en
+`import_database_from_dict`. Die verhuizen naar `db/` — de eerste twee naar
+`db/connection.py`, de laatste twee naar een nieuwe `db/backup.py`. Pas als alle
+acht importplekken zijn omgelegd, gaat `database.py` weg. Dit is fase 2-werk;
+zie §9.
+
+### Derde naamconflict
+
+Naast `services.py`/`services/` staat er ook `utils.py` naast `utils/`. Zelfde
+mechanisme, zelfde gevolg: `utils.py` (399 regels) is onbereikbare code. Zie
+`CLAUDE.md` voor de controle.
 
 ---
 
@@ -483,7 +559,13 @@ gedaan deze week. Mooi werk."
 ### Fase 0 — Vastleggen (½ dag)
 
 - Git-tag `pre-refactor` op de huidige staat.
-- Dump van de huidige database als referentie (`docs/legacy-dump.sql`).
+- `docs/legacy-state.yaml` als referentie van de huidige data. **Geen SQL-dump** —
+  de database staat niet in de repo en de bestaande data wordt toch niet
+  gemigreerd (§3); een leesbare YAML-momentopname is genoeg om later te kunnen
+  nakijken hoe iets bedoeld was.
+- `docs/legacy-notes.md` met de inventarisatie van de huidige codebase:
+  regelaantallen, wat er bij het opstarten écht laadt, wat er alleen maar ligt, en
+  de drie naamconflicten.
 - Dit plan en `CLAUDE.md` in de repo.
 
 **Klaar wanneer:** je kunt terug naar de oude situatie.
@@ -493,13 +575,29 @@ gedaan deze week. Mooi werk."
 Losstaand van de rest, zodat het ding bruikbaar is terwijl de refactor loopt.
 Wordt later weggegooid, maar is zo goedkoop dat het dat waard is.
 
-- `&t=${Date.now()}` uit `js/components/index.js` → caching werkt weer.
-- De zeven `setTimeout(resolve, 100)` uit de componentlader → 700 ms winst.
+- `&t=${Date.now()}` uit `js/components/index.js` (regel 147) → caching werkt
+  weer. De `v=`-parameter blijft staan.
+- De `setTimeout(resolve, 100)` uit de componentlader → 700 ms winst. Het is
+  **één** aanroep (regel 186) die zeven keer draait, één keer per component in de
+  manifest — niet zeven aanroepen.
 - **Dubbele initialisatie weg.** `index.html` heeft een eigen inline
-  `initializeApp()` én `app-init.js` heeft een auto-init; beide draaien, dus er
-  staan twee React-bomen op dezelfde DOM-node en de data wordt twee keer geladen.
-  De inline versie schrappen.
-- `theme_settings` in de database op donker zetten → geen wit vlak meer.
+  `initializeApp()` (definitie regel 277, aanroep regel 251, `createRoot` regel
+  327) én `app-init.js` heeft een auto-init (regel 149, `createRoot` regel 99);
+  beide draaien op dezelfde `#root`-node, dus er staan twee React-bomen op elkaar
+  en de sensor wordt twee keer opgehaald. De inline versie schrappen,
+  `app-init.js` laten winnen.
+- **Versies consolideren.** Er staan vier tegenstrijdige waarden in de repo:
+  `index.html` (`CHORES_APP_VERSION`), de fallback in `js/components/index.js`,
+  de `?v=` in `panel.py` en het `version`-veld in `manifest.json`. Die worden
+  gelijkgetrokken. Vanaf nu is dat versienummer het enige dat caching
+  invalideert, dus het moet omhoog bij elke frontendwijziging — zie `CLAUDE.md`.
+
+*Vervallen:* `theme_settings` op donker zetten. Dat lost het witte vlak niet op.
+Niets past `theme_settings` toe bij het laden (`api/theme.js:167` draait alleen
+vanuit `save()`; `app-handlers.js` wordt nergens aangeroepen), de zichtbare
+vlakken zijn hardgecodeerde Tailwind-klassen die niet naar `--theme-*` kijken, en
+het enige bestand dat die variabelen wél zou doorvoeren — `css/styles.css` —
+wordt nergens geladen. Het wit verdwijnt pas in fase 3, met de HA-CSS-variabelen.
 
 **Klaar wanneer:** één initialisatie in de console, en een tweede pageload haalt
 bestanden uit de cache.
@@ -514,7 +612,17 @@ bestanden uit de cache.
 - WS-commando's (§2.3).
 - Afgeslankte sensor + sensor per persoon (§2.4).
 - `scheduler.py` met de nachtelijke rol.
-- Oude bestanden verwijderen (§7).
+- **`database.py` ontmantelen** (§7). Verhuis eerst de vier functies die alleen
+  daar bestaan — `get_database_stats` en `vacuum_database` naar
+  `db/connection.py`, `export_database_to_dict` en `import_database_from_dict`
+  naar een nieuwe `db/backup.py`. Leg daarna de acht importplekken om naar `db/`:
+  `__init__.py:46`, `sensor.py:15`, `services/__init__.py:39`,
+  `services/chore_services.py:17`, `services/chore_services.py:249`,
+  `services/user_services.py:9`, `services/notification_services.py:9` en
+  `utils/notifications.py:13`. Pas als die alle acht om zijn, mag het bestand weg.
+- DDL samenbrengen in `db/schema.py`. Die staat nu op drie plekken:
+  `db/base.py:77-176`, `theme_service.py:18` en `db/migrations.py:117`.
+- Overige oude bestanden verwijderen (§7).
 
 **Klaar wanneer:** je kunt via Developer Tools → Services een taak aanmaken,
 afvinken en zien dat `next_due` correct doorrolt; de tests slagen; de sensor toont
@@ -575,3 +683,17 @@ afvinken, en ziet zondagavond de weekuitslag.
 5. **Vier HACS-kaarten geven een 404** (`weather-card`, `power-flow-card-plus`,
    `ha-card-weather-conditions`). Staat los van dit project, maar het zijn vier
    mislukte requests bij elke pageload.
+6. **`services.yaml` documenteert 8 van de 22 geregistreerde services.** Niet
+   gedocumenteerd: `delete_chore`, `complete_subtask`, `add_subtask`,
+   `delete_subtask`, `save_theme`, `get_theme`, `reset_theme`,
+   `check_due_notifications`, `send_notification`, `get_pending_notifications`,
+   `get_database_stats`, `vacuum_database`, `check_database_integrity` en
+   `run_migrations`. Die verschijnen zonder velden in Developer Tools → Acties.
+   Bij het herschrijven van de services in fase 2 moet `services.yaml` compleet
+   worden — of de overbodige services verdwijnen, wat waarschijnlijker is.
+7. **Twee services worden geregistreerd maar niet opgeruimd.**
+   `async_unregister_services` (`services/__init__.py:107-122`) noemt twintig
+   namen, maar `get_pending_notifications` (`services/notification_services.py:101`)
+   en `reset_theme` (`services/theme_services.py:108`) staan er niet bij. Bij het
+   herladen van de integratie blijven ze achter. Klein, maar nu vastgelegd zodat
+   het niet opnieuw ontstaat als de servicelijst in fase 2 verandert.

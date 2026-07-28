@@ -5,9 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Huishoudelijke Taken Dashboard</title>
     
-    <!-- CORRECTED: Updated version for the fix -->
+    <!--
+        BRON VAN HET VERSIENUMMER. Hoog dit op bij elke wijziging aan een
+        frontendbestand; sinds de tijdstempel uit de componentlader is, is dit
+        het enige dat caching invalideert. Spiegel dezelfde waarde in
+        js/components/index.js, panel.py (?v=) en manifest.json.
+        Zie CLAUDE.md, "Versiediscipline".
+    -->
     <script type="text/javascript">
-        window.CHORES_APP_VERSION = '1.4.2-20250915-corrected-api-fix';
+        window.CHORES_APP_VERSION = '1.5.0-20260727-fase1';
         console.log('🏠 Chores Manager Dashboard v' + window.CHORES_APP_VERSION);
     </script>
     
@@ -175,12 +181,17 @@
         })();
     </script>
 
+    <!--
+        De ?v= hieronder staat in statische script-tags en kan
+        window.CHORES_APP_VERSION niet interpoleren. Werk deze drie regels dus
+        mee bij bij elke versieophoging. Zie CLAUDE.md, "Versiediscipline".
+    -->
     <!-- Load utility functions -->
-    <script src="js/utils.js?v=1.4.2-20250915-corrected-api-fix" type="text/javascript"></script>
-    <script src="js/auth-helper.js?v=1.4.2-20250915-corrected-api-fix" type="text/javascript"></script>
+    <script src="js/utils.js?v=1.5.0-20260727-fase1" type="text/javascript"></script>
+    <script src="js/auth-helper.js?v=1.5.0-20260727-fase1" type="text/javascript"></script>
 
     <!-- CORRECTED: Load components FIRST, independent of API -->
-    <script src="js/components/index.js?v=1.4.2-20250915-corrected-api-fix" type="text/javascript"></script>
+    <script src="js/components/index.js?v=1.5.0-20260727-fase1" type="text/javascript"></script>
 
     <!-- Load API modules in background (non-blocking) -->
     <script type="text/javascript">
@@ -247,8 +258,11 @@
                 
                 function loadModule(index) {
                     if (index >= appModules.length) {
+                        // js/app-init.js initialiseert de React-app zelf zodra
+                        // React, de componenten en ChoresApp.getApp beschikbaar
+                        // zijn. Hier wordt niets meer aangeroepen; een tweede
+                        // aanroep zou een tweede createRoot() op #root zetten.
                         console.log('✅ All app modules loaded');
-                        initializeApp();
                         return;
                     }
 
@@ -271,111 +285,6 @@
                 }
                 
                 loadModule(0);
-            }
-
-            // CORRECTED: Initialize the app with better error handling
-            function initializeApp() {
-                console.log('🎯 Initializing Chores Dashboard App...');
-                
-                try {
-                    // Verify all dependencies
-                    if (!window.React || !window.ReactDOM) {
-                        throw new Error('React libraries not available');
-                    }
-                    
-                    if (!window.choreComponents) {
-                        console.warn('⚠️ Components not fully loaded, will use fallbacks');
-                        window.choreComponents = {};
-                    }
-                    
-                    // Ensure TaskCard is available (critical for app function)
-                    if (!window.choreComponents.TaskCard) {
-                        console.warn('⚠️ TaskCard not available, creating fallback');
-                        if (window.ChoreComponentLoader?.createFallbackTaskCard) {
-                            window.ChoreComponentLoader.createFallbackTaskCard();
-                        }
-                    }
-
-                    // Get the root element
-                    const rootElement = document.getElementById('root');
-                    if (!rootElement) {
-                        throw new Error('Root element not found');
-                    }
-
-                    // Get the main app component
-                    let App = null;
-                    if (window.ChoresApp?.getApp) {
-                        App = window.ChoresApp.getApp();
-                    }
-                    
-                    if (!App) {
-                        throw new Error('Main app component not available');
-                    }
-
-                    // Create error boundary wrapper if available
-                    const ErrorBoundary = window.choreComponents.ErrorBoundary;
-                    const AppWithErrorBoundary = ErrorBoundary ? 
-                        React.createElement(ErrorBoundary, { showDetails: true }, React.createElement(App)) :
-                        React.createElement(App);
-
-                    // Render the app
-                    console.log('🎨 Rendering React app...');
-                    
-                    // Use React 18 createRoot if available
-                    if (window.ReactDOM.createRoot) {
-                        console.log('Using React 18 createRoot API');
-                        const root = window.ReactDOM.createRoot(rootElement);
-                        root.render(AppWithErrorBoundary);
-                    } else {
-                        console.log('Using legacy React render API');
-                        window.ReactDOM.render(AppWithErrorBoundary, rootElement);
-                    }
-
-                    // Mark app as loaded
-                    console.log('🎉 React app initialized successfully');
-                    document.body.classList.add('app-loaded');
-                    
-                    // Dispatch success event
-                    window.dispatchEvent(new CustomEvent('chores-app-initialized', {
-                        detail: {
-                            version: window.CHORES_APP_VERSION,
-                            reactVersion: React.version,
-                            componentCount: Object.keys(window.choreComponents).length,
-                            timestamp: new Date().toISOString()
-                        }
-                    }));
-                    
-                } catch (error) {
-                    console.error('💥 Failed to initialize React app:', error);
-                    
-                    const rootElement = document.getElementById('root');
-                    if (rootElement) {
-                        rootElement.innerHTML = `
-                            <div class="error-container">
-                                <h2>App Initialization Error</h2>
-                                <p>Failed to initialize the dashboard:</p>
-                                <p><strong>${error.message}</strong></p>
-                                <details style="margin: 10px 0;">
-                                    <summary>Debug Information</summary>
-                                    <div style="background: #f5f5f5; padding: 10px; border-radius: 4px; margin-top: 10px; font-family: monospace; font-size: 12px;">
-                                        <div>React: ${!!window.React}</div>
-                                        <div>ReactDOM: ${!!window.ReactDOM}</div>
-                                        <div>Components: ${!!window.choreComponents} (${Object.keys(window.choreComponents || {}).length})</div>
-                                        <div>App: ${!!window.ChoresApp}</div>
-                                        <div>getApp: ${!!window.ChoresApp?.getApp}</div>
-                                        <div>ChoresAPI: ${!!window.ChoresAPI}</div>
-                                        <div>Version: ${window.CHORES_APP_VERSION}</div>
-                                        <div>Timestamp: ${new Date().toISOString()}</div>
-                                    </div>
-                                </details>
-                                <div style="margin-top: 20px;">
-                                    <button onclick="location.reload()" style="margin-right: 10px;">Reload Page</button>
-                                    <button onclick="console.log('Debug Info:', {React: !!window.React, Components: Object.keys(window.choreComponents || {}), API: !!window.ChoresAPI})">Log Debug Info</button>
-                                </div>
-                            </div>
-                        `;
-                    }
-                }
             }
 
             // CORRECTED: Wait for components to be ready, but don't wait indefinitely for API

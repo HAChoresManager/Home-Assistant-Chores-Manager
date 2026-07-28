@@ -11,7 +11,9 @@
         maxRetries: 3,
         retryDelay: 1000,
         timeout: 15000,
-        version: window.CHORES_APP_VERSION || '1.4.2-20250915-comprehensive-fix'
+        // Fallback moet gelijk blijven aan window.CHORES_APP_VERSION in
+        // index.html. Zie CLAUDE.md, "Versiediscipline".
+        version: window.CHORES_APP_VERSION || '1.5.0-20260727-fase1'
     };
 
     // FIXED: More resilient loading order - removed dependency on API being ready
@@ -142,9 +144,9 @@
             script.type = 'text/javascript';
             script.async = false;
             
-            // Add cache busting and version
+            // Add version for cache invalidation
             const separator = url.includes('?') ? '&' : '?';
-            script.src = `${url}${separator}v=${COMPONENT_CONFIG.version}&t=${Date.now()}`;
+            script.src = `${url}${separator}v=${COMPONENT_CONFIG.version}`;
             
             script.onload = () => {
                 console.log(`✅ Script loaded: ${url}`);
@@ -179,12 +181,11 @@
                 }
             }
             
-            // Load the component script
+            // Load the component script. loadScript resolves on script.onload,
+            // which for a classic script fires after the file has fully executed,
+            // so the exports are already registered here.
             await loadScript(`js/${file}`);
-            
-            // Wait for script execution
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+
             // Verify exports with resilient checking
             if (exports && exports.length > 0) {
                 const missing = exports.filter(exportName => 
