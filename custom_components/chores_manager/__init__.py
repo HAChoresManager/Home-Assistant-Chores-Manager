@@ -154,13 +154,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Forward config entry to the sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Register panel and set up web assets
+    # Web assets kopiëren naar <config>/www/chores-dashboard/. Geen
+    # panelregistratie meer: de route /chores was altijd al kapot en is op
+    # 28-07-2026 verwijderd. Het Lovelace-dashboard /dashboard-chores/taken
+    # serveert index.html rechtstreeks uit deze kopie en is tot fase 3 de
+    # enige ingang — daarom moet deze kopieerstap blijven.
     try:
-        from .panel import async_setup_panel
-        await async_setup_panel(hass)
         await _setup_web_assets(hass)
     except Exception as err:
-        _LOGGER.error("Failed to set up panel or web assets: %s", err)
+        _LOGGER.error("Failed to set up web assets: %s", err)
         # Non-fatal error, continue
 
     _LOGGER.info("Chores Manager setup completed successfully")
