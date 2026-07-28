@@ -5,7 +5,7 @@ woensdag, 2026-07-31 een vrijdag (geverifieerd met isoweekday).
 """
 from datetime import date
 
-from scheduling.calculator import initial_next_due, next_due_after_completion
+from chores_manager.scheduling.calculator import initial_next_due, next_due_after_completion
 
 DINSDAG = date(2026, 7, 28)
 WOENSDAG = date(2026, 7, 29)

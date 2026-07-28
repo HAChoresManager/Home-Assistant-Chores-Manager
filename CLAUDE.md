@@ -60,13 +60,17 @@ verbergen. Los de oorzaak op.
 ## Backend
 
 - Python 3.13, Home Assistant custom integration.
-- Alle databasetoegang via `db/`. Nooit rechtstreeks SQL buiten die map.
+- Alle v2-databasetoegang via de datalaag: tijdens fase 2b heet die `store/`,
+  vanaf fase 3 neemt hij met `git mv` de naam `db/` over (zie
+  `REFACTOR_PLAN.md` §7). Nooit rechtstreeks SQL buiten die map. Het oude
+  `db/`-pakket bedient tot fase 3 alleen nog de oude app.
 - Alle queries geparameteriseerd.
 - SQLite-werk in een executor (`hass.async_add_executor_job`), nooit blokkerend
   op de event loop.
-- DDL staat alleen in `db/schema.py`.
-- Unit tests alleen voor `scheduling/`. Daar zit de logica die stilletjes fout
-  kan gaan; de rest merk je meteen in gebruik.
+- Nieuwe DDL staat alleen in `store/schema.py` (na fase 3: `db/schema.py`).
+- Unit tests: `scheduling/` volledig — daar zit de logica die stilletjes fout
+  kan gaan — plus rooktests op de datalaag (schema, verbindingslaag,
+  opslagfuncties). De rest merk je meteen in gebruik.
 
 ## Frontend
 

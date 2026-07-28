@@ -23,8 +23,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scheduling.calculator import DUE, GRACE, URGENT, overdue_days, roll_forward, urgency
-from scheduling.types import validate_schedule
+from chores_manager.scheduling.calculator import DUE, GRACE, URGENT, overdue_days, roll_forward, urgency
+from chores_manager.scheduling.types import validate_schedule
 
 LEGACY_PATH = Path(__file__).resolve().parents[1] / "docs" / "legacy-state.yaml"
 

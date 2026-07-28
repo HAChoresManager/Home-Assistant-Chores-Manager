@@ -1,5 +1,5 @@
 """Rotatie-index bij assignment_type = rotating (§4.4)."""
-from scheduling.calculator import advance_rotation, current_assignee
+from chores_manager.scheduling.calculator import advance_rotation, current_assignee
 
 
 class TestTweePersonen:

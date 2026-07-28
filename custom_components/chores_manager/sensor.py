@@ -34,10 +34,19 @@ async def async_setup_entry(
     """Set up the sensor platform."""
     database_path = hass.data[DOMAIN][entry.entry_id]["database_path"]
     _LOGGER.info("Setting up ChoresOverviewSensor with database: %s", database_path)
-    
+
     # Create and add the sensor entity
     sensor = ChoresOverviewSensor(hass, database_path, entry.entry_id)
     async_add_entities([sensor], True)
+
+    # v2 (fase 2b): tweede, onafhankelijke sensor naast deze — zie
+    # sensor_v2.py. B4 noemt deze aanhechting expliciet; verder blijft dit
+    # bestand ongewijzigd en mag een v2-fout de oude sensor nooit raken.
+    try:
+        from .sensor_v2 import async_add_v2_sensor
+        await async_add_v2_sensor(hass, entry, async_add_entities)
+    except Exception as err:
+        _LOGGER.error("Chores v2-sensor niet geladen (oude sensor draait door): %s", err)
 
 
 class ChoresOverviewSensor(SensorEntity):
