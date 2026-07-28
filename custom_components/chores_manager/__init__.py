@@ -151,6 +151,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Failed to register services: %s", e)
         return False
 
+    # v2 (fase 2b): eigen database, WS-commando's, scheduler en tijdelijke
+    # services, volledig naast de bestaande app. Vóór de sensorplatform-
+    # forward, zodat sensor.py het v2-databasepad in hass.data aantreft.
+    # Fouten hier zijn niet fataal: de oude app draait door.
+    try:
+        from .v2_setup import async_setup_v2
+        await async_setup_v2(hass, entry)
+    except Exception as err:
+        _LOGGER.error("Chores v2 setup mislukt (oude app draait door): %s", err)
+
     # Forward config entry to the sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -182,6 +192,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await async_unregister_services(hass)
     except Exception as e:
         _LOGGER.warning("Failed to unregister services: %s", e)
+
+    # v2 (fase 2b): scheduler en tijdelijke services opruimen
+    try:
+        from .v2_setup import async_unload_v2
+        await async_unload_v2(hass, entry)
+    except Exception as err:
+        _LOGGER.warning("Chores v2 unload mislukt: %s", err)
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
