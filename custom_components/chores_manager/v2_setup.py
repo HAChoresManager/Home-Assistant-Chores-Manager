@@ -50,6 +50,11 @@ async def async_setup_v2(hass: HomeAssistant, entry: ConfigEntry) -> None:
     domain_data[entry.entry_id][DATA_V2_UNSUB_ROLL] = async_setup_scheduler(
         hass, database_path)
 
+    # nieuw panel op /taken (fase 3a); de oude app blijft op
+    # /dashboard-chores/taken draaien tot fase 3c
+    from .panel_v2 import async_setup_panel_v2
+    await async_setup_panel_v2(hass)
+
     async def handle_seed(call: ServiceCall) -> None:
         """TIJDELIJK (fase 5 verwijdert dit): de acht legacy-taken seeden."""
         now = dt_util.now()
@@ -69,6 +74,8 @@ async def async_setup_v2(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_unload_v2(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Ruim de v2-registraties op bij het ontladen van de config entry."""
+    from .panel_v2 import async_remove_panel_v2
+    async_remove_panel_v2(hass)
     entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
     unsub = entry_data.pop(DATA_V2_UNSUB_ROLL, None)
     if unsub:
