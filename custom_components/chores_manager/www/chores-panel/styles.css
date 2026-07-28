@@ -91,6 +91,14 @@ button:focus-visible,
   outline-offset: -2px;
 }
 
+/* Rustige melding boven de inhoud tijdens het wachten op de backend. */
+.reconnect {
+  margin: 0 0 8px;
+  text-align: center;
+  color: var(--secondary-text-color);
+  font-size: 0.85rem;
+}
+
 /* --- kop ------------------------------------------------------------- */
 
 .page-header {

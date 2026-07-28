@@ -42,7 +42,7 @@ function renderSection(title, chores, ctx) {
 
 export function renderToday(state) {
   if (state.loading) {
-    return html`<div class="status">Taken laden…</div>`;
+    return html`<div class="status">${state.connecting ? 'Verbinden…' : 'Taken laden…'}</div>`;
   }
   if (state.error) {
     return html`
