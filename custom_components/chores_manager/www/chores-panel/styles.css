@@ -1,0 +1,436 @@
+/*
+ * Stijlen voor <chores-panel> (fase 3a).
+ *
+ * Uitsluitend HA-variabelen — geen eigen palet (plan §8). Persoonskleuren
+ * komen uit de database en verschijnen alleen als accent: de balksegmenten,
+ * de stippen en de keuzeknoppen. De bijdragebalk is het enige element dat
+ * mag opvallen; al het andere blijft rustig.
+ *
+ * Telefoon eerst: werkt vanaf 360 px, raakvlakken minstens 44 px hoog,
+ * zichtbare toetsenbordfocus, prefers-reduced-motion gerespecteerd.
+ */
+
+:host {
+  display: block;
+  color: var(--primary-text-color);
+  font-family: var(--paper-font-body1_-_font-family, inherit);
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 16px 16px 96px;
+  box-sizing: border-box;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  min-height: 44px;
+  border-radius: var(--ha-card-border-radius, 12px);
+}
+
+button:focus-visible,
+.step-button:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* --- kop ------------------------------------------------------------- */
+
+.page-header {
+  margin: 8px 0 16px;
+}
+
+.page-date {
+  margin: 0;
+  color: var(--secondary-text-color);
+  font-size: 0.9rem;
+}
+
+.page-count {
+  margin: 2px 0 0;
+  font-size: 1.7rem;
+  font-weight: 500;
+}
+
+.section-title {
+  margin: 24px 0 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--secondary-text-color);
+}
+
+/* --- bijdragebalk (§5.1) — het signatuurelement ----------------------- */
+
+.contribution {
+  background: var(--card-background-color);
+  border-radius: var(--ha-card-border-radius, 12px);
+  border: 1px solid var(--divider-color);
+  padding: 16px;
+}
+
+.contribution-total {
+  margin: 0 0 10px;
+  font-weight: 500;
+}
+
+.contribution-empty {
+  margin: 0;
+  color: var(--secondary-text-color);
+}
+
+.bar {
+  display: flex;
+  gap: 2px;
+  height: 20px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.segment {
+  background: var(--person-color);
+  min-width: 6px;
+}
+
+.person-rows {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.person-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.person-row + .person-row {
+  border-top: 1px solid var(--divider-color);
+}
+
+.person-name {
+  font-weight: 500;
+  flex: 1;
+}
+
+.person-stats {
+  color: var(--secondary-text-color);
+  font-size: 0.9rem;
+}
+
+.streak {
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--person-color);
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+/* --- taakkaarten (§4.3: neutraal / gedempt / nadrukkelijk) ------------ */
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--card-background-color);
+  border: 1px solid var(--divider-color);
+  border-radius: var(--ha-card-border-radius, 12px);
+  padding: 12px;
+}
+
+.card.grace {
+  border-inline-start: 3px solid var(--warning-color, #b58a00);
+}
+
+.card.urgent {
+  border-inline-start: 3px solid var(--error-color, #b3261e);
+}
+
+.card-icon {
+  font-size: 1.6rem;
+  line-height: 1.2;
+}
+
+.card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.card-meta {
+  margin: 2px 0 0;
+  color: var(--secondary-text-color);
+  font-size: 0.85rem;
+}
+
+.card-description {
+  margin: 4px 0 0;
+  color: var(--secondary-text-color);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.badge.grace {
+  color: var(--secondary-text-color);
+}
+
+.badge.urgent {
+  color: var(--error-color, #b3261e);
+  font-weight: 600;
+}
+
+.card-action {
+  align-self: center;
+}
+
+button.primary {
+  background: var(--primary-color);
+  color: var(--text-primary-color, #fff);
+  padding: 0 16px;
+  font-weight: 500;
+}
+
+button.secondary {
+  border: 1px solid var(--divider-color);
+  padding: 0 16px;
+}
+
+/* --- wie-deed-het-keuze (alleen bij 'anyone') ------------------------- */
+
+.chooser {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.chooser-label {
+  flex-basis: 100%;
+  text-align: right;
+  color: var(--secondary-text-color);
+  font-size: 0.85rem;
+}
+
+button.person {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--divider-color);
+  padding: 0 12px;
+}
+
+button.person.cancel {
+  color: var(--secondary-text-color);
+  border: none;
+}
+
+/* --- voortgang: counter en checklist (§4.5) --------------------------- */
+
+.progress {
+  margin-top: 8px;
+}
+
+.progress-count {
+  color: var(--secondary-text-color);
+  font-size: 0.85rem;
+}
+
+.progress-track {
+  margin-top: 4px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--divider-color);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--primary-color);
+}
+
+.checklist {
+  margin-top: 8px;
+}
+
+.steps {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.step {
+  border-top: 1px solid var(--divider-color);
+}
+
+.step-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 0;
+  border-radius: 4px;
+}
+
+.step.done {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  color: var(--secondary-text-color);
+  text-decoration: line-through;
+}
+
+.step-mark {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: var(--text-primary-color, #fff);
+  background: var(--primary-color);
+}
+
+.step-mark.open {
+  background: none;
+  border: 2px solid var(--divider-color);
+  box-sizing: border-box;
+}
+
+/* --- feed, lege staat, status ----------------------------------------- */
+
+.feed-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.feed-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 0.9rem;
+}
+
+.feed-row + .feed-row {
+  border-top: 1px solid var(--divider-color);
+}
+
+.feed-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.feed-when {
+  color: var(--secondary-text-color);
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.all-done {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--secondary-text-color);
+}
+
+.all-done-big {
+  font-size: 2rem;
+  margin: 0 0 8px;
+}
+
+.all-done-sub {
+  font-size: 0.9rem;
+  margin: 4px 0 0;
+}
+
+.status {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--secondary-text-color);
+}
+
+/* --- snackbar ---------------------------------------------------------- */
+
+#snackbar {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(92vw, 480px);
+  background: var(--card-background-color);
+  color: var(--primary-text-color);
+  border: 1px solid var(--divider-color);
+  border-radius: var(--ha-card-border-radius, 12px);
+  box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0, 0, 0, 0.25));
+  padding: 10px 16px;
+  z-index: 10;
+  animation: snackbar-in 0.18s ease-out;
+}
+
+#snackbar[hidden] {
+  display: none;
+}
+
+#snackbar.error {
+  border-color: var(--error-color, #b3261e);
+}
+
+#snackbar button {
+  color: var(--primary-color);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@keyframes snackbar-in {
+  from {
+    transform: translate(-50%, 8px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

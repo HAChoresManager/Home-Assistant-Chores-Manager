@@ -108,11 +108,20 @@ automations en voor de actieknop in notificaties.
 
 `sensor.chores_overview` wordt:
 
-- **state** = aantal openstaande taken vandaag (nu ten onrechte "vandaag
-  afgerond", terwijl het icoon en de naam iets anders beloven).
+- **state** = `due_today` + `overdue`: alles wat openstaat. (De oude sensor
+  toonde ten onrechte "vandaag afgerond", terwijl het icoon en de naam iets
+  anders beloven.) Achterstallig werk verdwijnt niet vanzelf, dus het telt
+  mee. Door het doorrollen uit §4.2 staat er per taak hoogstens één
+  openstaande instantie, dus de teller kan nooit oplopen tot een onbruikbaar
+  getal.
 - **attributen** = alleen een samenvatting: `due_today`, `overdue`,
   `completed_today`, `week_minutes_total`, en per persoon `{minutes, tasks,
   streak}`. Geen volledige takenlijst meer.
+
+Dezelfde semantiek geldt op het scherm Vandaag: de kop toont het totaal
+("8 taken"), daaronder twee secties — wat vandaag gepland staat en wat
+achterloopt. Niet twee losse tellers bovenaan; dat suggereert twee lijstjes
+terwijl het één stapel werk is.
 
 Voor Lovelace komt er daarnaast één sensor per persoon
 (`sensor.chores_bijdrage_martijn`, state = minuten deze week) zodat je er
@@ -466,7 +475,7 @@ subtasks). In fase 3, zodra het oude `db/` leeg is, neemt `store/` met een
 ### Frontend
 
 ```
-www/chores-dashboard/
+www/chores-panel/
 ├── chores-panel.js       # entrypoint, definieert <chores-panel>, krijgt hass
 ├── core/
 │   ├── api.js            # dunne laag over hass.connection
@@ -475,16 +484,22 @@ www/chores-dashboard/
 │   └── format.js         # datums, duur, Nederlandse teksten
 ├── views/
 │   ├── today.js          # bijdragebalk + wat er nu moet
-│   ├── tasks.js          # alle taken, gegroepeerd
-│   ├── activity.js       # feed + weekhistorie
-│   └── manage.js         # taken en personen beheren
+│   ├── tasks.js          # alle taken, gegroepeerd (3b)
+│   ├── activity.js       # feed + weekhistorie (3b)
+│   └── manage.js         # taken en personen beheren (3b)
 ├── components/
 │   ├── task-card.js
 │   ├── contribution-bar.js
-│   ├── subtask-tracker.js
-│   └── task-form.js
+│   ├── subtask-tracker.js  # (3b; in 3a zit de deeltaakweergave in task-card.js)
+│   └── task-form.js        # (3b)
 └── styles.css
 ```
+
+Het nieuwe panel leeft in een **eigen map naast** `www/chores-dashboard/`; die
+oude map blijft ongewijzigd staan tot fase 3c en wordt dan in zijn geheel
+verwijderd. Het panel wordt rechtstreeks uit `custom_components/` geserveerd
+via een eigen statisch pad — géén `/local`, dus de kopieerstap-valkuil uit
+`CLAUDE.md` geldt hier niet.
 
 ### Te verwijderen
 

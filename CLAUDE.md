@@ -88,7 +88,28 @@ verbergen. Los de oorzaak op.
 
 ## Deployment
 
-### De draaiende frontend is een kopie — valkuil
+### Het nieuwe panel (`www/chores-panel/`, vanaf fase 3a) is géén kopie
+
+Het panel op `/taken` wordt **rechtstreeks uit `custom_components/` geserveerd**
+via een eigen statisch pad (`/chores_manager-panel/`, geregistreerd in
+`panel_v2.py`). Er is geen kopieerstap: een wijziging aan een bestand onder
+`www/chores-panel/` staat meteen op de server. Een HA-herstart is alleen nodig
+voor Python-wijzigingen en voor de panelregistratie zelf (de `?v=` achter
+`module_url`).
+
+Cache-invalidatie werkt hier per ES-module. Browsers en Cloudflare cachen elk
+`.js`-bestand apart, en een querystring op het entrypoint werkt niet door naar
+zijn imports. Daarom draagt **elke** import in `www/chores-panel/` dezelfde
+letterlijke `?v=`-parameter. Eén versiebron: `PANEL_VERSION` in `panel_v2.py`;
+de `?v=`-literals in de JS-bestanden spiegelen die waarde. Ophogen = één
+sed over `panel_v2.py` en `www/chores-panel/` samen, daarna HA herstarten.
+Gebruik nooit verschillende versies door elkaar: twee verschillende
+`?v=`-waarden voor hetzelfde bestand betekenen twee module-instanties, en dan
+is de store geen singleton meer.
+
+De valkuil hieronder geldt alleen nog voor de **oude** app.
+
+### De draaiende frontend is een kopie — valkuil (alleen `www/chores-dashboard/`)
 
 `_setup_web_assets()` in `__init__.py` kopieert bij elke setup van de config
 entry de volledige inhoud van
