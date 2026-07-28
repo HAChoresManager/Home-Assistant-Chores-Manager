@@ -169,6 +169,26 @@ def overdue_days(next_due: date, today: date) -> int:
     return max(0, (today - next_due).days)
 
 
+def cycle_fraction(schedule_type: str, config: dict, next_due: date, today: date) -> float:
+    """Achterstand als fractie van de cycluslengte (§4.3, volgorde).
+
+    Zes dagen te laat op een weektaak (6/7 = 0,86) is proportioneel erger dan
+    115 dagen op een halfjaartaak (115/180 = 0,64) — absolute dagen sorteren
+    verkeerd. De cycluslengte is voor interval het aantal dagen zelf, en voor
+    kalendertypen de afstand van next_due tot de eerstvolgende geplande keer
+    erna. Alleen voor volgorde; de urgentiedrempels van §4.3 blijven op dagen.
+    """
+    cfg = validate_schedule(schedule_type, config)
+    over = (today - next_due).days
+    if over <= 0:
+        return 0.0
+    if schedule_type == INTERVAL:
+        length = cfg["days"]
+    else:
+        length = (_next_occurrence(schedule_type, cfg, next_due, strict=True) - next_due).days
+    return over / length
+
+
 # --- urgentie (§4.3) -------------------------------------------------------
 
 def urgency(next_due: date, priority: str, today: date) -> str:
@@ -201,8 +221,21 @@ def current_assignee(rotation: list, rotation_index: int):
     return rotation[rotation_index % len(rotation)]
 
 
-def advance_rotation(rotation: list, rotation_index: int) -> int:
-    """Bij afvinken schuift de index één plek op, met wrap naar 0."""
+def advance_rotation(rotation: list, rotation_index: int, completed_by=None) -> int:
+    """§4.4: de beurt schuift door vanaf wie de taak écht deed.
+
+    Staat Martijn aan de beurt en doet Laura het, dan komt de beurt op de
+    persoon ná Laura — bij twee personen is dat opnieuw Martijn, niet Laura
+    (die zou anders twee keer achter elkaar moeten). Doet iemand het die niet
+    in de rotatielijst staat, dan blijft de beurt staan waar hij stond.
+
+    Zonder completed_by (het gedrag van vóór deze regel) schuift de index
+    gewoon één plek op.
+    """
     if not rotation:
         return 0
-    return (rotation_index + 1) % len(rotation)
+    if completed_by is None:
+        return (rotation_index + 1) % len(rotation)
+    if completed_by not in rotation:
+        return rotation_index
+    return (rotation.index(completed_by) + 1) % len(rotation)

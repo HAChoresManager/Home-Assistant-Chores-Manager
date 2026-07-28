@@ -24,6 +24,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .store.chores import delete_chore, get_chore, save_chore, snooze_chore
+from .store.subtasks import set_subtasks
 from .store.assignees import delete_assignee, save_assignee
 from .store.completions import complete_chore, undo_completion
 from .store.overview import build_state
@@ -104,11 +105,22 @@ async def ws_undo(hass, connection, msg):
 })
 @websocket_api.async_response
 async def ws_chore_save(hass, connection, msg):
-    """Taak aanmaken of bijwerken; validatie zit in de store-laag."""
+    """Taak aanmaken of bijwerken; validatie zit in de store-laag.
+
+    Een optionele lijst "subtasks" (namen) in het taakobject vervangt de
+    checklist-deeltaken. Deeltaken met voltooiingshistorie kunnen niet
+    vervangen worden; dat geeft een nette foutmelding terug.
+    """
     now = dt_util.now()
+    chore_data = dict(msg["chore"])
+    subtask_names = chore_data.pop("subtasks", None)
     try:
         chore = await hass.async_add_executor_job(
-            save_chore, _path(hass), msg["chore"], now.date(), now.isoformat())
+            save_chore, _path(hass), chore_data, now.date(), now.isoformat())
+        if subtask_names is not None:
+            await hass.async_add_executor_job(
+                set_subtasks, _path(hass), chore["id"],
+                [str(name) for name in subtask_names])
     except ValueError as err:
         connection.send_error(msg["id"], "invalid_input", str(err))
         return

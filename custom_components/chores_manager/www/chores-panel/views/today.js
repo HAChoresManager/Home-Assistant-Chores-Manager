@@ -6,10 +6,10 @@
  * tellers (§2.4). Taken in `pending` zijn optimistisch afgevinkt en blijven
  * uit beeld tot de server het bevestigt of het terugdraait.
  */
-import { html } from '../core/html.js?v=2.0.0-20260728-fase3a';
-import { dateLong, feedWhen, formatDuration, taskCount } from '../core/format.js?v=2.0.0-20260728-fase3a';
-import { renderContributionBar } from '../components/contribution-bar.js?v=2.0.0-20260728-fase3a';
-import { renderTaskCard } from '../components/task-card.js?v=2.0.0-20260728-fase3a';
+import { html } from '../core/html.js?v=2.1.0-20260728-fase3b';
+import { dateLong, feedWhen, formatDuration, taskCount } from '../core/format.js?v=2.1.0-20260728-fase3b';
+import { renderContributionBar } from '../components/contribution-bar.js?v=2.1.0-20260728-fase3b';
+import { renderTaskCard } from '../components/task-card.js?v=2.1.0-20260728-fase3b';
 
 const FEED_ROWS = 5;
 
@@ -55,12 +55,23 @@ export function renderToday(state) {
   const data = state.data;
   const assigneesById = {};
   for (const person of data.assignees) assigneesById[person.id] = person;
-  const ctx = { assigneesById, assignees: data.assignees, chooser: state.chooser };
+  const ctx = {
+    assigneesById,
+    assignees: data.assignees,
+    chooser: state.chooser,
+    credits: state.credits,
+    expanded: state.expanded,
+    todayIso: data.today,
+    view: 'today',
+  };
 
   const open = data.chores.filter(
     (c) => c.urgency !== 'upcoming' && !state.pending.has(c.id));
   const dueToday = open.filter((c) => c.urgency === 'due');
-  const late = open.filter((c) => c.urgency !== 'due');
+  // Volgorde op cyclusfractie (§4.3): 6 dagen op een weektaak is dringender
+  // dan 115 dagen op een halfjaartaak — absolute dagen sorteren verkeerd.
+  const late = open.filter((c) => c.urgency !== 'due')
+    .sort((a, b) => (b.cycle_fraction || 0) - (a.cycle_fraction || 0));
 
   const header = html`
     <header class="page-header">

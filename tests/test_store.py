@@ -20,6 +20,7 @@ from chores_manager.store.chores import (
     snooze_chore,
 )
 from chores_manager.store.completions import (
+    week_history,
     assignee_streaks,
     complete_chore,
     completed_today_count,
@@ -129,6 +130,20 @@ class TestCompleteEnUndo:
         undo_completion(db, undo)
         assert get_chore(db, "bood")["rotation_index"] == 0
 
+    def test_rotatie_schuift_vanaf_de_doener(self, db):
+        # §4.4: martijn aan de beurt, laura doet het -> martijn blijft aan de
+        # beurt; een doener buiten de lijst laat de beurt helemaal staan
+        save_assignee(db, {"id": "noud", "name": "Noud", "color": "#f06292"})
+        save_chore(db, {
+            "id": "bood", "name": "Boodschappen", "schedule_type": "weekly",
+            "schedule_config": {"weekday": 3}, "assignment_type": "rotating",
+            "rotation": ["martijn", "laura"],
+        }, VANDAAG, NU)
+        complete_chore(db, "bood", "laura", VANDAAG, _tijd(1))
+        assert get_chore(db, "bood")["rotation_index"] == 0  # martijn opnieuw
+        complete_chore(db, "bood", "noud", VANDAAG, _tijd(2))
+        assert get_chore(db, "bood")["rotation_index"] == 0  # beurt blijft staan
+
     def test_checklist_minuten_sommeren_naar_duration(self, db):
         _gewone_taak(db, id="kap", name="Afzuigkap", duration_minutes=15,
                      subtask_mode="checklist")
@@ -218,6 +233,24 @@ class TestRanglijstFeedStreak:
         assert week_start(date(2026, 7, 28)) == date(2026, 7, 27)  # di -> ma
         assert week_start(date(2026, 7, 27)) == date(2026, 7, 27)  # ma -> ma
         assert week_start(date(2026, 8, 2)) == date(2026, 7, 27)   # zo -> ma
+
+    def test_weekhistorie_alleen_afgesloten_weken(self, db):
+        _gewone_taak(db)
+        # deze week (telt niet mee), vorige week, en drie weken terug
+        complete_chore(db, "was", "laura", VANDAAG, _tijd(1))
+        vorige = VANDAAG - timedelta(days=7)
+        complete_chore(db, "was", "laura", vorige, _tijd(2, vorige))
+        complete_chore(db, "was", "martijn", vorige, _tijd(3, vorige))
+        ver = VANDAAG - timedelta(days=21)
+        complete_chore(db, "was", "martijn", ver, _tijd(4, ver))
+        historie = week_history(db, VANDAAG)
+        assert [w["week_start"] for w in historie] == ["2026-07-20", "2026-07-06"]
+        vorige_week = historie[0]
+        assert vorige_week["total_minutes"] == 40
+        # eindstand per persoon, minuten aflopend; gelijkspel -> volgorde vrij
+        assert {p["id"]: p["minutes"] for p in vorige_week["persons"]} == {
+            "laura": 20, "martijn": 20}
+        # de lege week van 13 juli verschijnt niet — alleen weken met werk
 
 
 class TestAssignees:

@@ -25,10 +25,15 @@ from .store.subtasks import set_subtasks
 
 # Wie kan is bewust GEEN persoon meer (§3.1): die twee taken worden 'anyone'.
 # Noud doet mee met eigen streak maar buiten de tijdsranglijst (§10.1).
+# Kleuren herzien in 3b: de legacy-waarden kwamen uit het lichte thema.
+# Martijn (#4dd8ff) lag te dicht bij het knopblauw, Noud (#013589) verdween in
+# een donkere achtergrond. Deze drie zijn middelhelder (leesbaar op donker én
+# licht), liggen ver uit elkaar in tint en botsen niet met de betekeniskleuren
+# van het panel (primair blauw, warning-amber, error-rood).
 SEED_ASSIGNEES = [
-    {"id": "laura", "name": "Laura", "color": "#83c44a", "sort_order": 0},
-    {"id": "martijn", "name": "Martijn", "color": "#4dd8ff", "sort_order": 1},
-    {"id": "noud", "name": "Noud", "color": "#013589", "sort_order": 2,
+    {"id": "laura", "name": "Laura", "color": "#7cb342", "sort_order": 0},
+    {"id": "martijn", "name": "Martijn", "color": "#ab47bc", "sort_order": 1},
+    {"id": "noud", "name": "Noud", "color": "#f06292", "sort_order": 2,
      "include_in_leaderboard": 0},
 ]
 

@@ -1,8 +1,8 @@
 /**
- * <chores-panel> — entrypoint van het nieuwe panel op /taken (fase 3a).
+ * <chores-panel> — entrypoint van het panel op /taken (fase 3a/3b).
  *
- * Shadow DOM: HA's CSS-variabelen erven er gewoon doorheen (custom properties
- * steken door shadow-grenzen), en de stijlisolatie krijg je gratis.
+ * Vier weergaven (Vandaag, Alles, Activiteit, Beheer) achter tabs; de actieve
+ * weergave staat in de URL-hash zodat een refresh je niet terugzet.
  *
  * BELANGRIJKE VALKUIL — de hass-setter:
  * Home Assistant zet de hass-property bij ELKE state-change in het hele
@@ -10,20 +10,57 @@
  * panel onbruikbaar traag. Daarom bewaart de setter alleen de referentie en
  * geeft hij de verbinding door aan de api-laag. Gerenderd wordt er op precies
  * twee momenten: bij de eerste start, en wanneer chores_manager/subscribe een
- * event binnenbrengt (elke mutatie, ook die van anderen of van de nachtelijke
- * rol). De storeluisteraar vertaalt elke toestandswijziging naar één render.
+ * event binnenbrengt. De storeluisteraar vertaalt elke toestandswijziging
+ * naar één render.
  *
- * Versiediscipline: de ?v= in elke import hieronder spiegelt PANEL_VERSION in
+ * Formulieren zijn de uitzondering op "alles hertekent": zolang hetzelfde
+ * formulier openstaat wordt een render overgeslagen, anders wist een
+ * binnenkomend event je getypte werk. Veldwissels (planningstype, toewijzing,
+ * deeltaken) togglen dan ook in de DOM via data-switch, zonder render.
+ *
+ * Versiediscipline: de ?v= in elke import spiegelt PANEL_VERSION in
  * panel_v2.py. Zie CLAUDE.md.
  */
-import { api } from './core/api.js?v=2.0.0-20260728-fase3a';
-import { store } from './core/store.js?v=2.0.0-20260728-fase3a';
-import { setContent } from './core/html.js?v=2.0.0-20260728-fase3a';
-import { renderToday } from './views/today.js?v=2.0.0-20260728-fase3a';
-import { isFinalAction } from './components/task-card.js?v=2.0.0-20260728-fase3a';
+import { api } from './core/api.js?v=2.1.0-20260728-fase3b';
+import { store } from './core/store.js?v=2.1.0-20260728-fase3b';
+import { html, setContent } from './core/html.js?v=2.1.0-20260728-fase3b';
+import { renderToday } from './views/today.js?v=2.1.0-20260728-fase3b';
+import { renderTasks } from './views/tasks.js?v=2.1.0-20260728-fase3b';
+import { renderActivity } from './views/activity.js?v=2.1.0-20260728-fase3b';
+import { renderManage, collectAssigneeForm } from './views/manage.js?v=2.1.0-20260728-fase3b';
+import { collectChoreForm } from './components/task-form.js?v=2.1.0-20260728-fase3b';
+import { isFinalAction } from './components/task-card.js?v=2.1.0-20260728-fase3b';
 
-const VERSION = '2.0.0-20260728-fase3a';
-const STYLES_URL = `/chores_manager-panel/styles.css?v=${VERSION}`;
+const VERSION = '2.1.0-20260728-fase3b';
+const STATIC_BASE = '/chores_manager-panel';
+
+const TABS = [
+  ['vandaag', 'Vandaag'],
+  ['alles', 'Alles'],
+  ['activiteit', 'Activiteit'],
+  ['beheer', 'Beheer'],
+];
+
+const VIEWS = {
+  vandaag: renderToday,
+  alles: renderTasks,
+  activiteit: renderActivity,
+  beheer: renderManage,
+};
+
+function viewFromHash() {
+  const hash = window.location.hash.replace('#', '');
+  return VIEWS[hash] ? hash : 'vandaag';
+}
+
+function renderNav(view) {
+  return html`
+    <nav class="tabs" aria-label="Weergave">
+      ${TABS.map(([id, label]) => html`
+        <a class="tab ${view === id ? 'active' : ''}" href="#${id}"
+          ${view === id ? html`aria-current="page"` : ''}>${label}</a>`)}
+    </nav>`;
+}
 
 class ChoresPanel extends HTMLElement {
   constructor() {
@@ -32,7 +69,11 @@ class ChoresPanel extends HTMLElement {
     this._started = false;
     this._unsubStore = null;
     this._snackbarTimer = 0;
+    this._renderedEditing = null;
     this._onClick = this._onClick.bind(this);
+    this._onSubmit = this._onSubmit.bind(this);
+    this._onChange = this._onChange.bind(this);
+    this._onHashChange = this._onHashChange.bind(this);
   }
 
   /** Zie de valkuil in de kop: hier alleen bewaren, nooit renderen. */
@@ -50,20 +91,25 @@ class ChoresPanel extends HTMLElement {
     if (!this.shadowRoot) {
       const root = this.attachShadow({ mode: 'open' });
       root.innerHTML = `
-        <link rel="stylesheet" href="${STYLES_URL}">
+        <link rel="stylesheet" href="${STATIC_BASE}/styles.css?v=${VERSION}">
+        <link rel="stylesheet" href="${STATIC_BASE}/styles-views.css?v=${VERSION}">
         <main id="app" aria-live="polite"></main>
         <div id="snackbar" role="status" hidden></div>`;
       this._app = root.getElementById('app');
       this._snackbar = root.getElementById('snackbar');
-      // Event delegation op containerniveau: opnieuw renderen sloopt zo geen
-      // listeners (CLAUDE.md). De shadow root vangt ook de snackbarknop.
+      // Event delegation op de shadow root: opnieuw renderen sloopt zo geen
+      // listeners (CLAUDE.md), en de snackbarknop doet vanzelf mee.
       root.addEventListener('click', this._onClick);
+      root.addEventListener('submit', this._onSubmit);
+      root.addEventListener('change', this._onChange);
     }
+    window.addEventListener('hashchange', this._onHashChange);
     if (this._hass && !this._started) this._start();
   }
 
   disconnectedCallback() {
     this._started = false;
+    window.removeEventListener('hashchange', this._onHashChange);
     api.unsubscribe();
     if (this._unsubStore) {
       this._unsubStore();
@@ -73,6 +119,7 @@ class ChoresPanel extends HTMLElement {
 
   async _start() {
     this._started = true;
+    store.set({ view: viewFromHash() });
     this._unsubStore = store.subscribe(() => this._render());
     this._render();
     await this._refresh();
@@ -94,7 +141,19 @@ class ChoresPanel extends HTMLElement {
   }
 
   _render() {
-    setContent(this._app, renderToday(store.get()));
+    const state = store.get();
+    // Een openstaand formulier met rust laten: alleen hertekenen als het
+    // formulier zelf wisselt (openen, sluiten, bevestigingsstap).
+    if (state.editing && state.editing === this._renderedEditing) return;
+    this._renderedEditing = state.editing;
+    const body = state.loading || state.error || !state.data
+      ? VIEWS.vandaag(state)
+      : VIEWS[state.view](state);
+    setContent(this._app, html`${renderNav(state.view)}${body}`);
+  }
+
+  _onHashChange() {
+    store.set({ view: viewFromHash(), chooser: null, editing: null });
   }
 
   async _onClick(event) {
@@ -103,23 +162,120 @@ class ChoresPanel extends HTMLElement {
     if (!button || button.disabled) return;
     const { action } = button.dataset;
     const choreId = button.dataset.chore;
+    const assigneeId = button.dataset.assignee;
     const subtaskId = button.dataset.subtask !== undefined
       ? Number(button.dataset.subtask) : undefined;
+    const state = store.get();
 
     if (action === 'complete') {
-      await this._complete(choreId, button.dataset.assignee, subtaskId);
+      await this._complete(choreId, assigneeId, subtaskId);
     } else if (action === 'choose') {
-      store.set({ chooser: { choreId, subtaskId } });
+      store.set({ chooser: { choreId, subtaskId, mode: 'complete' } });
+    } else if (action === 'choose-credit') {
+      store.set({ chooser: { choreId, subtaskId: undefined, mode: 'credit' } });
     } else if (action === 'pick') {
       store.set({ chooser: null });
-      await this._complete(choreId, button.dataset.assignee, subtaskId);
+      await this._complete(choreId, assigneeId, subtaskId);
+    } else if (action === 'set-credit') {
+      store.set({
+        chooser: null,
+        credits: { ...state.credits, [choreId]: assigneeId },
+      });
     } else if (action === 'cancel-choose') {
       store.set({ chooser: null });
+    } else if (action === 'toggle-steps') {
+      const expanded = new Set(state.expanded);
+      if (expanded.has(choreId)) expanded.delete(choreId);
+      else expanded.add(choreId);
+      store.set({ expanded });
     } else if (action === 'undo') {
       await this._undo();
     } else if (action === 'retry') {
       store.set({ loading: true, error: null });
       await this._refresh();
+    } else if (action === 'new-chore') {
+      store.set({ editing: { kind: 'chore', id: null, confirm: false } });
+    } else if (action === 'edit-chore') {
+      store.set({ editing: { kind: 'chore', id: choreId, confirm: false } });
+    } else if (action === 'new-assignee') {
+      store.set({ editing: { kind: 'assignee', id: null, confirm: false } });
+    } else if (action === 'edit-assignee') {
+      store.set({ editing: { kind: 'assignee', id: assigneeId, confirm: false } });
+    } else if (action === 'form-cancel') {
+      store.set({ editing: null });
+    } else if (action === 'delete-ask') {
+      store.set({ editing: { ...state.editing, confirm: true } });
+    } else if (action === 'delete-cancel') {
+      store.set({ editing: { ...state.editing, confirm: false } });
+    } else if (action === 'delete-confirm') {
+      await this._delete();
+    }
+  }
+
+  /** Veldwissels in formulieren: tonen/verbergen zonder render (data-switch). */
+  _onChange(event) {
+    const select = event.target;
+    if (!(select instanceof HTMLElement) || !select.dataset.switch) return;
+    const groupName = select.dataset.switch;
+    this.shadowRoot.querySelectorAll(`[data-switch-group="${groupName}"]`)
+      .forEach((group) => {
+        group.hidden = group.dataset.switchValue !== select.value;
+      });
+  }
+
+  async _onSubmit(event) {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || !form.dataset.form) return;
+    event.preventDefault();
+    try {
+      if (form.dataset.form === 'chore') {
+        const chore = collectChoreForm(form);
+        await api.choreSave(chore);
+        this._showSnackbar(`Opgeslagen: ${chore.name}`);
+      } else {
+        const assignee = collectAssigneeForm(form);
+        await api.assigneeSave(assignee);
+        this._showSnackbar(`Opgeslagen: ${assignee.name}`);
+      }
+      store.set({ editing: null });
+      await this._refresh();
+    } catch (err) {
+      this._showFormError(form, err?.message || String(err));
+    }
+  }
+
+  _showFormError(form, message) {
+    // Buiten de store om: een render zou het formulier wissen.
+    const slot = form.querySelector('[data-form-error]');
+    if (slot) {
+      slot.textContent = message;
+      slot.hidden = false;
+    } else {
+      this._showSnackbar(message, { error: true });
+    }
+  }
+
+  async _delete() {
+    const state = store.get();
+    const editing = state.editing;
+    if (!editing || !editing.id) return;
+    try {
+      let result;
+      let name;
+      if (editing.kind === 'chore') {
+        name = state.data.chores.find((c) => c.id === editing.id)?.name || editing.id;
+        result = (await api.choreDelete(editing.id)).result;
+      } else {
+        name = state.data.assignees.find((a) => a.id === editing.id)?.name || editing.id;
+        result = (await api.assigneeDelete(editing.id)).result;
+      }
+      this._showSnackbar(result === 'deactivated'
+        ? `Gearchiveerd: ${name} (historie blijft)`
+        : `Verwijderd: ${name}`);
+      store.set({ editing: null });
+      await this._refresh();
+    } catch (err) {
+      this._showSnackbar(err?.message || String(err), { error: true });
     }
   }
 
@@ -127,12 +283,15 @@ class ChoresPanel extends HTMLElement {
    * Afvinken met optimistische update (B5): een afrondende actie haalt de
    * kaart meteen uit beeld; bevestigt de server, dan blijft dat zo en komt er
    * "Ongedaan maken" in de bevestiging. Faalt de aanroep, dan komt de kaart
-   * terug en vertelt de snackbar waarom.
+   * terug en vertelt de snackbar waarom. De snackbar noemt wie de credits
+   * kreeg, zodat een verkeerde toewijzing binnen het undo-venster opvalt.
    */
   async _complete(choreId, assigneeId, subtaskId) {
     const state = store.get();
     const chore = state.data?.chores.find((c) => c.id === choreId);
     if (!chore || !assigneeId) return;
+    const person = state.data.assignees.find((a) => a.id === assigneeId);
+    const personName = person ? person.name : assigneeId;
 
     const finishes = isFinalAction(chore, subtaskId);
     if (finishes) {
@@ -144,9 +303,12 @@ class ChoresPanel extends HTMLElement {
     try {
       const result = await api.complete({ choreId, assigneeId, subtaskId });
       if (result.was_full) {
-        this._showSnackbar(`Afgevinkt: ${chore.name}`, { undo: true });
+        const credits = { ...store.get().credits };
+        delete credits[choreId];
+        store.set({ credits });
+        this._showSnackbar(`Afgevinkt: ${chore.name} · ${personName}`, { undo: true });
       } else {
-        this._showSnackbar('Stap afgevinkt', { undo: true });
+        this._showSnackbar(`Stap afgevinkt · ${personName}`, { undo: true });
       }
       await this._refresh();
     } catch (err) {

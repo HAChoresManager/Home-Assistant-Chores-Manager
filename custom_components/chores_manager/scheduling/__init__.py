@@ -11,6 +11,7 @@ from .types import (
     validate_schedule,
 )
 from .calculator import (
+    cycle_fraction,
     DUE,
     GRACE,
     GRACE_DAYS,
@@ -30,5 +31,5 @@ __all__ = [
     "ScheduleError", "parse_schedule_config", "validate_schedule",
     "UPCOMING", "DUE", "GRACE", "URGENT", "GRACE_DAYS",
     "initial_next_due", "next_due_after_completion", "roll_forward",
-    "overdue_days", "urgency", "current_assignee", "advance_rotation",
+    "overdue_days", "cycle_fraction", "urgency", "current_assignee", "advance_rotation",
 ]

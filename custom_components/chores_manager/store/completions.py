@@ -142,7 +142,10 @@ def complete_chore(
             new_due = next_due_after_completion(
                 row["schedule_type"], json.loads(row["schedule_config"]), today)
             rotation = json.loads(row["rotation"])
-            new_index = (advance_rotation(rotation, row["rotation_index"])
+            # §4.4: de beurt schuift door vanaf wie de taak écht deed — niet
+            # vanaf wie aan de beurt stond. Een doener buiten de rotatielijst
+            # laat de beurt staan.
+            new_index = (advance_rotation(rotation, row["rotation_index"], assignee_id)
                          if row["assignment_type"] == "rotating" else row["rotation_index"])
             conn.execute(
                 "UPDATE chores SET next_due = ?, rotation_index = ?, updated_at = ?"
@@ -231,6 +234,50 @@ def feed(database_path: str, limit: int = 20) -> list[dict]:
             " JOIN assignees a ON a.id = co.assignee_id"
             " LEFT JOIN subtasks st ON st.id = co.subtask_id"
             " ORDER BY co.completed_at DESC, co.id DESC LIMIT ?", (limit,))]
+
+
+def history_counts(database_path: str) -> dict:
+    """Aantal voltooiingsregels per taak, in één query. Voor de beheer-UI:
+    een taak mét historie wordt gearchiveerd, zonder historie echt verwijderd
+    (het 2b-besluit) — dat verschil moet vooraf zichtbaar zijn."""
+    with get_connection(database_path) as conn:
+        return {r["chore_id"]: r["n"] for r in conn.execute(
+            "SELECT chore_id, COUNT(*) AS n FROM completions GROUP BY chore_id")}
+
+
+def week_history(database_path: str, today: date, weeks: int = 12) -> list[dict]:
+    """Afgesloten weken (§5.2), nieuwste eerst — volledig afgeleid uit
+    completions, geen aparte tabel. Alleen weken waarin iets gebeurd is; per
+    week de eindstand per persoon, minuten aflopend. De weekhistorie toont
+    iederéén die iets deed — feiten; het ranglijstfilter
+    (include_in_leaderboard) geldt alleen de lopende week."""
+    current_start = week_start(today)
+    with get_connection(database_path) as conn:
+        rows = conn.execute(
+            "SELECT substr(co.completed_at, 1, 10) AS day, co.minutes,"
+            " co.is_full_completion, a.id AS assignee_id, a.name, a.color"
+            " FROM completions co JOIN assignees a ON a.id = co.assignee_id"
+            " WHERE substr(co.completed_at, 1, 10) < ?",
+            (current_start.isoformat(),)).fetchall()
+    per_week: dict = {}
+    for row in rows:
+        start = week_start(date.fromisoformat(row["day"]))
+        persons = per_week.setdefault(start, {})
+        person = persons.setdefault(row["assignee_id"], {
+            "id": row["assignee_id"], "name": row["name"], "color": row["color"],
+            "minutes": 0, "tasks": 0,
+        })
+        person["minutes"] += row["minutes"]
+        person["tasks"] += row["is_full_completion"]
+    history = []
+    for start in sorted(per_week, reverse=True)[:weeks]:
+        persons = sorted(per_week[start].values(), key=lambda p: -p["minutes"])
+        history.append({
+            "week_start": start.isoformat(),
+            "total_minutes": sum(p["minutes"] for p in persons),
+            "persons": persons,
+        })
+    return history
 
 
 def completed_today_count(database_path: str, today: date) -> int:
