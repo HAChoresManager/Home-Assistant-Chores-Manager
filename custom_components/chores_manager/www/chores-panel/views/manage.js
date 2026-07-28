@@ -6,9 +6,10 @@
  * Activiteit), zonder historie gaat hij echt weg. Personen idem, inclusief
  * rotatielidmaatschap.
  */
-import { html } from '../core/html.js?v=2.1.1-20260728-fase3b';
-import { scheduleLabel } from '../core/format.js?v=2.1.1-20260728-fase3b';
-import { renderChoreForm, slugify } from '../components/task-form.js?v=2.1.1-20260728-fase3b';
+import { html } from '../core/html.js';
+import { scheduleLabel } from '../core/format.js';
+import { FOLLOW_HA } from '../core/theme.js';
+import { renderChoreForm, slugify } from '../components/task-form.js';
 
 function choreRow(chore) {
   return html`
@@ -34,6 +35,24 @@ function assigneeRow(person) {
       <button type="button" class="secondary" data-action="edit-assignee"
         data-assignee="${person.id}">Bewerken</button>
     </li>`;
+}
+
+function themeSection(themes) {
+  // Presentatie, geen data (3c): de keuze leeft in localStorage van dit
+  // apparaat; de afhandeling zit in de panel-theme-handler van het element.
+  if (!themes || !themes.names.length) return '';
+  return html`
+    <section>
+      <h2 class="section-title">Weergave</h2>
+      <label class="field">Thema van dit panel
+        <select name="panel-theme">
+          <option value="${FOLLOW_HA}">Volg Home Assistant</option>
+          ${themes.names.map((name) => html`
+            <option value="${name}" ${themes.selected === name ? 'selected' : ''}>${name}</option>`)}
+        </select>
+      </label>
+      <p class="field-hint">Geldt alleen voor dit apparaat; andere schermen houden hun eigen keuze.</p>
+    </section>`;
 }
 
 function deleteBlock(kind, subject, confirm) {
@@ -119,7 +138,8 @@ export function renderManage(state) {
       <h2 class="section-title">Personen</h2>
       <ul class="manage-rows">${data.assignees.map(assigneeRow)}</ul>
       <button type="button" class="secondary add" data-action="new-assignee">+ Nieuwe persoon</button>
-    </section>`;
+    </section>
+    ${themeSection(state.themes)}`;
 }
 
 /** Lees het personenformulier terug voor assignee/save. */

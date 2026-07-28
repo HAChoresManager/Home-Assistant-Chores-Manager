@@ -1,45 +1,48 @@
 # Home Assistant Chores Manager
 
-A comprehensive chores management system for Home Assistant that helps families track, assign, and complete household tasks.
+Huishoudelijke taken voor het hele gezin, als native Home Assistant-panel op
+`/taken`. Vier schermen — Vandaag, Alles, Activiteit, Beheer — met afvinken
+in één tik, een bijdragebalk per week, rotatie van beurten en een eerlijke
+achterstandslogica (achterstand loopt niet eindeloos op).
 
-## Features
+Gebouwd zonder build-stap of externe dependencies: vanilla ES-modules, Web
+Components en HA's eigen CSS-variabelen, dus elk thema klopt vanzelf.
 
-- Task tracking with configurable frequencies and alternating assignments
-- Automated task scheduling and due date calculation
-- Task completion tracking with history
-- Overdue task monitoring and notifications
-- Assignment management across family members
-- Real-time state updates and statistics
-- Streaks and performance metrics
-- Mobile-friendly dashboard
-- Home Assistant theme integration
-- Integration with Home Assistant users for notifications
+## Installatie
 
-## Installation
+1. Kopieer `custom_components/chores_manager/` naar
+   `<config>/custom_components/`.
+2. Herstart Home Assistant.
+3. Instellingen → Apparaten en diensten → Integratie toevoegen →
+   "Chores Manager". Er valt niets in te stellen; het panel verschijnt in de
+   zijbalk als **Huishoudelijke Taken**.
 
-### HACS Installation (Recommended)
-1. Make sure [HACS](https://hacs.xyz/) is installed
-2. Add this repository as a custom repository in HACS:
-   - Go to HACS → Integrations → ⋮ → Custom repositories
-   - Add URL `https://github.com/HomeTaskManager/ha-chores-manager`
-   - Category: Integration
-3. Install "Chores Manager" from HACS
-4. Restart Home Assistant
+Er is geen `configuration.yaml`-configuratie. De database staat in
+`<config>/chores_v2.db`.
 
-### Manual Installation
-1. Download the latest release
-2. Copy the `custom_components/chores_manager` folder to your Home Assistant `/config/custom_components` directory
-3. Restart Home Assistant
+## Gebruik als Lovelace-kaart (optioneel)
 
-## Configuration
+Het panel werkt ook als kaart in een bestaand dashboard:
 
-Add the following to your `configuration.yaml`:
+1. Instellingen → Dashboards → Bronnen → URL
+   `/chores_manager-panel/chores-panel.js`, type *JavaScript-module*.
+2. Voeg een kaart toe:
 
-```yaml
-# Enable Chores Manager
-chores_manager:
-  database: chores_manager.db  # Optional, defaults to chores_manager.db
-  notification_time: "08:00"   # Optional, time for daily notifications (HH:MM)
+   ```yaml
+   type: custom:chores-panel
+   ```
 
-# Required for the custom services
-sqlite_db:
+## Sensor en services
+
+- `sensor.chores_overview` — openstaande taken vandaag, met attributen
+  (`due_today`, `overdue`, `completed_today`, `week_minutes_total`,
+  `persons` incl. `in_leaderboard`-vlag per persoon).
+- `chores_manager.roll_forward` — voer de nachtelijke doorrol (03:00) nu uit.
+- `chores_manager.seed` — tijdelijk: vult de database met de starttaken.
+
+## Documentatie
+
+- `docs/developer-guide.md` — wegwijzer voor ontwikkeling.
+- `docs/technical-description.md` — wat er draait en hoe.
+- `REFACTOR_PLAN.md` — ontwerpbesluiten en fasering.
+- `CLAUDE.md` — werkinstructies en randvoorwaarden.

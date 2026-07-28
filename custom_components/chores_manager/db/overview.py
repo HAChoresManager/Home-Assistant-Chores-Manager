@@ -1,7 +1,7 @@
 """Samengestelde leesweergaven voor sensor (§2.4) en WS-state (§2.3).
 
 Puur compositie over de andere store-modules plus scheduling; geen HA. Alles
-hier is met pytest te testen — de HA-lagen (sensor_v2.py, websocket.py) doen
+hier is met pytest te testen — de HA-lagen (sensor.py, websocket.py) doen
 niets anders dan deze functies in een executor aanroepen.
 """
 from __future__ import annotations
@@ -60,12 +60,15 @@ def overview(database_path: str, today: date) -> dict:
     overdue = sum(1 for d in due_dates if d < today)
     board = leaderboard(database_path, today)
     streaks = assignee_streaks(database_path, today)
+    # Iedereen die iets deed telt mee, mét de ranglijstvlag erbij: filteren
+    # is presentatie en hoort bij de afnemer (Lovelace), niet bij de sensor.
     persons = {
         p["id"]: {
             "name": p["name"],
             "minutes": p["minutes"],
             "tasks": p["tasks"],
             "streak": streaks.get(p["id"], 0),
+            "in_leaderboard": bool(p["include_in_leaderboard"]),
         }
         for p in board["persons"]
     }

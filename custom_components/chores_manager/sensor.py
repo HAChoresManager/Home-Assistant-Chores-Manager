@@ -1,291 +1,89 @@
-"""Sensor for chores manager."""
+"""De overzichtssensor (§2.4).
+
+Geen polling: should_poll staat uit en updates komen via de dispatcher
+(SIGNAL_UPDATED) na elke mutatie, rol of seed — push in plaats van de
+30-secondenpoll van de oude sensor (§2.3-besluit).
+
+Het unique_id is dat van de oude sensor. Daardoor neemt deze entiteit in het
+entiteitenregister automatisch de plek — en dus de naam sensor.chores_overview
+— van zijn voorganger over. Het register-item van de tussentijdse v2-sensor
+(sensor.chores_v2_overview, unique_id chores_manager_v2_<entry>) blijft als
+wees achter en kan handmatig verwijderd worden.
+
+De persons-attributen tonen iedereen die deze week iets deed, mét een
+in_leaderboard-vlag per persoon. Filteren is presentatie: een Lovelace-kaart
+die alleen de ranglijst wil, filtert zelf op die vlag — de sensor verzwijgt
+geen bijdragen.
+"""
+from __future__ import annotations
+
 import logging
-from datetime import datetime
-from typing import Dict, Any, List, Optional
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.entity import generate_entity_id
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
-from . import DOMAIN
-from .utils.date_utils import is_today, format_date
-from .utils.frequency_calculator import FrequencyCalculator
-from .database import (
-    get_all_chores,
-    get_chore_stats,
-    get_all_assignees,
-    get_subtasks_for_chore,
-    get_today_completions
-)
-from .theme_service import get_theme_settings
+from .const import DATA_DB_PATH, DOMAIN, SIGNAL_UPDATED
+from .db.overview import overview
 
 _LOGGER = logging.getLogger(__name__)
 
-ENTITY_ID_FORMAT = 'sensor.{}'
-
 
 async def async_setup_entry(
-    hass: HomeAssistant, 
-    entry: ConfigEntry, 
-    async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the sensor platform."""
-    database_path = hass.data[DOMAIN][entry.entry_id]["database_path"]
-    _LOGGER.info("Setting up ChoresOverviewSensor with database: %s", database_path)
-
-    # Create and add the sensor entity
-    sensor = ChoresOverviewSensor(hass, database_path, entry.entry_id)
-    async_add_entities([sensor], True)
-
-    # v2 (fase 2b): tweede, onafhankelijke sensor naast deze — zie
-    # sensor_v2.py. B4 noemt deze aanhechting expliciet; verder blijft dit
-    # bestand ongewijzigd en mag een v2-fout de oude sensor nooit raken.
-    try:
-        from .sensor_v2 import async_add_v2_sensor
-        await async_add_v2_sensor(hass, entry, async_add_entities)
-    except Exception as err:
-        _LOGGER.error("Chores v2-sensor niet geladen (oude sensor draait door): %s", err)
+    """Zet de overzichtssensor op."""
+    database_path = hass.data[DOMAIN][entry.entry_id].get(DATA_DB_PATH)
+    if not database_path:
+        _LOGGER.error("Chores Manager: geen databasepad, sensor overgeslagen")
+        return
+    async_add_entities([ChoresOverviewSensor(database_path, entry.entry_id)], True)
 
 
 class ChoresOverviewSensor(SensorEntity):
-    """Representation of a Chores Overview sensor."""
+    """state = aantal openstaande taken vandaag; attributen conform §2.4."""
 
-    def __init__(self, hass: HomeAssistant, database_path: str, entry_id: str):
-        """Initialize the sensor."""
+    _attr_should_poll = False
+    _attr_name = "Chores Overview"
+    _attr_icon = "mdi:clipboard-check-outline"
+    _attr_native_unit_of_measurement = "taken"
+
+    def __init__(self, database_path: str, entry_id: str) -> None:
         self._database_path = database_path
-        self._entry_id = entry_id
-        self._attr_name = "Chores Overview"
+        # het unique_id van de oude sensor — zie de moduledocstring
         self._attr_unique_id = f"chores_manager_{entry_id}"
-        
-        # Explicitly set entity_id
-        self.entity_id = generate_entity_id(
-            ENTITY_ID_FORMAT,
-            "chores_overview",
-            hass=hass
-        )
-        
-        self._state = 0
-        self._attrs = {}
-        
-        _LOGGER.info(
-            "Initialized ChoresOverviewSensor with path: %s and entity_id: %s",
-            database_path, self.entity_id
-        )
 
-    @property
-    def native_value(self):
-        """Return the state of the sensor."""
-        return self._state
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(async_dispatcher_connect(
+            self.hass, SIGNAL_UPDATED, self._handle_update))
 
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes."""
-        return self._attrs
+    @callback
+    def _handle_update(self, payload=None) -> None:
+        self.hass.async_create_task(self._refresh(write=True))
 
     async def async_update(self) -> None:
-        """Update the sensor."""
-        _LOGGER.debug("Starting update for ChoresOverviewSensor")
-        
+        # alleen de eerste keer, via update_before_add; daarna is het push
+        await self._refresh(write=False)
+
+    async def _refresh(self, write: bool) -> None:
         try:
-            # Get all data from database
-            data = await self._fetch_sensor_data()
-            
-            # Process and update state
-            self._process_sensor_data(data)
-            
-            _LOGGER.info(
-                "Updated sensor with %d tasks, %d completed today",
-                len(self._attrs.get('overdue_tasks', [])),
-                self._state
-            )
-            
-        except Exception as e:
-            _LOGGER.error("Error updating sensor: %s", str(e))
-            # Keep previous state on error
-
-    async def _fetch_sensor_data(self) -> Dict[str, Any]:
-        """Fetch all required data from database."""
-        return await self.hass.async_add_executor_job(self._get_sensor_data)
-
-    def _get_sensor_data(self) -> Dict[str, Any]:
-        """Get all sensor data from database (sync)."""
-        _LOGGER.info("Fetching sensor data from %s", self._database_path)
-        
-        # Get all chores
-        all_chores = get_all_chores(self._database_path)
-        
-        # Get assignees
-        assignees = get_all_assignees(self._database_path, active_only=True)
-        
-        # Get stats
-        stats = get_chore_stats(self._database_path, period="today")
-        
-        # Get theme settings
-        theme_settings = get_theme_settings(self._database_path)
-        
-        # Get today's completions
-        completed_count, completed_tasks = get_today_completions(self._database_path)
-        
-        # Get subtasks for chores that have them
-        for chore in all_chores:
-            if chore.get('has_subtasks'):
-                chore['subtasks'] = get_subtasks_for_chore(
-                    self._database_path, 
-                    chore['id']
-                )
-            else:
-                chore['subtasks'] = []
-        
-        return {
-            'chores': all_chores,
-            'assignees': assignees,
-            'stats': stats,
-            'theme_settings': theme_settings,
-            'completed_today': completed_count,
-            'completed_tasks': completed_tasks
+            data = await self.hass.async_add_executor_job(
+                overview, self._database_path, dt_util.now().date())
+        except Exception as err:  # sensor mag de dispatcherketen nooit breken
+            _LOGGER.error("Chores Manager: sensorupdate mislukt: %s", err)
+            return
+        self._attr_native_value = data["open_today"]
+        self._attr_extra_state_attributes = {
+            "due_today": data["due_today"],
+            "overdue": data["overdue"],
+            "completed_today": data["completed_today"],
+            "week_minutes_total": data["week_minutes_total"],
+            "persons": data["persons"],
         }
-
-    def _process_sensor_data(self, data: Dict[str, Any]) -> None:
-        """Process fetched data and update sensor state."""
-        # Process chores
-        processed_chores = self._process_chores(data['chores'])
-        
-        # Filter and enhance stats
-        filtered_stats = self._process_stats(data['stats'])
-        
-        # Calculate overdue count
-        overdue_count = sum(
-            1 for chore in processed_chores
-            if self._is_task_actionable(chore)
-        )
-        
-        # Update state and attributes
-        self._state = data['completed_today']
-        self._attrs = {
-            'overdue_tasks': processed_chores,
-            'stats': filtered_stats,
-            'assignees': data['assignees'],
-            'completed_today': data['completed_today'],
-            'theme_settings': data['theme_settings']
-        }
-
-    def _process_chores(self, chores: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Process and enhance chore data."""
-        processed = []
-        
-        for chore in chores:
-            # Skip empty chores
-            if not chore.get('name') or not chore['name'].strip():
-                continue
-            
-            # Enhance chore data
-            enhanced_chore = self._enhance_chore_data(chore)
-            processed.append(enhanced_chore)
-        
-        # Sort by due date
-        processed.sort(key=lambda x: FrequencyCalculator.calculate_next_due_date(x))
-        
-        return processed
-
-    def _enhance_chore_data(self, chore: Dict[str, Any]) -> Dict[str, Any]:
-        """Enhance a single chore with calculated fields."""
-        # Ensure chore_id is set
-        chore['chore_id'] = chore.get('chore_id') or chore.get('id')
-        
-        # Calculate next due date
-        next_due_date = FrequencyCalculator.calculate_next_due_date(chore)
-        
-        # Calculate days since last done
-        if chore.get('last_done'):
-            try:
-                last_done = datetime.fromisoformat(
-                    chore['last_done'].replace('Z', '+00:00')
-                )
-                days_since = (datetime.now() - last_done).days
-            except:
-                days_since = 999
-        else:
-            days_since = 999
-        
-        # Add calculated fields
-        chore['days_since'] = days_since
-        chore['next_due_date'] = next_due_date
-        chore['is_due_today'] = FrequencyCalculator.is_due_today(chore)
-        chore['is_overdue'] = FrequencyCalculator.is_overdue(chore)
-        chore['days_until_due'] = FrequencyCalculator.get_days_until_due(chore)
-        
-        # Process subtasks if present
-        if chore.get('subtasks'):
-            chore['subtasks_completed_count'] = sum(
-                1 for s in chore['subtasks'] if s.get('completed')
-            )
-            chore['subtasks_total_count'] = len(chore['subtasks'])
-        else:
-            chore['subtasks_completed_count'] = 0
-            chore['subtasks_total_count'] = 0
-        
-        # Ensure all required fields exist
-        chore.setdefault('icon', '📋')
-        chore.setdefault('description', '')
-        chore.setdefault('priority', 'Middel')
-        chore.setdefault('duration', 15)
-        
-        return chore
-
-    def _process_stats(self, stats: Dict[str, Any]) -> Dict[str, Any]:
-        """Process and filter statistics."""
-        # Remove "Wie kan" from stats
-        filtered_stats = {
-            k: v for k, v in stats.items() 
-            if k != "Wie kan"
-        }
-        
-        # Ensure all assignees have complete stats
-        for assignee, assignee_stats in filtered_stats.items():
-            # Ensure all required fields exist
-            assignee_stats.setdefault('total_tasks', 0)
-            assignee_stats.setdefault('total_time', 0)
-            assignee_stats.setdefault('tasks_completed', 0)
-            assignee_stats.setdefault('time_completed', 0)
-            assignee_stats.setdefault('streak', 0)
-            assignee_stats.setdefault('monthly_completed', 0)
-            assignee_stats.setdefault('monthly_percentage', 0)
-            assignee_stats.setdefault('due_tasks', [])
-        
-        return filtered_stats
-
-    def _is_task_actionable(self, chore: Dict[str, Any]) -> bool:
-        """Check if a task is actionable (due or overdue and not completed today)."""
-        # Skip if completed today
-        if chore.get('last_done') and is_today(chore['last_done']):
-            return False
-        
-        # Check if due or overdue
-        return chore.get('is_due_today') or chore.get('is_overdue')
-
-    @property
-    def icon(self):
-        """Return the icon of the sensor."""
-        return "mdi:clipboard-check"
-
-    @property
-    def unit_of_measurement(self):
-        """Return the unit of measurement."""
-        return "tasks"
-
-    @property
-    def should_poll(self):
-        """Return True as this sensor should be polled."""
-        return True
-
-    @property
-    def device_class(self):
-        """Return the device class."""
-        return None
-
-    @property
-    def state_class(self):
-        """Return the state class."""
-        return "measurement"
+        if write:
+            self.async_write_ha_state()

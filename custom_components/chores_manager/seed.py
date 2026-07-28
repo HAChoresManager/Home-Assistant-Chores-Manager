@@ -14,14 +14,14 @@ van §4.2 op echte data — dagelijkse taken komen op vandaag uit, de
 interval-taken houden hun betekenisvolle achterstand.
 
 Geen Home Assistant-imports: dit bestand is met pytest te testen. De
-serviceregistratie zit in v2_setup.py.
+serviceregistratie zit in __init__.py.
 """
 from __future__ import annotations
 
-from .store.assignees import save_assignee
-from .store.chores import save_chore
-from .store.schema import create_database
-from .store.subtasks import set_subtasks
+from .db.assignees import save_assignee
+from .db.chores import save_chore
+from .db.schema import create_database
+from .db.subtasks import set_subtasks
 
 # Wie kan is bewust GEEN persoon meer (§3.1): die twee taken worden 'anyone'.
 # Noud doet mee met eigen streak maar buiten de tijdsranglijst (§10.1).

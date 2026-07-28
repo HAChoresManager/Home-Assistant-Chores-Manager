@@ -10,8 +10,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from chores_manager.store.assignees import delete_assignee, list_assignees, save_assignee
-from chores_manager.store.chores import (
+from chores_manager.db.assignees import delete_assignee, list_assignees, save_assignee
+from chores_manager.db.chores import (
     StoreError,
     delete_chore,
     get_chore,
@@ -19,7 +19,7 @@ from chores_manager.store.chores import (
     save_chore,
     snooze_chore,
 )
-from chores_manager.store.completions import (
+from chores_manager.db.completions import (
     week_history,
     assignee_streaks,
     complete_chore,
@@ -29,9 +29,9 @@ from chores_manager.store.completions import (
     undo_completion,
     week_start,
 )
-from chores_manager.store.overview import build_state, overview
-from chores_manager.store.schema import create_database
-from chores_manager.store.subtasks import list_subtasks, set_subtasks
+from chores_manager.db.overview import build_state, overview
+from chores_manager.db.schema import create_database
+from chores_manager.db.subtasks import list_subtasks, set_subtasks
 
 VANDAAG = date(2026, 7, 28)
 NU = "2026-07-28T10:00:00+02:00"
@@ -293,8 +293,11 @@ class TestNachtelijkeRolEnOverzicht:
         assert data["open_today"] == 1
         assert data["completed_today"] == 1
         assert data["week_minutes_total"] == 20
+        # in_leaderboard zit er sinds 3c bij (C3): de sensor toont iedereen,
+        # filteren op de ranglijstvlag is aan de afnemer.
         assert data["persons"]["laura"] == {
-            "name": "Laura", "minutes": 20, "tasks": 1, "streak": 1}
+            "name": "Laura", "minutes": 20, "tasks": 1, "streak": 1,
+            "in_leaderboard": True}
 
     def test_build_state_structuur(self, db):
         _gewone_taak(db, subtask_mode="checklist")

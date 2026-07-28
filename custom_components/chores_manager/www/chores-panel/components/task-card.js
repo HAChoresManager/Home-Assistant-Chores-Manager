@@ -13,13 +13,13 @@
  * Op het scherm Alles (ctx.view 'tasks') toont de kaart vervaldatum en
  * planningsetiket, en staat de checklist ingeklapt achter "0 / 4 stappen".
  */
-import { html } from '../core/html.js?v=2.1.1-20260728-fase3b';
+import { html } from '../core/html.js';
 import {
   dueLabel,
   formatDuration,
   overdueLabel,
   scheduleLabel,
-} from '../core/format.js?v=2.1.1-20260728-fase3b';
+} from '../core/format.js';
 
 /**
  * Maakt deze actie de taak in één keer af? Bepaalt of we optimistisch mogen

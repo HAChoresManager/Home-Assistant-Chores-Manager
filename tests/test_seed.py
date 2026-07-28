@@ -9,9 +9,9 @@ from datetime import date
 import pytest
 
 from chores_manager.seed import SEED_CHORES, seed_v2
-from chores_manager.store.chores import get_chore, list_chores, roll_all_forward
-from chores_manager.store.overview import build_state, overview
-from chores_manager.store.subtasks import list_subtasks
+from chores_manager.db.chores import get_chore, list_chores, roll_all_forward
+from chores_manager.db.overview import build_state, overview
+from chores_manager.db.subtasks import list_subtasks
 
 OPNAMEDAG = date(2026, 7, 28)
 NU = "2026-07-28T10:00:00+02:00"

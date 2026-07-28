@@ -8,7 +8,7 @@
  * tonen/verbergen gebeurt in de DOM (data-switch in chores-panel.js), zonder
  * re-render, zodat ingevuld werk blijft staan.
  */
-import { esc, html } from '../core/html.js?v=2.1.1-20260728-fase3b';
+import { esc, html } from '../core/html.js';
 
 const WEEKDAY_OPTIONS = [
   [1, 'maandag'], [2, 'dinsdag'], [3, 'woensdag'], [4, 'donderdag'],

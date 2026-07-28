@@ -13,8 +13,8 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.util import dt as dt_util
 
-from .store.chores import roll_all_forward
-from .v2_const import SIGNAL_V2_UPDATED
+from .db.chores import roll_all_forward
+from .const import SIGNAL_UPDATED
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,11 +25,11 @@ async def async_run_roll(hass: HomeAssistant, database_path: str) -> list:
     changes = await hass.async_add_executor_job(
         roll_all_forward, database_path, now.date(), now.isoformat())
     if changes:
-        _LOGGER.info("Chores v2: nachtelijke rol verschoof %d taken: %s",
+        _LOGGER.info("Chores Manager: nachtelijke rol verschoof %d taken: %s",
                      len(changes), changes)
     else:
-        _LOGGER.debug("Chores v2: nachtelijke rol, niets te verschuiven")
-    async_dispatcher_send(hass, SIGNAL_V2_UPDATED,
+        _LOGGER.debug("Chores Manager: nachtelijke rol, niets te verschuiven")
+    async_dispatcher_send(hass, SIGNAL_UPDATED,
                           {"reason": "roll", "changed": len(changes)})
     return changes
 

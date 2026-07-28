@@ -470,38 +470,41 @@ Alles onder de 600 regels. Bij overschrijding: splitsen.
 
 ```
 custom_components/chores_manager/
-├── __init__.py           # setup, config entry, panel- en serviceregistratie
+├── __init__.py           # setup, config entry, services seed/roll_forward
 ├── manifest.json
 ├── const.py
-├── config_flow.py
-├── panel.py              # panel_custom, module_url, geen iframe
+├── config_flow.py        # één instantie, niets in te stellen
+├── panel.py              # panel_custom, module_url, geen iframe; versie in pad
 ├── websocket.py          # WS-commando's (zie 2.3)
-├── services.py           # HA-services voor automations en notificaties
-├── sensor.py             # samenvattingssensor + sensor per persoon
-├── scheduler.py          # nachtelijke rol, dagelijkse en wekelijkse meldingen
-├── notify.py             # actionable notificaties opbouwen en versturen
+├── sensor.py             # overzichtssensor (§2.4), push via dispatcher
+├── scheduler.py          # nachtelijke rol; meldingen (§6) komen in fase 4
+├── seed.py               # TIJDELIJK; vervalt in fase 5
+├── notify.py             # fase 4: actionable notificaties
 ├── db/
 │   ├── __init__.py
 │   ├── schema.py         # DDL op één plek
 │   ├── connection.py
-│   ├── migrations.py     # schemamigraties; blijft bestaan
+│   ├── errors.py
 │   ├── chores.py
 │   ├── assignees.py
 │   ├── completions.py    # voltooiingen, ranglijst, feed, streaks
-│   └── subtasks.py
+│   ├── subtasks.py
+│   └── overview.py       # samengestelde leesweergaven voor sensor en WS
 └── scheduling/
     ├── __init__.py
     ├── types.py          # definities van de vijf planningstypen
-    └── calculator.py     # next_due, achterstand, urgentie
+    └── calculator.py     # next_due, achterstand, urgentie, rotatie
 ```
 
-**Tussentoestand tijdens fase 2b: de v2-datalaag heet `store/`.** De oude app
-draait tijdens 2b nog op het oude `db/`-pakket, dus de nieuwe datalaag kan die
-naam nog niet innemen. Daarom leeft hij tijdelijk als `store/` (zelfde inhoud
-als het `db/` hierboven: schema, connection, chores, assignees, completions,
-subtasks). In fase 3, zodra het oude `db/` leeg is, neemt `store/` met een
-`git mv` de plaats van `db/` in. `db/schema.py` en `db/connection.py` uit fase
-2a zijn daarom naar `store/` verplaatst.
+Geen `migrations.py` meer in de boom: v2 heeft een vers schema; migraties
+komen pas terug zodra dat schema ná ingebruikname wijzigt. Geen los
+`services.py`: de twee overgebleven services (seed, roll_forward) zijn klein
+genoeg voor `__init__.py`; fase 4 voegt `notify.py` toe voor de meldingen.
+
+**Tussentoestand (2b–3b): de v2-datalaag heette `store/`** omdat de oude app
+het oude `db/`-pakket nog bezette. **Uitgevoerd in 3c (28-07-2026):** het oude
+`db/` is verwijderd en `store/` heeft met een `git mv` de naam `db/`
+overgenomen; alle imports en tests zijn omgelegd.
 
 ### Frontend
 
@@ -512,30 +515,40 @@ www/chores-panel/
 │   ├── api.js            # dunne laag over hass.connection
 │   ├── store.js          # één toestandsobject + subscribe
 │   ├── html.js           # template literals met escaping
-│   └── format.js         # datums, duur, Nederlandse teksten
+│   ├── format.js         # datums, duur, Nederlandse teksten
+│   └── theme.js          # themakeuze per apparaat (3c); HA-thema's, localStorage
 ├── views/
 │   ├── today.js          # bijdragebalk + wat er nu moet
 │   ├── tasks.js          # alle taken, gegroepeerd
 │   ├── activity.js       # feed + weekhistorie
-│   └── manage.js         # taken en personen beheren
+│   └── manage.js         # taken en personen beheren + sectie Weergave
 ├── components/
-│   ├── task-card.js
+│   ├── task-card.js      # incl. deeltaakweergave (subtask-tracker is nooit los geworden)
 │   ├── contribution-bar.js
-│   ├── subtask-tracker.js  # nog niet los; de deeltaakweergave zit in task-card.js
 │   └── task-form.js
-└── styles.css
+├── styles.css
+└── styles-views.css
 ```
 
-Het nieuwe panel leeft in een **eigen map naast** `www/chores-dashboard/`; die
-oude map blijft ongewijzigd staan tot fase 3c en wordt dan in zijn geheel
-verwijderd. Het panel wordt rechtstreeks uit `custom_components/` geserveerd
-via een eigen statisch pad — géén `/local`, dus de kopieerstap-valkuil uit
-`CLAUDE.md` geldt hier niet.
+Het panel wordt rechtstreeks uit `custom_components/` geserveerd — géén
+`/local`, geen kopieerstap. Sinds 3c zit de versie in het statische pad
+(`/chores_manager-panel-<versie>/`, bron: `PANEL_VERSION` in `panel.py`);
+relatieve imports erven dat pad, dus per-import `?v=`-parameters bestaan niet
+meer. Hetzelfde element werkt ook als Lovelace-kaart via de stabiele,
+ongecachete resource-URL `/chores_manager-panel/chores-panel.js`
+(`type: custom:chores-panel`). Zie `CLAUDE.md` voor de deploymentdiscipline.
+De oude map `www/chores-dashboard/` is in 3c in zijn geheel verwijderd.
 
 ### Te verwijderen
 
-Gecontroleerd tegen de repo op 27-07-2026. Alle onderstaande bestanden bestaan
-daadwerkelijk.
+**Uitgevoerd in fase 3c op 28-07-2026** — alles hieronder is verwijderd, plus
+de rest van de oude app (`www/chores-dashboard/` volledig, `database.py`,
+`schemas.py`, de oude `sensor.py`, de pakketten `services/`, `utils/` en het
+oude `db/`, en de tokenmachinerie in `__init__.py`). De tabellen blijven staan
+als historische inventarisatie. Terugvalpunt: `v1-final` op main.
+
+Gecontroleerd tegen de repo op 27-07-2026. Alle onderstaande bestanden
+bestonden daadwerkelijk.
 
 **Backend**
 
@@ -587,6 +600,12 @@ panel van fase 3 krijgt een nieuw `panel.py` en wordt op **`/taken`**
 geregistreerd, niet op `/chores`.
 
 ### `database.py` verhuist, het verdwijnt niet
+
+**Achterhaald door 3c:** de geplande ontmanteling (functies verhuizen, acht
+importplekken omleggen) is nooit los uitgevoerd — in plaats daarvan is
+`database.py` op 28-07-2026 samen met al zijn afnemers (oude sensor,
+`services/`, `utils/`) verwijderd. De analyse hieronder blijft staan als
+verklaring waarom het bestand tot dat moment niet weg mocht.
 
 `database.py` (384 regels) stond eerder op deze lijst. Dat was onjuist.
 
@@ -769,6 +788,28 @@ kloppende samenvattingen.
 **Klaar wanneer:** koude pageload onder een seconde, één enkel JS-bestand per
 module, geen externe requests, thema klopt automatisch, werkt op de telefoon.
 
+**Status: uitgevoerd.** 3a (kern + Vandaag) en 3b (correcties + Alles,
+Activiteit, Beheer) op 28-07-2026; 3c (de omschakeling) eveneens op
+28-07-2026: terugvalpunt `v1-final`, oude app en oude backend volledig weg,
+`store/` → `db/`, `sensor_v2.py` → `sensor.py` (entiteit weer
+`sensor.chores_overview`), `panel_v2.py` → `panel.py`, versie in het statische
+pad in plaats van 26 `?v=`-literals, hamburger bij smal scherm
+(`hass-toggle-menu`), kaartmodus (`setConfig`/`getCardSize` + stabiele
+resource-URL), themakeuze per apparaat in Beheer, `manifest.json` 2.2.0 met
+`websocket_api` als dependency.
+
+**Bewust doorgeschoven uit 3:**
+
+- *Naar fase 4:* meldingen (§6) en persoonskoppeling; de vier kapotte
+  automations opruimen (zie fase 4); de chip-default op de ingelogde
+  gebruiker zodra `ha_user_id` gekoppeld is.
+- *Naar fase 5:* gearchiveerde taken terughalen in de UI (reactiveren kan nu
+  alleen via `chore/save` met `active: 1`); checkliststappen bewerken bij
+  taken mét historie (het schema mist daarvoor `ON DELETE SET NULL`);
+  rotatievolgorde herordenen in het taakformulier (de volgorde blijft nu de
+  oorspronkelijke); `seed.py` en de service `seed` verwijderen zodra de taken
+  definitief zijn ingevoerd.
+
 ### Fase 4 — Motivatie en herinnering (2 dagen)
 
 - Personen koppelen: `ha_user_id` en `notify_service` invullen voor Laura,
@@ -789,9 +830,13 @@ afvinken, en ziet zondagavond de weekuitslag.
 
 - Lege staten, foutmeldingen, bevestiging bij afvinken.
 - Toegankelijkheid: focus, contrast, `prefers-reduced-motion`.
-- `Developer_Guide` en `Technical_Description` herschrijven naar de nieuwe
-  werkelijkheid; het dubbele `TECHNICAL_DESCRIPTION.md` weg.
-- Acht taken opnieuw invoeren met kloppende planning.
+- ~~`Developer_Guide` en `Technical_Description` herschrijven~~ — al gedaan in
+  3c: `docs/developer-guide.md` en `docs/technical-description.md` beschrijven
+  de nieuwe werkelijkheid; het dubbele `TECHNICAL_DESCRIPTION.md` is weg.
+- Acht taken opnieuw invoeren met kloppende planning; daarna `seed.py` en de
+  service `seed` verwijderen.
+- De doorgeschoven punten uit fase 3 (zie daar): gearchiveerde taken
+  terughalen, checkliststappen bewerken bij historie, rotatie-herordening.
 
 **Klaar wanneer:** je gebruikt het een week zonder je aan iets te storen.
 

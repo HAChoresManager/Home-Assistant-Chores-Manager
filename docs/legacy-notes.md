@@ -316,3 +316,28 @@ git checkout pre-refactor
 De tag staat op `66e889a`. De databasedump ontbreekt bewust: de bestaande data
 wordt niet gemigreerd (zie `REFACTOR_PLAN.md` §3). `docs/legacy-state.yaml` is de
 inhoudelijke referentie.
+
+---
+
+## 6. Slot: de oude app is verwijderd (28-07-2026, fase 3c)
+
+Alles wat dit document beschrijft, is op 28-07-2026 uit de repo verwijderd:
+
+- `www/chores-dashboard/` volledig (React/CDN-dashboard, ~7.800 regels),
+  inclusief de bestanden die al dood waren én de bestanden die nog draaiden;
+- de tokenmachinerie in `__init__.py` (`_generate_dashboard_token`, de
+  2-uurs-refresh, `config.json`) en de kopieerstap `_setup_web_assets`;
+- de oude backend: `database.py`, `sensor.py`, `schemas.py`,
+  `theme_service.py`, de onbereikbare `services.py` en `utils.py`, en de
+  pakketten `services/`, `utils/` en het oude `db/` (inclusief
+  `migrations.py`);
+- de twintig oude services en de oude sensor (het nieuwe `sensor.py` — de
+  voormalige `sensor_v2.py` — neemt via het oude unique_id de naam
+  `sensor.chores_overview` over).
+
+De v2-datalaag `store/` heet sindsdien `db/`. Het terugvalpunt vóór deze
+sloop is **`v1-final`** (branch op de remote; de gelijknamige tag bestaat
+alleen lokaal omdat de git-proxy geen tags doorlaat). De tag `pre-refactor`
+uit §5 hierboven (66e889a, alleen lokaal) blijft het terugvalpunt van vóór de
+hele refactor. Op de HA-host blijven `<config>/www/chores-dashboard/` en
+`<config>/chores_manager.db` als wezen achter; handmatig te verwijderen.
