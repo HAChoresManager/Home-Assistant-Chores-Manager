@@ -81,8 +81,14 @@ function deleteBlock(kind, subject, confirm) {
     </div>`;
 }
 
-function assigneeForm(person, confirm) {
+function assigneeForm(person, confirm, haOptions) {
   const isNew = !person;
+  const users = haOptions?.users || [];
+  const services = haOptions?.services || [];
+  const linkedUser = person?.ha_user_id || '';
+  const userKnown = users.some((u) => u.id === linkedUser);
+  const service = person?.notify_service || '';
+  const serviceKnown = services.includes(service);
   return html`
     <form data-form="assignee" class="manage-form" novalidate>
       <h2 class="section-title">${isNew ? 'Nieuwe persoon' : html`Bewerken: ${person.name}`}</h2>
@@ -98,6 +104,34 @@ function assigneeForm(person, confirm) {
           ${!person || person.include_in_leaderboard ? 'checked' : ''}>
         Telt mee in de ranglijst
       </label>
+
+      <h2 class="section-title">Koppeling en meldingen</h2>
+      <label class="field">Home Assistant-gebruiker
+        <select name="ha_user_id">
+          <option value="">Niet gekoppeld</option>
+          ${linkedUser && !userKnown
+            ? html`<option value="${linkedUser}" selected>${linkedUser} (huidige koppeling)</option>` : ''}
+          ${users.map((u) => html`
+            <option value="${u.id}" ${u.id === linkedUser ? 'selected' : ''}>${u.name}</option>`)}
+        </select>
+      </label>
+      <label class="field">Meldingen naar
+        <select name="notify_service">
+          <option value="">Geen meldingen</option>
+          ${services.map((name) => html`
+            <option value="${name}" ${name === service ? 'selected' : ''}>${name}</option>`)}
+        </select>
+      </label>
+      <label class="field">Andere service (als hij hierboven niet staat)
+        <input type="text" name="notify_service_custom" placeholder="notify.…"
+          value="${service && !serviceKnown ? service : ''}">
+      </label>
+      <label class="check standalone">
+        <input type="checkbox" name="notifications_enabled"
+          ${!person || person.notifications_enabled ? 'checked' : ''}>
+        Meldingen aan
+      </label>
+
       <p class="form-error" data-form-error hidden></p>
       <div class="form-actions">
         <button type="submit" class="primary">Opslaan</button>
@@ -122,7 +156,7 @@ export function renderManage(state) {
   if (editing && editing.kind === 'assignee') {
     const person = editing.id ? data.assignees.find((a) => a.id === editing.id) : null;
     if (editing.id && !person) return html`<p class="status">Persoon niet gevonden.</p>`;
-    return assigneeForm(person, editing.confirm);
+    return assigneeForm(person, editing.confirm, state.haOptions);
   }
 
   return html`
@@ -149,10 +183,20 @@ export function collectAssigneeForm(form) {
   if (!name) throw new Error('Geef de persoon een naam.');
   const id = String(data.get('id') || '') || slugify(name);
   if (!id) throw new Error('De naam moet minstens één letter of cijfer bevatten.');
+  // het vrije veld wint van de select: dat is de fallback voor services
+  // die niet in de mobile_app-lijst staan
+  const custom = String(data.get('notify_service_custom') || '').trim();
+  if (custom && !custom.startsWith('notify.')) {
+    throw new Error('Een meldingsservice begint met "notify." — bv. notify.mobile_app_telefoon.');
+  }
+  const notifyService = custom || String(data.get('notify_service') || '');
   return {
     id,
     name,
     color: String(data.get('color') || '#7cb342'),
     include_in_leaderboard: data.get('include_in_leaderboard') ? 1 : 0,
+    ha_user_id: String(data.get('ha_user_id') || '') || null,
+    notify_service: notifyService || null,
+    notifications_enabled: data.get('notifications_enabled') ? 1 : 0,
   };
 }

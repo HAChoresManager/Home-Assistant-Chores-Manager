@@ -39,6 +39,7 @@ def save_assignee(database_path: str, data: dict) -> dict:
 
     fields = (
         name, color, data.get("ha_user_id"), data.get("notify_service"),
+        1 if data.get("notifications_enabled", 1) else 0,
         1 if data.get("active", 1) else 0,
         1 if data.get("include_in_leaderboard", 1) else 0,
         data.get("sort_order", 0),
@@ -49,13 +50,14 @@ def save_assignee(database_path: str, data: dict) -> dict:
         if existing:
             conn.execute(
                 "UPDATE assignees SET name=?, color=?, ha_user_id=?, notify_service=?,"
-                " active=?, include_in_leaderboard=?, sort_order=? WHERE id=?",
+                " notifications_enabled=?, active=?, include_in_leaderboard=?,"
+                " sort_order=? WHERE id=?",
                 fields + (assignee_id,))
         else:
             conn.execute(
                 "INSERT INTO assignees (name, color, ha_user_id, notify_service,"
-                " active, include_in_leaderboard, sort_order, id)"
-                " VALUES (?,?,?,?,?,?,?,?)",
+                " notifications_enabled, active, include_in_leaderboard, sort_order, id)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
                 fields + (assignee_id,))
     return get_assignee(database_path, assignee_id)
 

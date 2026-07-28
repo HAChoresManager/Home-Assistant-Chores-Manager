@@ -1,6 +1,6 @@
 # Technical Description — Chores Manager 2.x
 
-Stand: 28-07-2026, na fase 3c. De oude app (1.x) is volledig verwijderd; dit
+Stand: 28-07-2026, na fase 4. De oude app (1.x) is volledig verwijderd; dit
 document beschrijft alleen wat er draait. Ontwerpmotivatie: `REFACTOR_PLAN.md`.
 
 ## Database
@@ -61,6 +61,22 @@ Dagelijks 03:00 lokale tijd: `roll_forward` over alle taken, daarna een
 dispatchersignaal. Handmatig triggeren kan met de service
 `chores_manager.roll_forward`.
 
+## Meldingen (`notify.py`, fase 4)
+
+Alleen naar personen met een `notify_service` én `notifications_enabled`.
+
+- **08:00** per persoon, alleen als er iets te doen is: "3 voor vandaag,
+  1 loopt achter" met taaknamen, plus één "Klaar"-knop voor de belangrijkste
+  taak (zwaarste achterstand op cyclusfractie; anders hoogste prioriteit,
+  dan kortste). De rol van 03:00 draait hier bewust vóór.
+- **Zondag 20:00** de weeksamenvatting: samen eerst, dan de verdeling met
+  tijd, taken en reeksen. Feiten, geen ranglijsttaal.
+- **"Klaar"** loopt via `mobile_app_notification_action`; de action-string is
+  `chores_manager_complete:<chore_id>:<assignee_id>`. De listener vinkt af
+  met dezelfde db-functie, undo-buffer en push als het panel.
+
+Tijden staan als constanten in `const.py` (fase 5 kan ze instelbaar maken).
+
 ## Frontend (`www/chores-panel/`)
 
 Eén web component `<chores-panel>` (shadow DOM), als panel op `/taken` en als
@@ -87,5 +103,7 @@ Lovelace-resource-URL.
 
 - `chores_manager.seed` — TIJDELIJK; acht legacy-taken en drie personen.
 - `chores_manager.roll_forward` — de nachtelijke rol nu.
+- `chores_manager.send_daily_summary` — TIJDELIJK; de ochtendmelding nu.
+- `chores_manager.send_weekly_summary` — TIJDELIJK; de weeksamenvatting nu.
 
 Meer services zijn er niet; alle bediening loopt via de WebSocket-API.

@@ -22,6 +22,10 @@
  *   narrow    HA verbergt de zijbalk (smal scherm) → hamburger tonen
  *   themes    {names, selected} voor de themakeuze in Beheer, of null
  *             zolang hass.themes nog niet gezien is
+ *   currentUserId  hass.user.id van de kijker; voor de chip-default op
+ *                  'anyone'-taken via de ha_user_id-koppeling (fase 4)
+ *   haOptions {users, services} voor het personenformulier, vers gezet
+ *             bij het openen ervan; null tot die tijd
  */
 
 let state = {
@@ -36,6 +40,8 @@ let state = {
   editing: null,
   narrow: false,
   themes: null,
+  currentUserId: null,
+  haOptions: null,
 };
 
 const listeners = new Set();

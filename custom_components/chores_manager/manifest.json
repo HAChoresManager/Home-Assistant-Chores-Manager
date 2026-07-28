@@ -1,7 +1,7 @@
 {
   "domain": "chores_manager",
   "name": "Chores Manager",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "documentation": "https://github.com/HAChoresManager/Home-Assistant-Chores-Manager",
   "dependencies": ["sensor", "panel_custom", "websocket_api"],
   "codeowners": [],

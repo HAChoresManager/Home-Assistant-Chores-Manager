@@ -16,3 +16,17 @@ roll_forward:
     achterstand voorbij de grens van hun prioriteit is, schuiven door naar
     hun eerstvolgende logische datum (REFACTOR_PLAN.md §4.2). Normaal
     gesproken is deze service niet nodig.
+
+send_daily_summary:
+  name: Ochtendmelding nu versturen (tijdelijk)
+  description: >-
+    TIJDELIJK, net als seed — verstuurt de ochtendmelding van 08:00 nu
+    meteen, om de meldingen te testen zonder de klok te verzetten. Alleen
+    personen met een ingevulde meldingsservice en iets te doen krijgen er
+    één.
+
+send_weekly_summary:
+  name: Weeksamenvatting nu versturen (tijdelijk)
+  description: >-
+    TIJDELIJK, net als seed — verstuurt de weeksamenvatting van zondag
+    20:00 nu meteen, naar iedereen met een ingevulde meldingsservice.

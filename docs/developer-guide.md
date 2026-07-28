@@ -44,7 +44,9 @@ node de ES-module).
   De versie zit in het statische pad; zie `CLAUDE.md` § Deployment voor het
   waarom en de valkuilen (Cloudflare!).
 - Services voor de hand: `chores_manager.seed` (tijdelijk, vult de acht
-  legacy-taken) en `chores_manager.roll_forward` (nachtelijke rol nu draaien).
+  legacy-taken), `chores_manager.roll_forward` (nachtelijke rol nu draaien)
+  en — tijdelijk, om meldingen te testen — `send_daily_summary` en
+  `send_weekly_summary`.
 
 ## Kaartgebruik (optioneel)
 

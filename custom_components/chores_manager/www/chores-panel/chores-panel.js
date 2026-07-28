@@ -70,6 +70,30 @@ function viewFromHash() {
   return VIEWS[hash] ? hash : 'vandaag';
 }
 
+/**
+ * Opties voor het personenformulier (fase 4), vers uit hass op het moment
+ * dat het formulier opent. HA-gebruikers komen uit de person-entiteiten
+ * (attributes.user_id) — dat kan zonder admin-endpoint; de user-lijst van
+ * config/auth/list is admin-only en dus bewust niet gebruikt. Wie geen
+ * person-entiteit heeft, staat er niet tussen; een bestaande koppeling
+ * blijft in het formulier altijd zichtbaar als eigen optie.
+ */
+function haOptionsFromHass(hass) {
+  const users = [];
+  for (const [entityId, entity] of Object.entries(hass?.states || {})) {
+    if (!entityId.startsWith('person.')) continue;
+    const userId = entity.attributes?.user_id;
+    if (!userId) continue;
+    users.push({ id: userId, name: entity.attributes.friendly_name || entityId });
+  }
+  users.sort((a, b) => a.name.localeCompare(b.name));
+  const services = Object.keys(hass?.services?.notify || {})
+    .filter((name) => name.startsWith('mobile_app_'))
+    .sort()
+    .map((name) => `notify.${name}`);
+  return { users, services };
+}
+
 function renderNav(view, narrow) {
   // Smal scherm: HA verbergt de zijbalk, dus zonder eigen knop is er geen
   // enkele weg terug het menu in. hass-toggle-menu is HA's standaardevent
@@ -177,7 +201,8 @@ class ChoresPanel extends HTMLElement {
     this._started = true;
     // Bewaarde themakeuze toepassen vóór de eerste render — geen flits.
     this._syncThemes();
-    store.set({ view: viewFromHash() });
+    // Voor de chip-default op 'anyone'-taken (§4.4, fase 4): wie ben ik?
+    store.set({ view: viewFromHash(), currentUserId: this._hass?.user?.id || null });
     this._unsubStore = store.subscribe(() => this._render());
     this._render();
     await this._refresh();
@@ -305,9 +330,16 @@ class ChoresPanel extends HTMLElement {
     } else if (action === 'edit-chore') {
       store.set({ editing: { kind: 'chore', id: choreId, confirm: false } });
     } else if (action === 'new-assignee') {
-      store.set({ editing: { kind: 'assignee', id: null, confirm: false } });
+      // haOptions vers uit hass, precies op het moment dat het formulier opent
+      store.set({
+        editing: { kind: 'assignee', id: null, confirm: false },
+        haOptions: haOptionsFromHass(this._hass),
+      });
     } else if (action === 'edit-assignee') {
-      store.set({ editing: { kind: 'assignee', id: assigneeId, confirm: false } });
+      store.set({
+        editing: { kind: 'assignee', id: assigneeId, confirm: false },
+        haOptions: haOptionsFromHass(this._hass),
+      });
     } else if (action === 'form-cancel') {
       store.set({ editing: null });
     } else if (action === 'delete-ask') {
