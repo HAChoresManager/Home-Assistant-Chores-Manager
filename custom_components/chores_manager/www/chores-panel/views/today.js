@@ -55,11 +55,15 @@ export function renderToday(state) {
   const data = state.data;
   const assigneesById = {};
   for (const person of data.assignees) assigneesById[person.id] = person;
+  // A2 (fase 4): de kijker, voor de chip-default op 'anyone'-taken.
+  const me = data.assignees.find(
+    (p) => p.ha_user_id && p.ha_user_id === state.currentUserId);
   const ctx = {
     assigneesById,
     assignees: data.assignees,
     chooser: state.chooser,
     credits: state.credits,
+    defaultAssignee: me ? me.id : null,
     expanded: state.expanded,
     todayIso: data.today,
     view: 'today',

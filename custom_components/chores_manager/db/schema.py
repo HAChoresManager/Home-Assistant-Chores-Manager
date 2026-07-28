@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS assignees (
     color                  TEXT NOT NULL,
     ha_user_id             TEXT,               -- koppeling voor notificaties
     notify_service         TEXT,               -- bv. notify.mobile_app_martijn
+    notifications_enabled  INTEGER NOT NULL DEFAULT 1,  -- aan/uit per persoon (§6)
     active                 INTEGER NOT NULL DEFAULT 1,
     include_in_leaderboard INTEGER NOT NULL DEFAULT 1,
     sort_order             INTEGER NOT NULL DEFAULT 0
@@ -89,6 +90,21 @@ CREATE INDEX IF NOT EXISTS idx_completions_chore
 def apply_schema(conn: sqlite3.Connection) -> None:
     """Leg het v2-schema aan op een open verbinding. Idempotent."""
     conn.executescript(SCHEMA)
+    _migrate(conn)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Kleine, idempotente migraties voor databases van vóór een kolom.
+
+    CREATE TABLE IF NOT EXISTS raakt een bestaande tabel niet aan, dus een
+    kolom die later aan het schema is toegevoegd, moet hier per bestaande
+    database met ALTER TABLE bijgezet worden.
+    """
+    kolommen = {row[1] for row in conn.execute("PRAGMA table_info(assignees)")}
+    if "notifications_enabled" not in kolommen:
+        # fase 4: meldingen aan/uit per persoon; standaard aan (§6)
+        conn.execute("ALTER TABLE assignees ADD COLUMN"
+                     " notifications_enabled INTEGER NOT NULL DEFAULT 1")
 
 
 def create_database(database_path: str) -> None:

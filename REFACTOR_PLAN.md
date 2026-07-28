@@ -454,11 +454,17 @@ persoon is er niets om naartoe te sturen.
 | Zondag 20:00 | Weeksamenvatting met de uitslag en de streaks |
 
 Notificaties zijn **actionable**: een knop "Klaar" in de melding vinkt de taak af
-via `mobile_app_notification_action` → `chores_manager.mark_done`. Dat is wat
-"makkelijk te beheren" in de praktijk betekent — afvinken zonder de app te openen.
+via `mobile_app_notification_action`. Dat is wat "makkelijk te beheren" in de
+praktijk betekent — afvinken zonder de app te openen. *(Gecorrigeerd in fase 4:
+de oorspronkelijke tekst noemde `chores_manager.mark_done`, maar die service is
+in 3c met de oude app verdwenen. De listener in `notify.py` vangt het event en
+roept dezelfde db-functie aan als het panel, met dezelfde undo-buffer en
+hetzelfde dispatchersignaal. Taak en ontvanger zitten in de action-string:
+`chores_manager_complete:<chore_id>:<assignee_id>`.)*
 
-Aan/uit per persoon, niet per taak. De huidige `notify_when_due`-vlag per taak is
-een instelling die niemand ooit aanzet.
+Aan/uit per persoon, niet per taak (kolom `notifications_enabled`, fase 4;
+standaard aan). De oude `notify_when_due`-vlag per taak was een instelling die
+niemand ooit aanzette.
 
 ---
 
@@ -825,6 +831,16 @@ resource-URL), themakeuze per apparaat in Beheer, `manifest.json` 2.2.0 met
 
 **Klaar wanneer:** je krijgt 's ochtends een melding, kunt vanuit die melding
 afvinken, en ziet zondagavond de weekuitslag.
+
+**Status: gebouwd op 28-07-2026.** Koppelvelden (HA-gebruiker via
+person-entiteiten, meldingsservice met vrij veld, meldingen aan/uit) in het
+personenformulier; chip-default op de ingelogde gebruiker bij 'anyone'-taken;
+`notify.py` met de ochtendmelding (08:00, alleen wie iets te doen heeft, één
+"Klaar"-knop), de weeksamenvatting (zondag 20:00, samen eerst) en de
+action-listener. Tijden als constanten in `const.py` (fase 5: instelbaar).
+Testservices `send_daily_summary`/`send_weekly_summary` (tijdelijk, net als
+seed). Nog open uit deze fase: niets — de automation-opruiming hierboven is
+werk in de HA-config zelf, geen repowerk.
 
 ### Fase 5 — Aanscherpen (1–2 dagen)
 

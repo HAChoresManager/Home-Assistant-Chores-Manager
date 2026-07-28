@@ -6,6 +6,7 @@ Sinds fase 3c is dit de enige app. De opzet is klein gehouden:
 - negen WS-commando's (websocket.py) met push via de dispatcher;
 - één overzichtssensor (sensor.py), zonder polling;
 - nachtelijke rol om 03:00 (scheduler.py);
+- meldingen om 08:00 en zondag 20:00 plus de "Klaar"-knop (notify.py, fase 4);
 - het panel op /taken (panel.py), rechtstreeks geserveerd uit deze map.
 
 De oude app (React-dashboard onder www/, eigen tokens, twintig services) is
@@ -22,6 +23,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DATA_DB_PATH,
+    DATA_UNSUB_NOTIFY,
     DATA_UNSUB_ROLL,
     DATA_WS_REGISTERED,
     DB_FILENAME,
@@ -30,6 +32,7 @@ from .const import (
     SIGNAL_UPDATED,
 )
 from .db.schema import create_database
+from .notify import async_send_daily, async_send_weekly, async_setup_notifications
 from .panel import async_remove_panel, async_setup_panel
 from .scheduler import async_run_roll, async_setup_scheduler
 from .seed import seed_v2
@@ -59,6 +62,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     domain_data[entry.entry_id][DATA_UNSUB_ROLL] = async_setup_scheduler(
         hass, database_path)
 
+    # meldingen (fase 4): 08:00, zondag 20:00 en de "Klaar"-knop
+    domain_data[entry.entry_id][DATA_UNSUB_NOTIFY] = async_setup_notifications(
+        hass, database_path)
+
     await async_setup_panel(hass)
 
     async def handle_seed(call: ServiceCall) -> None:
@@ -73,8 +80,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """De nachtelijke rol nu draaien, zonder op 03:00 te wachten."""
         await async_run_roll(hass, database_path)
 
+    async def handle_send_daily(call: ServiceCall) -> None:
+        """TIJDELIJK (net als seed): de ochtendmelding nu versturen."""
+        verzonden = await async_send_daily(hass, database_path)
+        _LOGGER.info("Chores Manager: send_daily_summary → %d meldingen", verzonden)
+
+    async def handle_send_weekly(call: ServiceCall) -> None:
+        """TIJDELIJK (net als seed): de weeksamenvatting nu versturen."""
+        verzonden = await async_send_weekly(hass, database_path)
+        _LOGGER.info("Chores Manager: send_weekly_summary → %d meldingen", verzonden)
+
     hass.services.async_register(DOMAIN, "seed", handle_seed)
     hass.services.async_register(DOMAIN, "roll_forward", handle_roll)
+    hass.services.async_register(DOMAIN, "send_daily_summary", handle_send_daily)
+    hass.services.async_register(DOMAIN, "send_weekly_summary", handle_send_weekly)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _LOGGER.info("Chores Manager: setup compleet")
@@ -86,11 +105,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async_remove_panel(hass)
 
     entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
-    unsub = entry_data.pop(DATA_UNSUB_ROLL, None)
-    if unsub:
-        unsub()
+    for key in (DATA_UNSUB_ROLL, DATA_UNSUB_NOTIFY):
+        unsub = entry_data.pop(key, None)
+        if unsub:
+            unsub()
 
-    for service in ("seed", "roll_forward"):
+    for service in ("seed", "roll_forward",
+                    "send_daily_summary", "send_weekly_summary"):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)
 

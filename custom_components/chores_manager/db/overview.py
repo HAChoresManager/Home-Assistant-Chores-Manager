@@ -82,6 +82,53 @@ def overview(database_path: str, today: date) -> dict:
     }
 
 
+_PRIORITY_RANK = {"critical": 0, "high": 1, "normal": 2, "low": 3}
+
+
+def notification_summary(database_path: str, today: date) -> dict:
+    """Per actieve persoon wat er nú speelt, voor de ochtendmelding (§6).
+
+    'anyone'-taken tellen voor iedereen mee; 'fixed' en 'rotating' alleen
+    voor wie aan de beurt is. Alleen vandaag en achterstand — upcoming hoort
+    niet in een ochtendmelding. De lijsten zijn voorgesorteerd op
+    belangrijkheid (achterstand op cyclusfractie, vandaag op prioriteit en
+    dan duur), zodat pick_notify_action gewoon de kop pakt.
+    """
+    chores = [enrich_chore(database_path, chore, today)
+              for chore in list_chores(database_path)]
+    summary = {}
+    for person in list_assignees(database_path):
+        mine = [c for c in chores
+                if c["assignment_type"] == "anyone"
+                or c["current_assignee"] == person["id"]]
+        due = sorted(
+            (c for c in mine if c["urgency"] == "due"),
+            key=lambda c: (_PRIORITY_RANK.get(c["priority"], 9),
+                           c["duration_minutes"]))
+        overdue = sorted(
+            (c for c in mine if c["overdue_days"] > 0),
+            key=lambda c: -(c["cycle_fraction"] or 0))
+        summary[person["id"]] = {
+            "assignee": dict(person), "due": due, "overdue": overdue}
+    return summary
+
+
+def pick_notify_action(due: list, overdue: list):
+    """De taak achter de ene "Klaar"-knop in de ochtendmelding.
+
+    Eerst de zwaarste achterstand (hoogste cyclusfractie — die dreigt bij de
+    volgende rol door te schuiven, dus daar helpt een knop het meest),
+    anders de belangrijkste taak van vandaag (prioriteit, bij gelijke
+    prioriteit de kortste: de laagste drempel om 'm echt in te drukken).
+    De lijsten komen voorgesorteerd uit notification_summary.
+    """
+    if overdue:
+        return overdue[0]
+    if due:
+        return due[0]
+    return None
+
+
 def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
     """De volledige begintoestand voor chores_manager/state (§2.3).
 

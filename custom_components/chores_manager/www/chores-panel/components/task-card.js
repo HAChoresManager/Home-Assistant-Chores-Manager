@@ -5,7 +5,10 @@
  * Het chipje (§4.4) toont wie de credits krijgt en is tikbaar: standaard de
  * toewijzing, tikken opent de keuze uit alle actieve personen. Zo blijft het
  * gewone geval één tik en is "Laura deed Martijns taak" er twee. Bij 'anyone'
- * is het chipje neutraal ("wie kan") en opent Afvinken zelf de keuze.
+ * staat het chipje sinds fase 4 standaard op de persoon die via ha_user_id
+ * aan de ingelogde HA-gebruiker gekoppeld is (ctx.defaultAssignee); zonder
+ * koppeling blijft het neutraal ("wie kan") en opent Afvinken zelf de keuze.
+ * De keuze blijft altijd aanpasbaar via het chipje.
  *
  * Twee keuzemodi lopen door dezelfde personenrij: mode 'complete' vinkt af
  * bij de keuze (de anyone-flow), mode 'credit' zet alleen het chipje.
@@ -36,14 +39,16 @@ export function isFinalAction(chore, subtaskId) {
   return true;
 }
 
-/** Wie krijgt de credits: het chipje als dat gezet is, anders de toewijzing. */
-export function creditAssignee(chore, credits) {
-  if (credits && credits[chore.id]) return credits[chore.id];
-  return chore.assignment_type === 'anyone' ? null : chore.current_assignee;
+/** Wie krijgt de credits: het chipje als dat gezet is; bij 'anyone' de aan
+ * de ingelogde gebruiker gekoppelde persoon (fase 4); anders de toewijzing. */
+export function creditAssignee(chore, ctx) {
+  if (ctx.credits && ctx.credits[chore.id]) return ctx.credits[chore.id];
+  if (chore.assignment_type === 'anyone') return ctx.defaultAssignee || null;
+  return chore.current_assignee;
 }
 
 function chip(chore, ctx) {
-  const creditId = creditAssignee(chore, ctx.credits);
+  const creditId = creditAssignee(chore, ctx);
   if (!creditId) {
     return html`<button type="button" class="chip neutral" data-action="choose-credit"
       data-chore="${chore.id}" title="Kies wie het doet">wie kan<span class="chip-caret">▾</span></button>`;
@@ -139,7 +144,7 @@ export function renderTaskCard(chore, ctx) {
   const badge = days > 0
     ? html`<span class="badge ${chore.urgency}">${overdueLabel(days, chore.next_due, ctx.todayIso)}</span>`
     : '';
-  const creditId = creditAssignee(chore, ctx.credits);
+  const creditId = creditAssignee(chore, ctx);
   const isChecklist = chore.subtask_mode === 'checklist';
   const cardChooser = ctx.chooser
     && ctx.chooser.choreId === chore.id && ctx.chooser.subtaskId === undefined;
