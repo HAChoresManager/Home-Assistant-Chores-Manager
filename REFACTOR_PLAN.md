@@ -276,7 +276,9 @@ lang geleden je iets hebt losgelaten.
 
 **Straks:** `next_due` is opgeslagen en rolt vooruit.
 
-- Bij afvinken: `next_due` = eerstvolgende geplande keer ná vandaag.
+- Bij afvinken: `next_due` = eerstvolgende geplande keer ná vandaag —
+  ongeacht wie de taak deed; wie de credits krijgt is een los gegeven
+  (§4.4, §5.1).
 - Elke nacht om 03:00: staat `next_due` in het verleden, dan wordt hij
   doorgerold naar de **meest recente** geplande keer op of vóór vandaag.
 
@@ -310,13 +312,35 @@ Met coulance 0 bestaat de gedempte toestand niet — dat is precies het verschil
 tussen `critical` en `high`. Rood is dus zeldzaam en betekent iets — in plaats
 van de huidige muur waarin 8 van de 8 taken rood zijn.
 
+**Volgorde binnen de achterstand: cyclusfractie, geen absolute dagen.** Zes
+dagen te laat op een weektaak (6/7 = 0,86) is proportioneel erger dan 115
+dagen op een halfjaartaak (115/180 = 0,64); sorteren op dagen zet ze verkeerd
+om. De achterstand sorteert daarom op achterstand gedeeld door cycluslengte
+(`cycle_fraction` in de calculator). De urgentiedrempels hierboven blijven op
+dagen — dit stuurt alleen de volgorde.
+
+**Boven de 30 dagen toont het etiket een maand in plaats van een getal**:
+"had in april gemoeten" in plaats van "115 dagen te laat". Grote getallen
+lezen als verwijt.
+
 ### 4.4 Toewijzing
 
 - `fixed` — altijd dezelfde persoon (`assigned_to`).
 - `rotating` — `rotation` is een lijst; wie aan de beurt is, is
-  `rotation[rotation_index]`. Bij afvinken schuift de index op. Werkt voor twee
-  personen én meer.
+  `rotation[rotation_index]`. Werkt voor twee personen én meer.
 - `anyone` — niemand specifiek; iedereen kan afvinken.
+
+**Wie de credits krijgt staat los van wie de taak op zijn naam heeft.** Het
+persoonschipje op de kaart staat standaard op de toewijzing en is tikbaar om
+iemand anders te kiezen; de minuten (§5.1) gaan naar wie het écht deed. Bij
+deeltaken en tellers geldt dat per tik — elke completions-regel draagt zijn
+eigen `assignee_id`.
+
+**De beurt schuift door vanaf wie de taak écht deed**, niet vanaf wie aan de
+beurt stond. Staat Martijn aan de beurt en doet Laura het, dan is Martijn
+opnieuw aan de beurt — niet Laura, die zou twee keer achter elkaar moeten.
+Doet iemand het die niet in de rotatielijst staat, dan blijft de beurt staan
+waar hij stond.
 
 Op de kaart staat bij `rotating` zichtbaar wie aan de beurt is. Dat is nu de
 onduidelijkste plek in het formulier: `alternate_with` is bij vijf taken
@@ -364,6 +388,13 @@ Eronder een rij per persoon, gesorteerd op minuten aflopend:
 Laura       3u 10m    12 taken    🔥 7 weken
 Martijn     2u 45m     9 taken    🔥 7 weken
 ```
+
+De minuten tellen voor wie de taak écht deed (het chipje op de kaart, §4.4) —
+niet voor wie hem op zijn naam had. Anders klopt de ranglijst niet, en tijd is
+de eenheid van dit hele systeem. De balk telt iedereen mee (ook wie buiten de
+ranglijst staat: het samen-element), de rijen tonen alleen personen met
+`include_in_leaderboard = 1`. De weekhistorie op het Activiteit-scherm toont
+wél iedereen die iets deed — dat zijn feiten, geen wedstrijd.
 
 ### 5.2 Periode
 
@@ -484,14 +515,14 @@ www/chores-panel/
 │   └── format.js         # datums, duur, Nederlandse teksten
 ├── views/
 │   ├── today.js          # bijdragebalk + wat er nu moet
-│   ├── tasks.js          # alle taken, gegroepeerd (3b)
-│   ├── activity.js       # feed + weekhistorie (3b)
-│   └── manage.js         # taken en personen beheren (3b)
+│   ├── tasks.js          # alle taken, gegroepeerd
+│   ├── activity.js       # feed + weekhistorie
+│   └── manage.js         # taken en personen beheren
 ├── components/
 │   ├── task-card.js
 │   ├── contribution-bar.js
-│   ├── subtask-tracker.js  # (3b; in 3a zit de deeltaakweergave in task-card.js)
-│   └── task-form.js        # (3b)
+│   ├── subtask-tracker.js  # nog niet los; de deeltaakweergave zit in task-card.js
+│   └── task-form.js
 └── styles.css
 ```
 

@@ -8,15 +8,17 @@ from __future__ import annotations
 
 from datetime import date
 
-from ..scheduling.calculator import current_assignee, overdue_days, urgency
-from .assignees import list_assignees
+from ..scheduling.calculator import current_assignee, cycle_fraction, overdue_days, urgency
+from .assignees import assignee_in_use, list_assignees
 from .chores import list_chores
 from .completions import (
     assignee_streaks,
     completed_today_count,
     feed,
+    history_counts,
     instance_progress,
     leaderboard,
+    week_history,
 )
 from .subtasks import list_subtasks
 
@@ -28,6 +30,8 @@ def enrich_chore(database_path: str, chore: dict, today: date) -> dict:
     enriched = dict(chore)
     enriched["overdue_days"] = overdue_days(due, today)
     enriched["urgency"] = urgency(due, chore["priority"], today)
+    enriched["cycle_fraction"] = cycle_fraction(
+        chore["schedule_type"], chore["schedule_config"], due, today)
     if chore["assignment_type"] == "fixed":
         enriched["current_assignee"] = chore["assigned_to"]
     elif chore["assignment_type"] == "rotating":
@@ -75,21 +79,35 @@ def overview(database_path: str, today: date) -> dict:
     }
 
 
-def build_state(database_path: str, today: date, feed_limit: int = 20) -> dict:
-    """De volledige begintoestand voor chores_manager/state (§2.3)."""
-    chores = [
-        enrich_chore(database_path, chore, today)
-        for chore in list_chores(database_path)
-    ]
+def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
+    """De volledige begintoestand voor chores_manager/state (§2.3).
+
+    Sinds 3b ook met weekhistorie (Activiteit-scherm) en de vlaggen die de
+    beheer-UI nodig heeft om verwijderen eerlijk aan te kondigen: has_history
+    per taak en in_use per persoon (archiveren versus echt weg, het
+    2b-besluit).
+    """
+    counts = history_counts(database_path)
+    chores = []
+    for chore in list_chores(database_path):
+        enriched = enrich_chore(database_path, chore, today)
+        enriched["has_history"] = bool(counts.get(chore["id"]))
+        chores.append(enriched)
     board = leaderboard(database_path, today)
     streaks = assignee_streaks(database_path, today)
     for person in board["persons"]:
         person["streak"] = streaks.get(person["id"], 0)
+    assignees = []
+    for person in list_assignees(database_path):
+        person = dict(person)
+        person["in_use"] = assignee_in_use(database_path, person["id"])
+        assignees.append(person)
     return {
         "today": today.isoformat(),
         "chores": chores,
-        "assignees": list_assignees(database_path),
+        "assignees": assignees,
         "leaderboard": board,
         "feed": feed(database_path, feed_limit),
+        "week_history": week_history(database_path, today),
         "completed_today": completed_today_count(database_path, today),
     }

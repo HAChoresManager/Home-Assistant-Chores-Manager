@@ -60,18 +60,28 @@ def save_assignee(database_path: str, data: dict) -> dict:
     return get_assignee(database_path, assignee_id)
 
 
-def delete_assignee(database_path: str, assignee_id: str) -> str:
-    """Verwijder een persoon. Met voltooiingshistorie of toegewezen taken:
-    deactiveren, zodat de historie (§3.4 verwijst naar assignees.id) en de
-    taaktoewijzing niet loskomen. Geeft 'deleted' of 'deactivated' terug."""
+def assignee_in_use(database_path: str, assignee_id: str) -> bool:
+    """Wordt er naar deze persoon verwezen: voltooiingen, een vaste
+    toewijzing, of lidmaatschap van een rotatielijst (JSON-kolom)."""
     with get_connection(database_path) as conn:
         referenced = conn.execute(
             "SELECT (SELECT COUNT(*) FROM completions WHERE assignee_id = ?)"
-            " + (SELECT COUNT(*) FROM chores WHERE assigned_to = ?)",
-            (assignee_id, assignee_id)).fetchone()[0]
-        if referenced:
+            " + (SELECT COUNT(*) FROM chores WHERE assigned_to = ?)"
+            " + (SELECT COUNT(*) FROM chores WHERE rotation LIKE ?)",
+            (assignee_id, assignee_id, f'%"{assignee_id}"%')).fetchone()[0]
+        return referenced > 0
+
+
+def delete_assignee(database_path: str, assignee_id: str) -> str:
+    """Verwijder een persoon. Met voltooiingshistorie, een vaste toewijzing of
+    een plek in een rotatielijst: deactiveren, zodat de historie (§3.4
+    verwijst naar assignees.id) en de toewijzing niet loskomen. Geeft
+    'deleted' of 'deactivated' terug."""
+    if assignee_in_use(database_path, assignee_id):
+        with get_connection(database_path) as conn:
             conn.execute(
                 "UPDATE assignees SET active = 0 WHERE id = ?", (assignee_id,))
-            return "deactivated"
+        return "deactivated"
+    with get_connection(database_path) as conn:
         conn.execute("DELETE FROM assignees WHERE id = ?", (assignee_id,))
         return "deleted"
