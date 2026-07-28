@@ -6,10 +6,10 @@
  * tellers (§2.4). Taken in `pending` zijn optimistisch afgevinkt en blijven
  * uit beeld tot de server het bevestigt of het terugdraait.
  */
-import { html } from '../core/html.js?v=2.1.0-20260728-fase3b';
-import { dateLong, feedWhen, formatDuration, taskCount } from '../core/format.js?v=2.1.0-20260728-fase3b';
-import { renderContributionBar } from '../components/contribution-bar.js?v=2.1.0-20260728-fase3b';
-import { renderTaskCard } from '../components/task-card.js?v=2.1.0-20260728-fase3b';
+import { html } from '../core/html.js?v=2.1.1-20260728-fase3b';
+import { dateLong, feedWhen, formatDuration, taskCount } from '../core/format.js?v=2.1.1-20260728-fase3b';
+import { renderContributionBar } from '../components/contribution-bar.js?v=2.1.1-20260728-fase3b';
+import { renderTaskCard } from '../components/task-card.js?v=2.1.1-20260728-fase3b';
 
 const FEED_ROWS = 5;
 

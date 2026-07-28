@@ -6,9 +6,9 @@
  * Activiteit), zonder historie gaat hij echt weg. Personen idem, inclusief
  * rotatielidmaatschap.
  */
-import { html } from '../core/html.js?v=2.1.0-20260728-fase3b';
-import { scheduleLabel } from '../core/format.js?v=2.1.0-20260728-fase3b';
-import { renderChoreForm, slugify } from '../components/task-form.js?v=2.1.0-20260728-fase3b';
+import { html } from '../core/html.js?v=2.1.1-20260728-fase3b';
+import { scheduleLabel } from '../core/format.js?v=2.1.1-20260728-fase3b';
+import { renderChoreForm, slugify } from '../components/task-form.js?v=2.1.1-20260728-fase3b';
 
 function choreRow(chore) {
   return html`
