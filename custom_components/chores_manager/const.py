@@ -1,68 +1,25 @@
-"""Constants for the Chores Manager integration."""
+"""Constanten voor Chores Manager.
+
+Sinds fase 3c is er één app; de constanten van de oude app (ATTR_*,
+FREQ_TYPES, PRIORITY_TYPES enzovoort) zijn met die app verdwenen.
+"""
 from homeassistant.const import Platform
 
 DOMAIN = "chores_manager"
 PLATFORMS = [Platform.SENSOR]
 
-# Attribute names
-ATTR_CHORE_ID = "chore_id"
-ATTR_NAME = "name"
-ATTR_FREQUENCY_TYPE = "frequency_type"
-ATTR_FREQUENCY_DAYS = "frequency_days"
-ATTR_FREQUENCY_TIMES = "frequency_times"
-ATTR_ASSIGNED_TO = "assigned_to"
-ATTR_PRIORITY = "priority"
-ATTR_DURATION = "duration"
-ATTR_PERSON = "person"
-ATTR_ICON = "icon"
-ATTR_DESCRIPTION = "description"
-ATTR_ALTERNATE_WITH = "alternate_with"
-ATTR_USE_ALTERNATING = "use_alternating"
-ATTR_START_MONTH = "startMonth"
-ATTR_START_DAY = "startDay"
-ATTR_WEEKDAY = "weekday"
-ATTR_MONTHDAY = "monthday"
-ATTR_USER_ID = "user_id"
-ATTR_COLOR = "color"
-ATTR_ACTIVE = "active"
-# New attributes
-ATTR_ACTIVE_DAYS = "active_days"
-ATTR_ACTIVE_MONTHDAYS = "active_monthdays"
-ATTR_HAS_SUBTASKS = "has_subtasks"
-ATTR_SUBTASKS = "subtasks"
-ATTR_SUBTASKS_COMPLETION_TYPE = "subtasks_completion_type"
-ATTR_SUBTASKS_STREAK_TYPE = "subtasks_streak_type"
-ATTR_SUBTASKS_PERIOD = "subtasks_period"
-ATTR_SUBTASK_ID = "subtask_id"
+# De bestandsnaam stamt uit fase 2b, toen v2 naast de oude app draaide.
+# Hernoemen zou de bestaande data wegzetten, dus hij blijft chores_v2.db.
+DB_FILENAME = "chores_v2.db"
 
-# Frequency types
-FREQ_TYPES = [
-    "Dagelijks", 
-    "Wekelijks", 
-    "Meerdere keren per week", 
-    "Maandelijks", 
-    "Meerdere keren per maand", 
-    "Per kwartaal", 
-    "Halfjaarlijks", 
-    "Jaarlijks",
-    "Flexibel"    # New type
-]
+# Dispatchersignaal na elke mutatie: sensor en WS-abonnees verversen hierop.
+SIGNAL_UPDATED = "chores_manager_updated"
 
-# Period types for subtasks and flexible
-PERIOD_TYPES = ["day", "week", "month"]
+# Undo-venster (§2.3): laatste voltooiing terugdraaien binnen 5 minuten.
+UNDO_WINDOW_SECONDS = 300
 
-# Completion types for subtasks
-COMPLETION_TYPES = ["all", "any"]
-
-# Streak types for subtasks
-STREAK_TYPES = ["period", "daily"]
-
-# Priority types
-PRIORITY_TYPES = ["Hoog", "Middel", "Laag"]
-
-# Assignee types
-ASSIGNEE_TYPES = ["Martijn", "Laura", "Samen", "Wie kan"]
-
-# Default values
-DEFAULT_DB = "chores_manager.db"
-DEFAULT_NOTIFICATION_TIME = "08:00"
+# Sleutels in hass.data[DOMAIN]
+DATA_DB_PATH = "db_path"
+DATA_UNDO = "undo"
+DATA_WS_REGISTERED = "ws_registered"
+DATA_UNSUB_ROLL = "unsub_roll"

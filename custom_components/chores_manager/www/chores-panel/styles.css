@@ -72,6 +72,25 @@ button:focus-visible,
   outline-offset: -2px;
 }
 
+/* Alleen gerenderd bij narrow (zijbalk verborgen): opent de HA-zijbalk. */
+.menu-btn {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  color: var(--primary-text-color);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.menu-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
+}
+
 /* --- kop ------------------------------------------------------------- */
 
 .page-header {

@@ -5,7 +5,7 @@ ze aanroepen, geen admin vereist — Laura en Noud moeten kunnen afvinken. Alle
 databasewerk loopt via de executor; de handlers zelf raken de database nooit
 rechtstreeks aan.
 
-Na elke mutatie gaat SIGNAL_V2_UPDATED over de dispatcher: de v2-sensor
+Na elke mutatie gaat SIGNAL_UPDATED over de dispatcher: de v2-sensor
 ververst zichzelf en abonnees van chores_manager/subscribe krijgen een event.
 Abonnees halen daarna zelf de verse staat op met chores_manager/state — de
 events dragen alleen de reden, geen payload.
@@ -22,24 +22,29 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
-from .store.chores import delete_chore, get_chore, save_chore, snooze_chore
-from .store.subtasks import set_subtasks
-from .store.assignees import delete_assignee, save_assignee
-from .store.completions import complete_chore, undo_completion
-from .store.overview import build_state
-from .v2_const import DATA_V2_PATH, DATA_V2_UNDO, SIGNAL_V2_UPDATED, UNDO_WINDOW_SECONDS
+from .const import (
+    DATA_DB_PATH,
+    DATA_UNDO,
+    DOMAIN,
+    SIGNAL_UPDATED,
+    UNDO_WINDOW_SECONDS,
+)
+from .db.assignees import delete_assignee, save_assignee
+from .db.chores import delete_chore, get_chore, save_chore, snooze_chore
+from .db.completions import complete_chore, undo_completion
+from .db.overview import build_state
+from .db.subtasks import set_subtasks
 
 _LOGGER = logging.getLogger(__name__)
 
 
 def _path(hass: HomeAssistant) -> str:
-    return hass.data[DOMAIN][DATA_V2_PATH]
+    return hass.data[DOMAIN][DATA_DB_PATH]
 
 
 @callback
 def _notify(hass: HomeAssistant, reason: str, **extra) -> None:
-    async_dispatcher_send(hass, SIGNAL_V2_UPDATED, {"reason": reason, **extra})
+    async_dispatcher_send(hass, SIGNAL_UPDATED, {"reason": reason, **extra})
 
 
 @websocket_api.websocket_command({vol.Required("type"): "chores_manager/state"})
@@ -69,7 +74,7 @@ async def ws_complete(hass, connection, msg):
     except ValueError as err:
         connection.send_error(msg["id"], "invalid_input", str(err))
         return
-    hass.data[DOMAIN][DATA_V2_UNDO] = {"undo": undo, "at": time.monotonic()}
+    hass.data[DOMAIN][DATA_UNDO] = {"undo": undo, "at": time.monotonic()}
     _notify(hass, "complete", chore_id=msg["chore_id"])
     connection.send_result(msg["id"], {
         "chore_id": msg["chore_id"],
@@ -87,14 +92,14 @@ async def ws_undo(hass, connection, msg):
     De buffer leeft in het geheugen; na een herstart van HA is er niets meer
     om terug te draaien. Dat past bij een venster van vijf minuten.
     """
-    buffered = hass.data[DOMAIN].get(DATA_V2_UNDO)
+    buffered = hass.data[DOMAIN].get(DATA_UNDO)
     if not buffered or time.monotonic() - buffered["at"] > UNDO_WINDOW_SECONDS:
         connection.send_error(msg["id"], "nothing_to_undo",
                               "geen voltooiing om terug te draaien (venster is 5 minuten)")
         return
     await hass.async_add_executor_job(
         undo_completion, _path(hass), buffered["undo"])
-    hass.data[DOMAIN][DATA_V2_UNDO] = None
+    hass.data[DOMAIN][DATA_UNDO] = None
     _notify(hass, "undo", chore_id=buffered["undo"]["chore_id"])
     connection.send_result(msg["id"], {"chore_id": buffered["undo"]["chore_id"]})
 
@@ -196,13 +201,13 @@ async def ws_assignee_delete(hass, connection, msg):
 @websocket_api.websocket_command({vol.Required("type"): "chores_manager/subscribe"})
 @websocket_api.async_response
 async def ws_subscribe(hass, connection, msg):
-    """Abonneren op wijzigingen: elk SIGNAL_V2_UPDATED wordt een event."""
+    """Abonneren op wijzigingen: elk SIGNAL_UPDATED wordt een event."""
     @callback
     def _forward(payload: dict) -> None:
         connection.send_message(websocket_api.event_message(msg["id"], payload))
 
     connection.subscriptions[msg["id"]] = async_dispatcher_connect(
-        hass, SIGNAL_V2_UPDATED, _forward)
+        hass, SIGNAL_UPDATED, _forward)
     connection.send_result(msg["id"])
 
 
@@ -218,4 +223,4 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Registreer de negen commando's. Eén keer per HA-run aanroepen."""
     for command in COMMANDS:
         websocket_api.async_register_command(hass, command)
-    _LOGGER.info("Chores v2: %d WS-commando's geregistreerd", len(COMMANDS))
+    _LOGGER.info("Chores Manager: %d WS-commando's geregistreerd", len(COMMANDS))

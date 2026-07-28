@@ -1,384 +1,101 @@
-"""Initialize the Chores Manager integration."""
+"""Chores Manager: huishoudelijke taken met een eigen panel op /taken.
+
+Sinds fase 3c is dit de enige app. De opzet is klein gehouden:
+
+- eigen SQLite-database (zie const.DB_FILENAME), alle toegang via db/;
+- negen WS-commando's (websocket.py) met push via de dispatcher;
+- één overzichtssensor (sensor.py), zonder polling;
+- nachtelijke rol om 03:00 (scheduler.py);
+- het panel op /taken (panel.py), rechtstreeks geserveerd uit deze map.
+
+De oude app (React-dashboard onder www/, eigen tokens, twintig services) is
+op 28-07-2026 verwijderd; het terugvalpunt is de tag/branch v1-final.
+"""
+from __future__ import annotations
+
 import logging
-import os
-import json
-import shutil
-import secrets
-import asyncio
-from pathlib import Path
-from datetime import timedelta
 
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.auth.const import GROUP_ID_ADMIN
-from homeassistant.const import Platform
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.util import dt as dt_util
 
-# Define constants here to avoid circular imports
-DOMAIN = "chores_manager"
-DEFAULT_DB = "chores_manager.db"
-DEFAULT_NOTIFICATION_TIME = "08:00"
-PLATFORMS = [Platform.SENSOR]
-# Reduced refresh interval to 2 hours for better mobile app compatibility
-TOKEN_REFRESH_INTERVAL = timedelta(hours=2)
+from .const import (
+    DATA_DB_PATH,
+    DATA_UNSUB_ROLL,
+    DATA_WS_REGISTERED,
+    DB_FILENAME,
+    DOMAIN,
+    PLATFORMS,
+    SIGNAL_UPDATED,
+)
+from .db.schema import create_database
+from .panel import async_remove_panel, async_setup_panel
+from .scheduler import async_run_roll, async_setup_scheduler
+from .seed import seed_v2
+from .websocket import async_register_websocket_commands
 
 _LOGGER = logging.getLogger(__name__)
 
-# Global lock for token refresh to prevent race conditions
-_token_refresh_lock = asyncio.Lock()
-
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up chores_manager from a config entry."""
-    _LOGGER.info("Setting up chores_manager from config entry")
+    """Zet de integratie op vanuit de config entry."""
+    database_path = hass.config.path(DB_FILENAME)
+    await hass.async_add_executor_job(create_database, database_path)
+    _LOGGER.info("Chores Manager: database klaar op %s", database_path)
 
-    # Handle database path – allow relative or absolute
-    database_name = entry.data.get("database", DEFAULT_DB)
-    if not os.path.isabs(database_name):
-        database_path = Path(hass.config.path(database_name))
-    else:
-        database_path = Path(database_name)
-
-    _LOGGER.info("Using database at: %s", database_path)
-
-    # Initialize database with error handling
-    try:
-        from .database import init_database, verify_database
-        await hass.async_add_executor_job(init_database, str(database_path))
-        
-        # Verify database is working
-        verification = await hass.async_add_executor_job(verify_database, str(database_path))
-        
-        # FIX: Handle both boolean and dictionary returns from verify_database
-        if isinstance(verification, bool):
-            if not verification:
-                _LOGGER.error("Database verification failed")
-                return False
-        elif isinstance(verification, dict):
-            if not verification.get("success"):
-                _LOGGER.error("Database verification failed: %s", verification.get("error"))
-                return False
-        else:
-            _LOGGER.error("Unexpected verification result type: %s", type(verification))
-            return False
-            
-    except Exception as e:
-        _LOGGER.error("Failed to initialize database: %s", e)
-        return False
-
-    # Store the database path and lock in hass.data
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "database_path": str(database_path),
-        "token_refresh_lock": _token_refresh_lock,
-        "token_refresh_count": 0,
-        "last_token_refresh": None
-    }
+    domain_data = hass.data[DOMAIN]
+    domain_data[DATA_DB_PATH] = database_path
+    domain_data.setdefault(entry.entry_id, {})
+    domain_data[entry.entry_id][DATA_DB_PATH] = database_path
 
-    # Generate authentication token for dashboard with more frequent refresh
-    try:
-        _LOGGER.info("Generating authentication token for chores dashboard")
-        token = await _generate_dashboard_token(hass)
-        
-        if token:
-            # Store in config entry
-            new_data = dict(entry.data)
-            new_data["auth_token"] = token
-            new_data["auth_token_generated"] = hass.loop.time()
-            hass.config_entries.async_update_entry(entry, data=new_data)
+    # WS-commando's zijn globaal; één keer per HA-run registreren.
+    if not domain_data.get(DATA_WS_REGISTERED):
+        async_register_websocket_commands(hass)
+        domain_data[DATA_WS_REGISTERED] = True
 
-            # Update dashboard config with token
-            await _update_dashboard_config(hass, token)
-            
-            # Track successful token generation
-            hass.data[DOMAIN][entry.entry_id]["last_token_refresh"] = hass.loop.time()
-        else:
-            _LOGGER.warning("Failed to generate authentication token")
-    except Exception as err:
-        _LOGGER.error("Failed to generate/update authentication token: %s", err)
-        # Continue setup even if token generation fails
+    # nachtelijke rol om 03:00
+    domain_data[entry.entry_id][DATA_UNSUB_ROLL] = async_setup_scheduler(
+        hass, database_path)
 
-    # Set up token refresh with proper locking
-    async def refresh_token_periodically(now=None):
-        """Refresh the token periodically with race condition prevention."""
-        # Use the lock to prevent concurrent refreshes
-        async with hass.data[DOMAIN][entry.entry_id]["token_refresh_lock"]:
-            try:
-                # Check if we should refresh (prevent rapid refreshes)
-                last_refresh = hass.data[DOMAIN][entry.entry_id].get("last_token_refresh")
-                if last_refresh:
-                    time_since_refresh = hass.loop.time() - last_refresh
-                    if time_since_refresh < 60:  # Don't refresh more than once per minute
-                        _LOGGER.debug("Skipping token refresh, too soon since last refresh")
-                        return
-                
-                _LOGGER.info("Periodic token refresh triggered (count: %d)", 
-                           hass.data[DOMAIN][entry.entry_id]["token_refresh_count"])
-                
-                # Generate new token
-                new_token = await _generate_dashboard_token(hass)
-                
-                if new_token:
-                    # Update config entry
-                    updated_data = dict(entry.data)
-                    updated_data["auth_token"] = new_token
-                    updated_data["auth_token_generated"] = hass.loop.time()
-                    hass.config_entries.async_update_entry(entry, data=updated_data)
+    await async_setup_panel(hass)
 
-                    # Update dashboard config
-                    await _update_dashboard_config(hass, new_token)
-                    
-                    # Track successful refresh
-                    hass.data[DOMAIN][entry.entry_id]["token_refresh_count"] += 1
-                    hass.data[DOMAIN][entry.entry_id]["last_token_refresh"] = hass.loop.time()
-                    
-                    _LOGGER.info("Token refreshed successfully")
-                else:
-                    _LOGGER.warning("Token refresh failed - no token generated")
-            except Exception as err:
-                _LOGGER.error("Failed to refresh token: %s", err, exc_info=True)
+    async def handle_seed(call: ServiceCall) -> None:
+        """TIJDELIJK (fase 5 verwijdert dit): de acht legacy-taken seeden."""
+        now = dt_util.now()
+        summary = await hass.async_add_executor_job(
+            seed_v2, database_path, now.date(), now.isoformat())
+        _LOGGER.info("Chores Manager: seed klaar: %s", summary)
+        async_dispatcher_send(hass, SIGNAL_UPDATED, {"reason": "seed"})
 
-    # Schedule token refresh
-    hass.data[DOMAIN][entry.entry_id]["token_refresh_unsub"] = async_track_time_interval(
-        hass, refresh_token_periodically, TOKEN_REFRESH_INTERVAL
-    )
+    async def handle_roll(call: ServiceCall) -> None:
+        """De nachtelijke rol nu draaien, zonder op 03:00 te wachten."""
+        await async_run_roll(hass, database_path)
 
-    # Register services
-    try:
-        from .services import async_register_services
-        await async_register_services(hass, str(database_path))
-    except Exception as e:
-        _LOGGER.error("Failed to register services: %s", e)
-        return False
+    hass.services.async_register(DOMAIN, "seed", handle_seed)
+    hass.services.async_register(DOMAIN, "roll_forward", handle_roll)
 
-    # v2 (fase 2b): eigen database, WS-commando's, scheduler en tijdelijke
-    # services, volledig naast de bestaande app. Vóór de sensorplatform-
-    # forward, zodat sensor.py het v2-databasepad in hass.data aantreft.
-    # Fouten hier zijn niet fataal: de oude app draait door.
-    try:
-        from .v2_setup import async_setup_v2
-        await async_setup_v2(hass, entry)
-    except Exception as err:
-        _LOGGER.error("Chores v2 setup mislukt (oude app draait door): %s", err)
-
-    # Forward config entry to the sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    # Web assets kopiëren naar <config>/www/chores-dashboard/. Geen
-    # panelregistratie meer: de route /chores was altijd al kapot en is op
-    # 28-07-2026 verwijderd. Het Lovelace-dashboard /dashboard-chores/taken
-    # serveert index.html rechtstreeks uit deze kopie en is tot fase 3 de
-    # enige ingang — daarom moet deze kopieerstap blijven.
-    try:
-        await _setup_web_assets(hass)
-    except Exception as err:
-        _LOGGER.error("Failed to set up web assets: %s", err)
-        # Non-fatal error, continue
-
-    _LOGGER.info("Chores Manager setup completed successfully")
+    _LOGGER.info("Chores Manager: setup compleet")
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    # Cancel token refresh subscription if exists
-    if "token_refresh_unsub" in hass.data[DOMAIN][entry.entry_id]:
-        hass.data[DOMAIN][entry.entry_id]["token_refresh_unsub"]()
-        _LOGGER.info("Cancelled token refresh subscription")
+    """Ruim alle registraties op bij het ontladen van de config entry."""
+    async_remove_panel(hass)
 
-    # Unregister services
-    try:
-        from .services import async_unregister_services
-        await async_unregister_services(hass)
-    except Exception as e:
-        _LOGGER.warning("Failed to unregister services: %s", e)
+    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+    unsub = entry_data.pop(DATA_UNSUB_ROLL, None)
+    if unsub:
+        unsub()
 
-    # v2 (fase 2b): scheduler en tijdelijke services opruimen
-    try:
-        from .v2_setup import async_unload_v2
-        await async_unload_v2(hass, entry)
-    except Exception as err:
-        _LOGGER.warning("Chores v2 unload mislukt: %s", err)
+    for service in ("seed", "roll_forward"):
+        if hass.services.has_service(DOMAIN, service):
+            hass.services.async_remove(DOMAIN, service)
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-        _LOGGER.info("Chores Manager unloaded successfully")
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+        _LOGGER.info("Chores Manager: ontladen")
     return unload_ok
-
-
-async def _generate_dashboard_token(hass: HomeAssistant) -> str:
-    """Generate a long-lived access token for the dashboard with improved mobile compatibility."""
-    try:
-        # Add a random component to the client name to create unique tokens each time
-        random_id = secrets.token_hex(4)
-        client_name = f"Chores Manager Dashboard {random_id}"
-
-        # Try to find an admin user, preferring non-system users
-        admin_users = []
-        for user in await hass.auth.async_get_users():
-            if not user.is_active:
-                continue
-            for group in user.groups:
-                if group.id == GROUP_ID_ADMIN:
-                    admin_users.append(user)
-                    break
-
-        if not admin_users:
-            _LOGGER.error("No admin user found to create token")
-            return None
-
-        # Prefer non-system generated users for better mobile app compatibility
-        preferred_user = None
-        for user in admin_users:
-            if not user.system_generated:
-                preferred_user = user
-                break
-
-        if not preferred_user:
-            preferred_user = admin_users[0]  # Fallback to first admin user
-
-        _LOGGER.info(f"Creating token for user: {preferred_user.name} (system_generated: {preferred_user.system_generated})")
-
-        # Create refresh token with error handling
-        refresh_token = await hass.auth.async_create_refresh_token(
-            preferred_user, 
-            client_name=client_name,
-            # Set longer expiration for better mobile compatibility
-            token_type="long_lived_access_token"
-        )
-        
-        if not refresh_token:
-            _LOGGER.error("Failed to create refresh token")
-            return None
-            
-        access_token = hass.auth.async_create_access_token(refresh_token)
-        
-        if not access_token:
-            _LOGGER.error("Failed to create access token from refresh token")
-            return None
-            
-        return access_token
-        
-    except Exception as err:
-        _LOGGER.error(f"Failed to create token: {err}", exc_info=True)
-        return None
-
-
-async def _update_dashboard_config(hass: HomeAssistant, token: str) -> None:
-    """Update dashboard config with the authentication token."""
-    config_dir = Path(hass.config.path("www/chores-dashboard"))
-    config_file = config_dir / "config.json"
-
-    # Ensure directory exists
-    await hass.async_add_executor_job(lambda: os.makedirs(config_dir, exist_ok=True))
-
-    try:
-        def read_config():
-            if config_file.exists():
-                try:
-                    with open(config_file, "r") as f:
-                        return json.load(f)
-                except (json.JSONDecodeError, IOError) as e:
-                    _LOGGER.warning("Existing config.json was invalid: %s, creating new one", e)
-            return {}
-
-        def write_config(config_data):
-            # Create backup of existing config
-            if config_file.exists():
-                backup_file = config_file.with_suffix('.json.backup')
-                shutil.copy2(config_file, backup_file)
-            
-            # Write new config
-            with open(config_file, "w") as f:
-                json.dump(config_data, f, indent=2)
-            os.chmod(config_file, 0o644)
-
-        # Read existing config in executor
-        config = await hass.async_add_executor_job(read_config)
-
-        # Update config values
-        config["api_token"] = token
-        config.setdefault("refresh_interval", 30000)  # 30 seconds for mobile compatibility
-        config.setdefault("debug", False)
-        # Add timestamp to help debug token changes
-        config["token_updated"] = hass.loop.time()
-        config["mobile_optimized"] = True  # Flag to indicate mobile optimization
-        config["version"] = "1.0.0"
-
-        # Write updated config in executor
-        await hass.async_add_executor_job(lambda: write_config(config))
-
-        _LOGGER.info("Updated dashboard config with new authentication token (mobile optimized)")
-    except Exception as err:
-        _LOGGER.error("Failed to update dashboard config: %s", err, exc_info=True)
-
-
-async def _setup_web_assets(hass: HomeAssistant) -> None:
-    """Set up web assets by copying files to www directory."""
-    try:
-        www_source = os.path.join(os.path.dirname(__file__), "www", "chores-dashboard")
-        www_target = os.path.join(hass.config.path("www"), "chores-dashboard")
-
-        def copy_files():
-            _LOGGER.info("Setting up web assets from %s to %s", www_source, www_target)
-            
-            # Check if source exists
-            if not os.path.exists(www_source):
-                _LOGGER.error("Source directory %s does not exist", www_source)
-                # Try backup location
-                backup_source = os.path.join(hass.config.path("www"), "chores-dashboard-backup")
-                if os.path.exists(backup_source):
-                    _LOGGER.info("Using backup source: %s", backup_source)
-                    www_source_actual = backup_source
-                else:
-                    _LOGGER.error("No source directory found for web assets")
-                    return False
-            else:
-                www_source_actual = www_source
-            
-            # List source contents for debugging
-            _LOGGER.debug("Source directory contents: %s", os.listdir(www_source_actual))
-            
-            # Create target directory
-            os.makedirs(www_target, exist_ok=True)
-            
-            # Copy all files with proper error handling
-            import shutil
-            for item in os.listdir(www_source_actual):
-                source_path = os.path.join(www_source_actual, item)
-                target_path = os.path.join(www_target, item)
-                
-                try:
-                    if os.path.isdir(source_path):
-                        if os.path.exists(target_path):
-                            shutil.rmtree(target_path)
-                        shutil.copytree(source_path, target_path)
-                    else:
-                        shutil.copy2(source_path, target_path)
-                    
-                    _LOGGER.debug("Copied %s to %s", item, target_path)
-                except Exception as e:
-                    _LOGGER.error("Failed to copy %s: %s", item, e)
-            
-            # Set permissions
-            for root, dirs, files in os.walk(www_target):
-                for d in dirs:
-                    try:
-                        os.chmod(os.path.join(root, d), 0o755)
-                    except Exception:
-                        pass
-                for f in files:
-                    try:
-                        os.chmod(os.path.join(root, f), 0o644)
-                    except Exception:
-                        pass
-
-            _LOGGER.info("Web assets setup completed")
-            return True
-
-        success = await hass.async_add_executor_job(copy_files)
-        if not success:
-            _LOGGER.error("Failed to copy web assets")
-    except Exception as e:
-        _LOGGER.error("Failed to copy web assets: %s", e, exc_info=True)

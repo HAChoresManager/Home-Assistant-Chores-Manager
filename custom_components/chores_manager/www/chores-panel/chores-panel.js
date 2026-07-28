@@ -1,8 +1,16 @@
 /**
- * <chores-panel> — entrypoint van het panel op /taken (fase 3a/3b).
+ * <chores-panel> — entrypoint van het panel op /taken.
  *
  * Vier weergaven (Vandaag, Alles, Activiteit, Beheer) achter tabs; de actieve
  * weergave staat in de URL-hash zodat een refresh je niet terugzet.
+ *
+ * Het element werkt op twee manieren:
+ * - als panel op /taken (geregistreerd in panel.py); HA levert hass en narrow;
+ * - als Lovelace-kaart (type: custom:chores-panel) via de resource-URL
+ *   /chores_manager-panel/chores-panel.js — setConfig/getCardSize hieronder.
+ *   Geen iframe: Lovelace mount het element direct en geeft zelf hass door.
+ * Omdat beide routes hetzelfde bestand op twee URL's kunnen laden, staat er
+ * een guard om customElements.define.
  *
  * ROUTERVALKUIL: de HA-frontend onderschept elke klik op een <a> (ook door
  * shadow DOM heen) en vertaalt hem naar history.pushState() — en pushState
@@ -27,21 +35,21 @@
  * binnenkomend event je getypte werk. Veldwissels (planningstype, toewijzing,
  * deeltaken) togglen dan ook in de DOM via data-switch, zonder render.
  *
- * Versiediscipline: de ?v= in elke import spiegelt PANEL_VERSION in
- * panel_v2.py. Zie CLAUDE.md.
+ * Versiediscipline (sinds 3c): de versie zit in het statische pad
+ * (/chores_manager-panel-<versie>/), dus relatieve imports erven hem vanzelf
+ * en er staan geen ?v=-parameters meer in dit bestand. Eén bron:
+ * PANEL_VERSION in panel.py. Zie CLAUDE.md.
  */
-import { api } from './core/api.js?v=2.1.1-20260728-fase3b';
-import { store } from './core/store.js?v=2.1.1-20260728-fase3b';
-import { html, setContent } from './core/html.js?v=2.1.1-20260728-fase3b';
-import { renderToday } from './views/today.js?v=2.1.1-20260728-fase3b';
-import { renderTasks } from './views/tasks.js?v=2.1.1-20260728-fase3b';
-import { renderActivity } from './views/activity.js?v=2.1.1-20260728-fase3b';
-import { renderManage, collectAssigneeForm } from './views/manage.js?v=2.1.1-20260728-fase3b';
-import { collectChoreForm } from './components/task-form.js?v=2.1.1-20260728-fase3b';
-import { isFinalAction } from './components/task-card.js?v=2.1.1-20260728-fase3b';
-
-const VERSION = '2.1.1-20260728-fase3b';
-const STATIC_BASE = '/chores_manager-panel';
+import { api } from './core/api.js';
+import { store } from './core/store.js';
+import { html, setContent } from './core/html.js';
+import { FOLLOW_HA, applyTheme, storedThemeName, storeThemeName } from './core/theme.js';
+import { renderToday } from './views/today.js';
+import { renderTasks } from './views/tasks.js';
+import { renderActivity } from './views/activity.js';
+import { renderManage, collectAssigneeForm } from './views/manage.js';
+import { collectChoreForm } from './components/task-form.js';
+import { isFinalAction } from './components/task-card.js';
 
 const TABS = [
   ['vandaag', 'Vandaag'],
@@ -62,9 +70,15 @@ function viewFromHash() {
   return VIEWS[hash] ? hash : 'vandaag';
 }
 
-function renderNav(view) {
+function renderNav(view, narrow) {
+  // Smal scherm: HA verbergt de zijbalk, dus zonder eigen knop is er geen
+  // enkele weg terug het menu in. hass-toggle-menu is HA's standaardevent
+  // om de zijbalk te openen.
   return html`
     <nav class="tabs" aria-label="Weergave">
+      ${narrow ? html`
+        <button type="button" class="menu-btn" data-action="menu"
+          aria-label="Zijbalk openen">☰</button>` : ''}
       ${TABS.map(([id, label]) => html`
         <a class="tab ${view === id ? 'active' : ''}" href="#${id}"
           ${view === id ? html`aria-current="page"` : ''}>${label}</a>`)}
@@ -87,21 +101,50 @@ class ChoresPanel extends HTMLElement {
 
   /** Zie de valkuil in de kop: hier alleen bewaren, nooit renderen. */
   set hass(hass) {
+    const previous = this._hass;
     this._hass = hass;
     api.setHass(hass);
     if (!this._started && this.isConnected) this._start();
+    // Vergelijking per referentie: hass komt vaak, maar het themes-object
+    // wisselt alleen bij een themawijziging of een dag/nacht-omslag.
+    else if (this._started && hass && hass.themes !== previous?.themes) {
+      this._syncThemes();
+    }
   }
 
   get hass() {
     return this._hass;
   }
 
+  /** HA geeft narrow door zodra de zijbalk verdwijnt; render alleen bij wissel. */
+  set narrow(value) {
+    const narrow = Boolean(value);
+    if (narrow !== store.get().narrow) store.set({ narrow });
+  }
+
+  get narrow() {
+    return store.get().narrow;
+  }
+
+  /** Lovelace-kaartmodus: een lege configuratie is geldig. */
+  setConfig(config) {
+    if (config !== undefined && typeof config !== 'object') {
+      throw new Error('chores-panel: kaartconfiguratie hoort leeg te zijn');
+    }
+  }
+
+  getCardSize() {
+    return 8;
+  }
+
   connectedCallback() {
     if (!this.shadowRoot) {
       const root = this.attachShadow({ mode: 'open' });
+      // De CSS komt van hetzelfde pad als deze module (import.meta.url):
+      // geversioneerd op /taken, ongeversioneerd bij kaartgebruik.
       root.innerHTML = `
-        <link rel="stylesheet" href="${STATIC_BASE}/styles.css?v=${VERSION}">
-        <link rel="stylesheet" href="${STATIC_BASE}/styles-views.css?v=${VERSION}">
+        <link rel="stylesheet" href="${new URL('./styles.css', import.meta.url).href}">
+        <link rel="stylesheet" href="${new URL('./styles-views.css', import.meta.url).href}">
         <main id="app" aria-live="polite"></main>
         <div id="snackbar" role="status" hidden></div>`;
       this._app = root.getElementById('app');
@@ -132,6 +175,8 @@ class ChoresPanel extends HTMLElement {
 
   async _start() {
     this._started = true;
+    // Bewaarde themakeuze toepassen vóór de eerste render — geen flits.
+    this._syncThemes();
     store.set({ view: viewFromHash() });
     this._unsubStore = store.subscribe(() => this._render());
     this._render();
@@ -162,7 +207,34 @@ class ChoresPanel extends HTMLElement {
     const body = state.loading || state.error || !state.data
       ? VIEWS.vandaag(state)
       : VIEWS[state.view](state);
-    setContent(this._app, html`${renderNav(state.view)}${body}`);
+    setContent(this._app, html`${renderNav(state.view, state.narrow)}${body}`);
+  }
+
+  /**
+   * Themastaat bijwerken: bewaarde keuze toepassen op de host en de lijst
+   * met themanamen voor het Beheer-scherm in de store zetten. Draait bij de
+   * start en wanneer hass.themes wisselt (thema bewerkt, dag/nacht-omslag);
+   * de store wordt alleen geraakt als er echt iets veranderde.
+   */
+  _syncThemes() {
+    const themes = this._hass?.themes;
+    if (!themes) return;
+    const selected = store.get().themes?.selected ?? storedThemeName();
+    applyTheme(this, themes, selected);
+    const names = Object.keys(themes.themes || {}).sort((a, b) => a.localeCompare(b));
+    const current = store.get().themes;
+    if (!current || current.selected !== selected
+      || current.names.join('\n') !== names.join('\n')) {
+      store.set({ themes: { names, selected } });
+    }
+  }
+
+  /** Keuze uit het Beheer-scherm: toepassen, bewaren, store bijwerken. */
+  _setTheme(name) {
+    storeThemeName(name);
+    applyTheme(this, this._hass?.themes, name);
+    const themes = store.get().themes || { names: [] };
+    store.set({ themes: { ...themes, selected: name } });
   }
 
   /**
@@ -244,12 +316,21 @@ class ChoresPanel extends HTMLElement {
       store.set({ editing: { ...state.editing, confirm: false } });
     } else if (action === 'delete-confirm') {
       await this._delete();
+    } else if (action === 'menu') {
+      // HA's standaardmechanisme om de zijbalk te openen (smal scherm).
+      this.dispatchEvent(new CustomEvent('hass-toggle-menu', {
+        bubbles: true, composed: true,
+      }));
     }
   }
 
   /** Veldwissels in formulieren: tonen/verbergen zonder render (data-switch). */
   _onChange(event) {
     const select = event.target;
+    if (select instanceof HTMLSelectElement && select.name === 'panel-theme') {
+      this._setTheme(select.value);
+      return;
+    }
     if (!(select instanceof HTMLElement) || !select.dataset.switch) return;
     const groupName = select.dataset.switch;
     this.shadowRoot.querySelectorAll(`[data-switch-group="${groupName}"]`)
@@ -391,4 +472,8 @@ class ChoresPanel extends HTMLElement {
   }
 }
 
-customElements.define('chores-panel', ChoresPanel);
+// Guard: het bestand is op twee URL's bereikbaar (panel geversioneerd,
+// kaartresource ongeversioneerd); een tweede define zou anders gooien.
+if (!customElements.get('chores-panel')) {
+  customElements.define('chores-panel', ChoresPanel);
+}

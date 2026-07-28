@@ -2,7 +2,7 @@
 
 De integratie draait bij Home Assistant als het pakket
 ``custom_components.chores_manager``; submodules gebruiken daarom relatieve
-imports (bv. ``from ..scheduling.calculator import ...`` in ``store/``). Die
+imports (bv. ``from ..scheduling.calculator import ...`` in ``db/``). Die
 moeten in de tests exact zo werken, anders testen we een andere importvorm dan
 er draait.
 
@@ -10,7 +10,7 @@ Rechtstreeks ``import custom_components.chores_manager`` kan hier niet: het
 ``__init__.py`` van de integratie importeert ``homeassistant``, en die is in
 de testomgeving niet geïnstalleerd. Daarom planten we een lege oudermodule
 ``chores_manager`` waarvan alleen het zoekpad is ingevuld. Subpakketten
-(``chores_manager.scheduling``, ``chores_manager.store``) worden dan gewoon
+(``chores_manager.scheduling``, ``chores_manager.db``) worden dan gewoon
 vanaf schijf geladen — mét werkende relatieve imports — terwijl het echte
 ``__init__.py`` nooit wordt uitgevoerd.
 """

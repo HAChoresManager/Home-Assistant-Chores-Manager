@@ -10,8 +10,8 @@ import sqlite3
 
 import pytest
 
-from chores_manager.store.connection import get_connection
-from chores_manager.store.schema import apply_schema, create_database
+from chores_manager.db.connection import get_connection
+from chores_manager.db.schema import apply_schema, create_database
 
 
 @pytest.fixture

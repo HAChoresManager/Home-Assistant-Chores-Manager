@@ -19,6 +19,9 @@
  *   view      actieve weergave: vandaag | alles | activiteit | beheer
  *   expanded  Set van chore-ids waarvan de checklist op Alles openstaat
  *   editing   {kind, id, confirm} als er een beheersformulier openstaat
+ *   narrow    HA verbergt de zijbalk (smal scherm) → hamburger tonen
+ *   themes    {names, selected} voor de themakeuze in Beheer, of null
+ *             zolang hass.themes nog niet gezien is
  */
 
 let state = {
@@ -31,6 +34,8 @@ let state = {
   view: 'vandaag',
   expanded: new Set(),
   editing: null,
+  narrow: false,
+  themes: null,
 };
 
 const listeners = new Set();
