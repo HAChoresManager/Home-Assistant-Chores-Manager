@@ -4,6 +4,15 @@
  * Vier weergaven (Vandaag, Alles, Activiteit, Beheer) achter tabs; de actieve
  * weergave staat in de URL-hash zodat een refresh je niet terugzet.
  *
+ * ROUTERVALKUIL: de HA-frontend onderschept elke klik op een <a> (ook door
+ * shadow DOM heen) en vertaalt hem naar history.pushState() — en pushState
+ * vuurt géén hashchange. Daarom krijgt de tabklik hier een preventDefault en
+ * zetten we de hash zelf: dat ís een echte hashnavigatie. Eén handler op
+ * window luistert naar hashchange én naar HA's location-changed (het event
+ * dat HA na een pushState uitstuurt) en triggert de render; hij is
+ * idempotent, zodat dubbele events (terugknop vuurt beide) een open
+ * formulier niet wissen.
+ *
  * BELANGRIJKE VALKUIL — de hass-setter:
  * Home Assistant zet de hass-property bij ELKE state-change in het hele
  * systeem, mogelijk vele keren per seconde. In die setter renderen maakt het
@@ -21,17 +30,17 @@
  * Versiediscipline: de ?v= in elke import spiegelt PANEL_VERSION in
  * panel_v2.py. Zie CLAUDE.md.
  */
-import { api } from './core/api.js?v=2.1.0-20260728-fase3b';
-import { store } from './core/store.js?v=2.1.0-20260728-fase3b';
-import { html, setContent } from './core/html.js?v=2.1.0-20260728-fase3b';
-import { renderToday } from './views/today.js?v=2.1.0-20260728-fase3b';
-import { renderTasks } from './views/tasks.js?v=2.1.0-20260728-fase3b';
-import { renderActivity } from './views/activity.js?v=2.1.0-20260728-fase3b';
-import { renderManage, collectAssigneeForm } from './views/manage.js?v=2.1.0-20260728-fase3b';
-import { collectChoreForm } from './components/task-form.js?v=2.1.0-20260728-fase3b';
-import { isFinalAction } from './components/task-card.js?v=2.1.0-20260728-fase3b';
+import { api } from './core/api.js?v=2.1.1-20260728-fase3b';
+import { store } from './core/store.js?v=2.1.1-20260728-fase3b';
+import { html, setContent } from './core/html.js?v=2.1.1-20260728-fase3b';
+import { renderToday } from './views/today.js?v=2.1.1-20260728-fase3b';
+import { renderTasks } from './views/tasks.js?v=2.1.1-20260728-fase3b';
+import { renderActivity } from './views/activity.js?v=2.1.1-20260728-fase3b';
+import { renderManage, collectAssigneeForm } from './views/manage.js?v=2.1.1-20260728-fase3b';
+import { collectChoreForm } from './components/task-form.js?v=2.1.1-20260728-fase3b';
+import { isFinalAction } from './components/task-card.js?v=2.1.1-20260728-fase3b';
 
-const VERSION = '2.1.0-20260728-fase3b';
+const VERSION = '2.1.1-20260728-fase3b';
 const STATIC_BASE = '/chores_manager-panel';
 
 const TABS = [
@@ -73,7 +82,7 @@ class ChoresPanel extends HTMLElement {
     this._onClick = this._onClick.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
     this._onChange = this._onChange.bind(this);
-    this._onHashChange = this._onHashChange.bind(this);
+    this._onLocationChanged = this._onLocationChanged.bind(this);
   }
 
   /** Zie de valkuil in de kop: hier alleen bewaren, nooit renderen. */
@@ -103,13 +112,17 @@ class ChoresPanel extends HTMLElement {
       root.addEventListener('submit', this._onSubmit);
       root.addEventListener('change', this._onChange);
     }
-    window.addEventListener('hashchange', this._onHashChange);
+    // Beide events: hashchange voor echte hashnavigatie (tabklik, terugknop),
+    // location-changed voor HA's pushState-navigatie (zie de kop).
+    window.addEventListener('hashchange', this._onLocationChanged);
+    window.addEventListener('location-changed', this._onLocationChanged);
     if (this._hass && !this._started) this._start();
   }
 
   disconnectedCallback() {
     this._started = false;
-    window.removeEventListener('hashchange', this._onHashChange);
+    window.removeEventListener('hashchange', this._onLocationChanged);
+    window.removeEventListener('location-changed', this._onLocationChanged);
     api.unsubscribe();
     if (this._unsubStore) {
       this._unsubStore();
@@ -152,12 +165,34 @@ class ChoresPanel extends HTMLElement {
     setContent(this._app, html`${renderNav(state.view)}${body}`);
   }
 
-  _onHashChange() {
-    store.set({ view: viewFromHash(), chooser: null, editing: null });
+  /**
+   * Eén plek die de URL naar de weergave vertaalt. Idempotent: de terugknop
+   * vuurt hashchange én location-changed, en HA's setter-verkeer mag een open
+   * formulier niet wissen als de weergave niet echt wisselt.
+   */
+  _onLocationChanged() {
+    const view = viewFromHash();
+    if (view === store.get().view) return;
+    store.set({ view, chooser: null, editing: null });
   }
 
   async _onClick(event) {
-    const button = event.composedPath().find(
+    const path = event.composedPath();
+
+    // Tabklik: alleen de hash zetten, verder niets. Zonder preventDefault
+    // maakt de HA-router er een pushState van en vuurt hashchange nooit.
+    const tab = path.find(
+      (el) => el instanceof HTMLElement && el.classList?.contains('tab'));
+    if (tab) {
+      event.preventDefault();
+      const target = tab.getAttribute('href');
+      if (target && target !== window.location.hash) {
+        window.location.hash = target;
+      }
+      return;
+    }
+
+    const button = path.find(
       (el) => el instanceof HTMLElement && el.dataset && el.dataset.action);
     if (!button || button.disabled) return;
     const { action } = button.dataset;

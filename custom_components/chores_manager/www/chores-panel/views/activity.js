@@ -5,13 +5,13 @@
  * nooit achterlopen. De weekhistorie toont iedereen die iets deed — feiten;
  * het ranglijstfilter geldt alleen de lopende week op Vandaag.
  */
-import { html } from '../core/html.js?v=2.1.0-20260728-fase3b';
+import { html } from '../core/html.js?v=2.1.1-20260728-fase3b';
 import {
   feedWhen,
   formatDuration,
   taskCount,
   weekTitle,
-} from '../core/format.js?v=2.1.0-20260728-fase3b';
+} from '../core/format.js?v=2.1.1-20260728-fase3b';
 
 function feedRow(row, todayIso) {
   return html`

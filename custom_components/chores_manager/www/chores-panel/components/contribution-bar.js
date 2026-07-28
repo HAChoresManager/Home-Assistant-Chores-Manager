@@ -9,8 +9,8 @@
  * kind doet niet mee in de tijdsranglijst van volwassenen, maar zijn minuten
  * kleuren wél de balk).
  */
-import { html } from '../core/html.js?v=2.1.0-20260728-fase3b';
-import { formatDuration, taskCount } from '../core/format.js?v=2.1.0-20260728-fase3b';
+import { html } from '../core/html.js?v=2.1.1-20260728-fase3b';
+import { formatDuration, taskCount } from '../core/format.js?v=2.1.1-20260728-fase3b';
 
 export function renderContributionBar(leaderboard) {
   const total = leaderboard.total_minutes;
