@@ -8,6 +8,7 @@ Alles hier is puur sqlite plus de scheduling-package — geen Home
 Assistant-imports, zodat de rooktests zonder HA-installatie draaien.
 """
 from .connection import get_connection
+from .errors import StoreError
 from .schema import apply_schema, create_database
 
-__all__ = ["get_connection", "apply_schema", "create_database"]
+__all__ = ["get_connection", "apply_schema", "create_database", "StoreError"]
