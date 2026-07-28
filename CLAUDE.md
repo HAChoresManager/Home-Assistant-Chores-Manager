@@ -43,11 +43,15 @@ te lossen lijkt, is dat een signaal dat het eenvoudiger moet.
 **Geen iframe.** De frontend is een native HA-panel dat `hass` geïnjecteerd
 krijgt.
 
-**Geen eigen authenticatie.** Geen tokens, geen `localStorage`, geen
-`Authorization`-headers. Alles loopt via `hass.connection`.
+**Geen eigen authenticatie.** Geen tokens, geen `Authorization`-headers. Alles
+loopt via `hass.connection`.
 
 **Geen eigen themasysteem.** Kleuren en vormen komen uit HA's CSS-variabelen.
-Persoonskleuren uit de database zijn de enige uitzondering.
+Persoonskleuren uit de database zijn de ene uitzondering; de andere is de
+themakeuze in Beheer (fase 3c), die bestaande **HA-thema's** als inline custom
+properties op de host zet — geen eigen palet, geen eigen tabel of service. Die
+keuze is presentatie en staat per apparaat in `localStorage`; dat is de enige
+toegestane localStorage-gebruiker (voor auth blijft hij verboden).
 
 **Geen cache-busting met tijdstempels.** Versienummers wel, `Date.now()` nooit —
 dat zet caching permanent uit.
@@ -60,21 +64,21 @@ verbergen. Los de oorzaak op.
 ## Backend
 
 - Python 3.13, Home Assistant custom integration.
-- Alle v2-databasetoegang via de datalaag: tijdens fase 2b heet die `store/`,
-  vanaf fase 3 neemt hij met `git mv` de naam `db/` over (zie
-  `REFACTOR_PLAN.md` §7). Nooit rechtstreeks SQL buiten die map. Het oude
-  `db/`-pakket bedient tot fase 3 alleen nog de oude app.
+- Alle databasetoegang via de datalaag `db/` (tot fase 3c heette die `store/`).
+  Nooit rechtstreeks SQL buiten die map.
 - Alle queries geparameteriseerd.
 - SQLite-werk in een executor (`hass.async_add_executor_job`), nooit blokkerend
   op de event loop.
-- Nieuwe DDL staat alleen in `store/schema.py` (na fase 3: `db/schema.py`).
+- DDL staat alleen in `db/schema.py`.
 - Unit tests: `scheduling/` volledig — daar zit de logica die stilletjes fout
   kan gaan — plus rooktests op de datalaag (schema, verbindingslaag,
   opslagfuncties). De rest merk je meteen in gebruik.
 
 ## Frontend
 
-- Eén custom element als entrypoint, ES-modules eronder.
+- Eén custom element als entrypoint (`www/chores-panel/chores-panel.js`),
+  ES-modules eronder. Hetzelfde element dient als panel op `/taken` én als
+  Lovelace-kaart (`type: custom:chores-panel`).
 - Rendering via template literals; **alles wat uit de database komt door de
   escape-helper**. Taaknamen en beschrijvingen zijn gebruikersinvoer.
 - Event delegation op containerniveau, zodat opnieuw renderen geen listeners
@@ -84,169 +88,72 @@ verbergen. Los de oorzaak op.
   dat is precies wat er in de vorige versie misging.
 - Nederlands in de interface, actieve werkwoorden, geen systeemjargon.
 
+### Twee bekende valkuilen in `chores-panel.js`
+
+**De hass-setter.** HA zet de `hass`-property bij elke state-change, mogelijk
+vele keren per seconde. Nooit renderen in de setter; renderen gebeurt bij de
+start en via de storeluisteraar.
+
+**De HA-router.** De HA-frontend onderschept elke klik op een `<a>` (ook door
+shadow DOM heen) en vertaalt hem naar `history.pushState()` — en pushState
+vuurt géén `hashchange`. Tabnavigatie werkt daarom met `preventDefault` plus
+zelf de hash zetten, en één window-handler op `hashchange` én `location-changed`.
+
 ---
 
 ## Deployment
 
-### Het nieuwe panel (`www/chores-panel/`, vanaf fase 3a) is géén kopie
+Het panel wordt **rechtstreeks uit `custom_components/` geserveerd** — er is
+geen kopieerstap en geen `/local`. Een wijziging aan een bestand onder
+`www/chores-panel/` staat meteen op de server; een HA-herstart is alleen nodig
+voor Python-wijzigingen en voor een versie-ophoging.
 
-Het panel op `/taken` wordt **rechtstreeks uit `custom_components/` geserveerd**
-via een eigen statisch pad (`/chores_manager-panel/`, geregistreerd in
-`panel_v2.py`). Er is geen kopieerstap: een wijziging aan een bestand onder
-`www/chores-panel/` staat meteen op de server. Een HA-herstart is alleen nodig
-voor Python-wijzigingen en voor de panelregistratie zelf (de `?v=` achter
-`module_url`).
+### Versiediscipline — de versie zit in het pad
 
-Cache-invalidatie werkt hier per ES-module. Browsers en Cloudflare cachen elk
-`.js`-bestand apart, en een querystring op het entrypoint werkt niet door naar
-zijn imports. Daarom draagt **elke** import in `www/chores-panel/` dezelfde
-letterlijke `?v=`-parameter. Eén versiebron: `PANEL_VERSION` in `panel_v2.py`;
-de `?v=`-literals in de JS-bestanden spiegelen die waarde. Ophogen = één
-sed over `panel_v2.py` en `www/chores-panel/` samen, daarna HA herstarten.
-Gebruik nooit verschillende versies door elkaar: twee verschillende
-`?v=`-waarden voor hetzelfde bestand betekenen twee module-instanties, en dan
-is de store geen singleton meer.
+Er is **één** versiebron: `PANEL_VERSION` in `panel.py`. Het panel laadt van
+`/chores_manager-panel-<versie>/chores-panel.js`; relatieve imports erven dat
+pad vanzelf, dus er staan **geen** `?v=`-parameters in de JS-bestanden. Ophogen
+is één regel in `panel.py` wijzigen en HA herstarten. Het geversioneerde pad
+wordt agressief gecachet (zelfde versie = zelfde inhoud, ook door Cloudflare);
+vergeet je de ophoging bij een frontendwijziging, dan serveert de cache de
+oude module en lijkt je wijziging niet aangekomen.
 
-De valkuil hieronder geldt alleen nog voor de **oude** app.
+Daarnaast is dezelfde map bereikbaar op `/chores_manager-panel` (zonder versie,
+zonder cache-headers). Dat pad is er **uitsluitend** als stabiele resource-URL
+voor kaartgebruik in Lovelace. Zet er nooit een versie achter en laat het panel
+er nooit van laden.
 
-### De draaiende frontend is een kopie — valkuil (alleen `www/chores-dashboard/`)
-
-`_setup_web_assets()` in `__init__.py` kopieert bij elke setup van de config
-entry de volledige inhoud van
-
-```
-custom_components/chores_manager/www/chores-dashboard/
-```
-
-naar
-
-```
-<config>/www/chores-dashboard/
-```
-
-Het panel serveert die **kopie** via `/local/chores-dashboard/`. De bestanden
-onder `custom_components/` worden nooit rechtstreeks aan de browser geserveerd.
-
-**Gevolg: een harde refresh is niet genoeg om een frontendwijziging te zien.**
-De kopieerstap draait alleen bij `async_setup_entry`, dus:
-
-1. Wijzig het bestand in `custom_components/chores_manager/www/`.
-2. **Herstart Home Assistant** (of herlaad de integratie) — pas dan wordt de
-   kopie ververst.
-3. Doe daarna een harde refresh in de browser.
-
-Sla je stap 2 over, dan zie je de oude versie en lijkt je wijziging niets te
-doen. Dat heeft al meerdere keren tot onterechte "de fix werkt niet"-conclusies
-geleid.
-
-Alternatief tijdens het ontwikkelen: kopieer het gewijzigde bestand handmatig
-naar `<config>/www/chores-dashboard/`. Dan volstaat een harde refresh.
-
-### Versiediscipline — één bron
-
-Er is **één** versieconstante voor de frontend. Die staat in `index.html`:
-
-```html
-window.CHORES_APP_VERSION = '<versie>';
-```
-
-Elke andere plek die een versie noemt, spiegelt die waarde en blijft eraan
-gelijk:
-
-| Plek | Wat er staat |
-|---|---|
-| `www/chores-dashboard/index.html` | `window.CHORES_APP_VERSION` — **de bron** |
-| `www/chores-dashboard/index.html` | de `?v=` in de drie statische `<script src>`-tags (`js/utils.js`, `js/auth-helper.js`, `js/components/index.js`) |
-| `www/chores-dashboard/js/components/index.js` | de fallbackwaarde in `COMPONENT_CONFIG.version` |
-| `panel.py` | de `?v=`-parameter achter `js_url` |
-| `manifest.json` | het `version`-veld (alleen het `x.y.z`-deel) |
-
-De drie statische script-tags staan in de HTML zelf en kunnen
-`window.CHORES_APP_VERSION` niet interpoleren; die moet je met de hand
-meenemen. De rest van de bestanden wordt dynamisch geladen en pikt de constante
-vanzelf op.
-
-**Hoog dit op bij elke wijziging aan een frontendbestand.** Sinds
-`&t=${Date.now()}` uit de componentlader is, is dit versienummer het enige dat
-caching invalideert. Vergeet je het, dan krijgen browser en Cloudflare de oude
-bestanden terug en lijkt je wijziging niet aangekomen.
-
-Vorm: `<x.y.z>-<jjjjmmdd>-<korte aanduiding>`, bijvoorbeeld
-`1.5.0-20260727-fase1`. In `manifest.json` staat alleen `1.5.0`.
-
-Er stonden hiervoor vier tegenstrijdige waarden verspreid door de repo. Laat die
-situatie niet terugkomen.
+Vorm van de versie: `<x.y.z>-<jjjjmmdd>-<korte aanduiding>`, bijvoorbeeld
+`2.2.0-20260728-fase3c`. In `manifest.json` staat alleen het `x.y.z`-deel.
 
 ### Overig
 
 - Cloudflare cachet; gebruik developer mode bij het testen.
 - Herstart HA na wijzigingen in de Python-code.
+- De oude database `chores_manager.db` en de kopie `<config>/www/chores-dashboard/`
+  kunnen op de HA-host als wees achterblijven; ze worden door niets meer gebruikt.
 
 ---
 
 ## Wat er niet meer in hoort
 
-Deze bestanden komen uit eerdere generaties en zijn dood, dubbel of vervangen.
-Voeg er niets aan toe en maak ze niet opnieuw:
-
-**Backend**
-
-| Bestand | Regels | Waarom |
-|---|---:|---|
-| `services.py` | 21 | Compatibiliteitsvorm; onbereikbaar door het gelijknamige pakket `services/` |
-| `utils.py` | 399 | Onbereikbaar door het gelijknamige pakket `utils/` |
-| `theme_service.py` | 104 | Eigen themasysteem; vervalt met de HA-CSS-variabelen |
-| de `theme_settings`-tabel | — | Idem |
-
-**Frontend**
-
-| Bestand | Regels | Waarom |
-|---|---:|---|
-| `css/styles.css` | 881 | Wordt door niets geladen — geen `<link>`, geen import |
-| `js/utils.js` | 386 | Wordt geladen, maar `window.choreUtils` wordt nergens gebruikt |
-| `js/app-handlers.js` | 366 | Wordt geladen, maar `useEventHandlers` wordt nergens aangeroepen |
-| `js/auth-helper.js` | 272 | Eigen authenticatie; vervalt met `hass.connection` |
-| `js/app-init.js` | 223 | Gaat op in het nieuwe entrypoint |
-| `js/state/store.js` | 213 | Nooit geladen; vervangen door `core/store.js` |
-| `js/app-state.js` | 135 | Wordt geladen, maar `useAppState` wordt nergens aangeroepen |
-| `chores-dashboard.js` | 126 | Bouwt de binnenste iframe; vervangen door `chores-panel.js` |
-| `js/theme-integration.js` | 70 | Nooit geladen; eigen themasysteem |
-| `js/components/fallback.js` | 65 | Staat niet in de componentmanifest; nooit geladen |
-| `js/components.js` | 37 | Nooit geladen; vervangen door de modulaire componenten |
-| de map `js/api/` | 1428 | REST met bearer-tokens; vervangen door `hass.connection` |
-
-**Documentatie**
-
-- `TECHNICAL_DESCRIPTION.md` — dubbel.
-
-**Let op: `database.py` staat hier bewust niet bij.** Het is geen dode
-compatibiliteitslaag maar een levende facade over `db/`, geïmporteerd vanuit acht
-plekken, met vier functies die nergens anders bestaan. Het verdwijnt pas in fase
-2, samen met het omleggen van die imports. Zie `REFACTOR_PLAN.md` §7 en §9.
+De oude app (React/CDN-dashboard onder `www/chores-dashboard/`, eigen
+tokenmachinerie, twintig services, `database.py`-facade met het oude
+`db/`-pakket, `theme_settings`) is in fase 3c (28-07-2026) **volledig
+verwijderd**. Het terugvalpunt is `v1-final` (tag/branch op main). Voeg niets
+van die generatie opnieuw toe: geen REST-met-tokens, geen kopieerstap naar
+`/local`, geen eigen themadata, geen los `services.py`/`utils.py`.
 
 ### Python-valkuil: module naast gelijknamig pakket
 
 Staat er een `naam.py` naast een map `naam/`, dan kiest Python **altijd** het
 pakket. Het losse bestand wordt dan onbereikbare code die er wel echt uitziet —
-imports slagen, maar de inhoud draait nooit.
-
-Dit speelt nu op drie plekken:
-
-| Module | Map | Wat wint | Gevolg |
-|---|---|---|---|
-| `services.py` | `services/` | `services/` | `services.py` is dood |
-| `utils.py` | `utils/` | `utils/` | `utils.py` is dood |
-| `database.py` | `db/` | *geen conflict* | Andere naam, dus **beide leven** |
-
-De derde is de verraderlijkste: `database.py` en `db/` botsen niet, dus
-`database.py` is gewoon bereikbaar en actief. Wie het over één kam scheert met de
-eerste twee en het weggooit, breekt de integratie meteen.
-
-Controleer dit met:
+imports slagen, maar de inhoud draait nooit. Dit project heeft er drie gehad
+(`services.py`/`services/`, `utils.py`/`utils/`, en het verraderlijke
+`database.py` náást `db/` dat juist wél leefde). Alle drie zijn in 3c
+opgeruimd. Laat deze situatie niet opnieuw ontstaan; controle:
 
 ```bash
 python3 -c "import importlib.util,sys; sys.path.insert(0,'custom_components/chores_manager'); \
-print(importlib.util.find_spec('services').origin)"
+print(importlib.util.find_spec('db').origin)"
 ```
-
-Laat deze situatie niet opnieuw ontstaan.
