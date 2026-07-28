@@ -308,8 +308,10 @@ huidige muur waarin 8 van de 8 taken rood zijn.
 - `anyone` — niemand specifiek; iedereen kan afvinken.
 
 Op de kaart staat bij `rotating` zichtbaar wie aan de beurt is. Dat is nu de
-onduidelijkste plek in het formulier: `alternate_with` is bij vijf taken gevuld
-terwijl `use_alternating` op 0 staat, dus die instelling doet niets.
+onduidelijkste plek in het formulier: `alternate_with` is bij vijf taken
+gevuld, maar bij vier daarvan staat `use_alternating` op 0, dus daar doet de
+instelling niets. Alleen de AH-boodschappenlijst roteert echt (Martijn ↔
+Laura); zie `docs/legacy-state.yaml` en `tests/test_legacy_tasks.py`.
 
 ### 4.5 Deeltaken
 
