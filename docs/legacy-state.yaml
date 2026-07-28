@@ -1,0 +1,348 @@
+# Fase 0-referentie (REFACTOR_PLAN.md §9): momentopname van
+# sensor.chores_overview, uitgelezen via HA Developer Tools op 28-07-2026.
+# De opnamedag volgt uit de data zelf: next_due_date - days_until_due komt
+# voor alle acht taken op 2026-07-28 uit (zie tests/test_legacy_tasks.py).
+#
+# De data wordt niet gemigreerd (§3); dit bestand is het naslagpunt voor hoe
+# de acht taken bedoeld waren — inclusief de zes overlappende planningsvelden
+# (frequency_type, frequency_days, frequency_times, weekday, monthday,
+# active_days) waar het oude schema aan stuk ging.
+#
+# Aangeleverd door Martijn, inhoudelijk ongewijzigd overgenomen; alleen de
+# indentatie is hersteld, want de attributenweergave van HA plakt geneste
+# blokken plat.
+#
+# Let op bij het lezen: legacy telt weekdagen 0-based vanaf maandag
+# (weekday 2 = woensdag, weekday 5 = zaterdag). Het v2-model gebruikt
+# ISO-weekdagen 1-7.
+entity_id: sensor.chores_overview
+friendly_name: Chores Overview
+state: '0'
+attributes:
+  state_class: measurement
+  overdue_tasks:
+  - id: wasmachine
+    name: Was draaien
+    frequency_type: Dagelijks
+    frequency_days: 7
+    frequency_times: 1
+    assigned_to: Laura
+    priority: Middel
+    duration: 20
+    last_done: '2025-10-18T15:06:08.057921'
+    last_done_by: Laura
+    icon: 👕
+    description: 'Voor 19:00'
+    alternate_with: ''
+    use_alternating: 0
+    startMonth: 0
+    startDay: 1
+    weekday: -1
+    monthday: -1
+    notify_when_due: 0
+    active_days: '{"mon": true, "tue": true, "wed": true, "thu": true, "fri": true, "sat": true, "sun": true}'
+    active_monthdays: null
+    has_subtasks: 0
+    subtasks_completion_type: all
+    subtasks_streak_type: period
+    subtasks_period: week
+    subtasks: []
+    chore_id: wasmachine
+    days_since: 282
+    next_due_date: '2025-10-19'
+    is_due_today: true
+    is_overdue: true
+    days_until_due: -282
+    subtasks_completed_count: 0
+    subtasks_total_count: 0
+  - id: planten
+    name: Planten water geven
+    frequency_type: Meerdere keren per week
+    frequency_days: 7
+    frequency_times: 1
+    assigned_to: Wie kan
+    priority: Middel
+    duration: 5
+    last_done: '2025-10-25T11:18:18.714577'
+    last_done_by: Laura
+    icon: 🌱
+    description: ''
+    alternate_with: ''
+    use_alternating: 0
+    startMonth: 0
+    startDay: 1
+    weekday: 6
+    monthday: -1
+    notify_when_due: 0
+    active_days: '{"mon": false, "tue": false, "wed": true, "thu": false, "fri": false, "sat": false, "sun": true}'
+    active_monthdays: null
+    has_subtasks: 0
+    subtasks_completion_type: all
+    subtasks_streak_type: period
+    subtasks_period: week
+    subtasks: []
+    chore_id: planten
+    days_since: 276
+    next_due_date: '2025-10-26'
+    is_due_today: true
+    is_overdue: true
+    days_until_due: -275
+    subtasks_completed_count: 0
+    subtasks_total_count: 0
+  - id: vaatwasser_in-_en_uitruimen
+    name: Keuken opruimen
+    frequency_type: Dagelijks
+    frequency_days: 7
+    frequency_times: 1
+    assigned_to: Martijn
+    priority: Middel
+    duration: 20
+    last_done: '2025-10-25T11:17:59.237013'
+    last_done_by: Martijn
+    icon: 🍽️
+    description: ''
+    alternate_with: Wie kan
+    use_alternating: 0
+    startMonth: 0
+    startDay: 1
+    weekday: -1
+    monthday: -1
+    notify_when_due: 0
+    active_days: null
+    active_monthdays: null
+    has_subtasks: 0
+    subtasks_completion_type: all
+    subtasks_streak_type: period
+    subtasks_period: week
+    subtasks: []
+    chore_id: vaatwasser_in-_en_uitruimen
+    days_since: 276
+    next_due_date: '2025-10-26'
+    is_due_today: true
+    is_overdue: true
+    days_until_due: -275
+    subtasks_completed_count: 0
+    subtasks_total_count: 0
+  - id: ah_boodschappenlijst_maken
+    name: AH Boodschappenlijst maken
+    frequency_type: Wekelijks
+    frequency_days: 7
+    frequency_times: 1
+    assigned_to: Martijn
+    priority: Middel
+    duration: 30
+    last_done: '2025-10-25T11:18:26.975234'
+    last_done_by: Laura
+    icon: 🛒
+    description: ''
+    alternate_with: Laura
+    use_alternating: 1
+    startMonth: 0
+    startDay: 1
+    weekday: 2
+    monthday: -1
+    notify_when_due: 0
+    active_days: null
+    active_monthdays: null
+    has_subtasks: 0
+    subtasks_completion_type: all
+    subtasks_streak_type: period
+    subtasks_period: week
+    subtasks: []
+    chore_id: ah_boodschappenlijst_maken
+    days_since: 276
+    next_due_date: '2025-10-29'
+    is_due_today: true
+    is_overdue: true
+    days_until_due: -272
+    subtasks_completed_count: 0
+    subtasks_total_count: 0
+  - id: apparatuur_onderhoud
+    name: Apparatuur onderhoud
+    frequency_type: Wekelijks
+    frequency_days: 7
+    frequency_times: 1
+    assigned_to: Martijn
+    priority: Middel
+    duration: 30
+    last_done: '2026-01-28T16:49:03.815791'
+    last_done_by: Martijn
+    icon: 📋
+    description: ''
+    alternate_with: ''
+    use_alternating: 0
+    startMonth: 0
+    startDay: 1
+    weekday: 5
+    monthday: -1
+    notify_when_due: 0
+    active_days: null
+    active_monthdays: null
+    has_subtasks: 0
+    subtasks_completion_type: all
+    subtasks_streak_type: period
+    subtasks_period: week
+    subtasks: []
+    chore_id: apparatuur_onderhoud
+    days_since: 180
+    next_due_date: '2026-01-31'
+    is_due_today: true
+    is_overdue: true
+    days_until_due: -178
+    subtasks_completed_count: 0
+    subtasks_total_count: 0
+  - id: lunch_trommels_vullen
+    name: Lunch trommels vullen
+    frequency_type: Wekelijks
+    frequency_days: 7
+    frequency_times: 5
+    assigned_to: Wie kan
+    priority: Middel
+    duration: 15
+    last_done: '2026-01-28T16:49:11.292893'
+    last_done_by: Laura
+    icon: 🍲
+    description: ''
+    alternate_with: Wie kan
+    use_alternating: 0
+    startMonth: 0
+    startDay: 1
+    weekday: -1
+    monthday: -1
+    notify_when_due: 0
+    active_days: '{"mon": true, "tue": true, "wed": true, "thu": true, "fri": true, "sat": false, "sun": false}'
+    active_monthdays: null
+    has_subtasks: 0
+    subtasks_completion_type: all
+    subtasks_streak_type: period
+    subtasks_period: week
+    subtasks: []
+    chore_id: lunch_trommels_vullen
+    days_since: 180
+    next_due_date: '2026-02-04'
+    is_due_today: true
+    is_overdue: true
+    days_until_due: -174
+    subtasks_completed_count: 0
+    subtasks_total_count: 0
+  - id: vriezer_ontdooien
+    name: Vriezer keuken ontdooien
+    frequency_type: Halfjaarlijks
+    frequency_days: 180
+    frequency_times: 1
+    assigned_to: Laura
+    priority: Middel
+    duration: 30
+    last_done: '2025-10-04T16:23:51.242854'
+    last_done_by: Laura
+    icon: 🧊
+    description: ''
+    alternate_with: Wie kan
+    use_alternating: 0
+    startMonth: 6
+    startDay: 15
+    weekday: -1
+    monthday: -1
+    notify_when_due: 0
+    active_days: null
+    active_monthdays: null
+    has_subtasks: 0
+    subtasks_completion_type: all
+    subtasks_streak_type: period
+    subtasks_period: week
+    subtasks: []
+    chore_id: vriezer_ontdooien
+    days_since: 296
+    next_due_date: '2026-04-04'
+    is_due_today: true
+    is_overdue: true
+    days_until_due: -115
+    subtasks_completed_count: 0
+    subtasks_total_count: 0
+  - id: afzuigkap_koolstoffilter_wassen
+    name: Afzuigkap koolstoffilter wassen
+    frequency_type: Halfjaarlijks
+    frequency_days: 180
+    frequency_times: 1
+    assigned_to: Martijn
+    priority: Middel
+    duration: 15
+    last_done: '2025-10-18T15:06:30.392916'
+    last_done_by: Martijn
+    icon: 💨
+    description: |2-
+        *   Filter en houder losmaken en in vaatwasser op heetste (70 graden - P3) programma.
+        *   Randjes aan binnenkant afzuigkap schoonmaken.
+        *   Wanneer vaatwasser klaar het koolstoffilter in een voorverwarmde oven leggen op 80 graden voor 10 minuten.
+        *   Terugplaatsen filter in houder en terugplaatsen in afzuigkap.
+    alternate_with: Wie kan
+    use_alternating: 0
+    startMonth: 6
+    startDay: 1
+    weekday: -1
+    monthday: -1
+    notify_when_due: 0
+    active_days: null
+    active_monthdays: null
+    has_subtasks: 0
+    subtasks_completion_type: all
+    subtasks_streak_type: period
+    subtasks_period: week
+    subtasks: []
+    chore_id: afzuigkap_koolstoffilter_wassen
+    days_since: 282
+    next_due_date: '2026-04-18'
+    is_due_today: true
+    is_overdue: true
+    days_until_due: -101
+    subtasks_completed_count: 0
+    subtasks_total_count: 0
+  stats:
+    Laura:
+      tasks_completed: 0
+      time_completed: 0
+      total_tasks: 2
+      total_time: 50
+      streak: 0
+      monthly_completed: 0
+      monthly_percentage: 0
+      due_tasks: []
+    Martijn:
+      tasks_completed: 0
+      time_completed: 0
+      total_tasks: 4
+      total_time: 95
+      streak: 0
+      monthly_completed: 0
+      monthly_percentage: 0
+      due_tasks: []
+  assignees:
+  - id: laura
+    name: Laura
+    color: '#83c44a'
+    active: 1
+    ha_user_id: null
+  - id: martijn
+    name: Martijn
+    color: '#4dd8ff'
+    active: 1
+    ha_user_id: null
+  - id: noud
+    name: Noud
+    color: '#013589'
+    active: 1
+    ha_user_id: null
+  - id: wie_kan
+    name: Wie kan
+    color: '#ff8000'
+    active: 1
+    ha_user_id: null
+  completed_today: 0
+  theme_settings:
+    backgroundColor: '#ffffff'
+    cardColor: '#f8f8f8'
+    primaryTextColor: '#000000'
+    secondaryTextColor: '#333333'
+  unit_of_measurement: tasks
+  icon: mdi:clipboard-check
+  friendly_name: Chores Overview
