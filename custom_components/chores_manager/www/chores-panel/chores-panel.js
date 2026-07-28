@@ -207,7 +207,12 @@ class ChoresPanel extends HTMLElement {
     this._render();
     await this._refresh();
     try {
-      await api.subscribe(() => this._refresh());
+      // subscribe herstelt zichzelf bij een backend die nog niet klaar is
+      // (HA-herstart) en na elke reconnect — zie core/api.js. Moest er
+      // gewacht worden, dan is de eerder opgehaalde staat mogelijk oud.
+      const gewacht = await api.subscribe(
+        () => this._refresh(), () => this._showConnecting());
+      if (gewacht) await this._refresh();
     } catch (err) {
       // zonder abonnement werkt alles nog, alleen zonder live updates
       console.warn('chores-panel: abonneren mislukt', err);
@@ -216,11 +221,21 @@ class ChoresPanel extends HTMLElement {
 
   async _refresh() {
     try {
-      const data = await api.state();
-      store.set({ loading: false, error: null, data, pending: new Set() });
+      const data = await api.state(() => this._showConnecting());
+      store.set({
+        loading: false, connecting: false, error: null, data, pending: new Set(),
+      });
     } catch (err) {
-      store.set({ loading: false, error: err?.message || String(err) });
+      store.set({
+        loading: false, connecting: false, error: err?.message || String(err),
+      });
     }
+  }
+
+  /** De backend is er nog niet (HA-herstart): rustig melden, geen foutscherm.
+   * De retry in core/api.js lost het vanzelf op; _refresh wist de vlag. */
+  _showConnecting() {
+    if (!store.get().connecting) store.set({ connecting: true });
   }
 
   _render() {
@@ -232,7 +247,12 @@ class ChoresPanel extends HTMLElement {
     const body = state.loading || state.error || !state.data
       ? VIEWS.vandaag(state)
       : VIEWS[state.view](state);
-    setContent(this._app, html`${renderNav(state.view, state.narrow)}${body}`);
+    // Rustige melding tijdens het wachten op een herstartende backend; de
+    // bestaande inhoud blijft gewoon staan (geen foutscherm, herstelt zelf).
+    const verbinden = state.connecting && state.data
+      ? html`<p class="reconnect" role="status">Verbinden…</p>` : '';
+    setContent(this._app,
+      html`${renderNav(state.view, state.narrow)}${verbinden}${body}`);
   }
 
   /**
@@ -505,7 +525,15 @@ class ChoresPanel extends HTMLElement {
 }
 
 // Guard: het bestand is op twee URL's bereikbaar (panel geversioneerd,
-// kaartresource ongeversioneerd); een tweede define zou anders gooien.
+// kaartresource ongeversioneerd) en er kunnen oudere module-instanties
+// naast leven (bv. een achtergebleven resource-registratie met een oude
+// URL). De get-check vangt het normale geval; de try/catch vangt wat er
+// dan nog doorheen komt — een tweede define is onschuldig, de eerste
+// registratie blijft gewoon werken.
 if (!customElements.get('chores-panel')) {
-  customElements.define('chores-panel', ChoresPanel);
+  try {
+    customElements.define('chores-panel', ChoresPanel);
+  } catch (err) {
+    console.debug('chores-panel: define overgeslagen, element bestond al', err);
+  }
 }

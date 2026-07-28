@@ -7,6 +7,9 @@
  *
  * Vorm van de toestand:
  *   loading   eerste keer laden bezig
+ *   connecting  wachten op een backend die nog niet klaar is (HA-herstart);
+ *               rustige "Verbinden…"-melding, geen foutscherm — de retry in
+ *               core/api.js herstelt dit vanzelf
  *   error     foutmelding (string) of null
  *   data      het volledige antwoord van chores_manager/state, of null
  *   pending   Set van chore-ids die optimistisch als afgevinkt gelden
@@ -30,6 +33,7 @@
 
 let state = {
   loading: true,
+  connecting: false,
   error: null,
   data: null,
   pending: new Set(),
