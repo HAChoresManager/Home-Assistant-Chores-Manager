@@ -24,11 +24,51 @@ export function formatDuration(minutes) {
   return `${hours}u ${rest}m`;
 }
 
-/** "vandaag", "1 dag te laat", "3 dagen te laat". */
-export function overdueLabel(days) {
+/**
+ * "vandaag", "1 dag te laat", "3 dagen te laat" — en boven de 30 dagen een
+ * maand in plaats van een getal: "had in april gemoeten". Grote getallen
+ * lezen als verwijt (§4.3).
+ */
+export function overdueLabel(days, nextDueIso, todayIso) {
   if (days <= 0) return 'vandaag';
   if (days === 1) return '1 dag te laat';
-  return `${days} dagen te laat`;
+  if (days <= 30 || !nextDueIso) return `${days} dagen te laat`;
+  const due = new Date(`${nextDueIso}T12:00:00`);
+  const month = MONTHS_LONG[due.getMonth()];
+  const currentYear = Number((todayIso || nextDueIso).slice(0, 4));
+  if (due.getFullYear() !== currentYear) {
+    return `had in ${month} ${due.getFullYear()} gemoeten`;
+  }
+  return `had in ${month} gemoeten`;
+}
+
+/** Vervaldatum vooruit: "vandaag", "morgen", anders "wo 29 jul" (+jaar). */
+export function dueLabel(nextDueIso, todayIso) {
+  if (nextDueIso === todayIso) return 'vandaag';
+  const tomorrow = new Date(`${todayIso}T12:00:00`);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowIso = [
+    tomorrow.getFullYear(),
+    String(tomorrow.getMonth() + 1).padStart(2, '0'),
+    String(tomorrow.getDate()).padStart(2, '0'),
+  ].join('-');
+  if (nextDueIso === tomorrowIso) return 'morgen';
+  const d = new Date(`${nextDueIso}T12:00:00`);
+  const base = `${WEEKDAYS_SHORT[(d.getDay() + 6) % 7]} ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+  if (nextDueIso.slice(0, 4) !== todayIso.slice(0, 4)) {
+    return `${base} ${d.getFullYear()}`;
+  }
+  return base;
+}
+
+/** "week van 21 juli" (+jaar als het een ander jaar is). */
+export function weekTitle(weekStartIso, todayIso) {
+  const d = new Date(`${weekStartIso}T12:00:00`);
+  const base = `week van ${d.getDate()} ${MONTHS_LONG[d.getMonth()]}`;
+  if (weekStartIso.slice(0, 4) !== todayIso.slice(0, 4)) {
+    return `${base} ${d.getFullYear()}`;
+  }
+  return base;
 }
 
 /** "dinsdag 28 juli" — voor de kop van het scherm. */

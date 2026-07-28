@@ -1,0 +1,223 @@
+/*
+ * Stijlen voor de 3b-schermen: Activiteit en Beheer (formulieren).
+ * Apart bestand om styles.css onder de 600-regelgrens te houden; zelfde
+ * regels: uitsluitend HA-variabelen, telefoon eerst, 44px-raakvlakken.
+ */
+
+/* --- Activiteit: weekhistorie ----------------------------------------- */
+
+.week-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.week-card {
+  background: var(--card-background-color);
+  border: 1px solid var(--divider-color);
+  border-radius: var(--ha-card-border-radius, 12px);
+  padding: 12px 16px;
+}
+
+.week-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.week-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.week-total {
+  color: var(--secondary-text-color);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+/* --- Beheer: lijsten --------------------------------------------------- */
+
+.manage-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.manage-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.manage-row + .manage-row {
+  border-top: 1px solid var(--divider-color);
+}
+
+.manage-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.manage-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.manage-sub {
+  color: var(--secondary-text-color);
+  font-size: 0.85rem;
+}
+
+button.add {
+  margin-top: 8px;
+  width: 100%;
+}
+
+/* --- Beheer: formulieren ------------------------------------------------ */
+
+.manage-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--card-background-color);
+  border: 1px solid var(--divider-color);
+  border-radius: var(--ha-card-border-radius, 12px);
+  padding: 16px;
+  margin-top: 8px;
+}
+
+.manage-form .section-title {
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: var(--secondary-text-color);
+}
+
+.field input,
+.field select,
+.field textarea {
+  font: inherit;
+  color: var(--primary-text-color);
+  background: none;
+  border: 1px solid var(--divider-color);
+  border-radius: 8px;
+  padding: 10px;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.field textarea {
+  min-height: auto;
+  resize: vertical;
+}
+
+.field input.short {
+  width: 90px;
+}
+
+.field input[type='color'] {
+  padding: 4px;
+  width: 64px;
+}
+
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
+
+.field-label {
+  font-size: 0.9rem;
+  color: var(--secondary-text-color);
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-inline-start: 2px solid var(--divider-color);
+}
+
+.field-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--secondary-text-color);
+}
+
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--divider-color);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-height: 44px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.check.standalone {
+  border: none;
+  padding: 4px 0;
+  color: var(--primary-text-color);
+}
+
+.check input {
+  accent-color: var(--primary-color);
+  width: 18px;
+  height: 18px;
+}
+
+.form-error {
+  margin: 0;
+  color: var(--error-color, #b3261e);
+  font-size: 0.9rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.form-actions .primary {
+  flex: 1;
+}
+
+/* --- Beheer: verwijderen ------------------------------------------------ */
+
+.danger-zone {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--divider-color);
+}
+
+.danger-zone.confirm p {
+  margin: 0 0 8px;
+  color: var(--secondary-text-color);
+  font-size: 0.9rem;
+}
+
+button.danger {
+  color: var(--error-color, #b3261e);
+  border: 1px solid var(--error-color, #b3261e);
+  padding: 0 16px;
+}

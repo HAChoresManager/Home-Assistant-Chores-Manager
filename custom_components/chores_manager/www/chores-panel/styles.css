@@ -40,6 +40,38 @@ button:focus-visible,
   outline-offset: 2px;
 }
 
+/* --- tabs ------------------------------------------------------------- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0 12px;
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: 10px 4px;
+  min-height: 44px;
+  box-sizing: border-box;
+  color: var(--secondary-text-color);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  font-size: 0.95rem;
+}
+
+.tab.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+  font-weight: 500;
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
+}
+
 /* --- kop ------------------------------------------------------------- */
 
 .page-header {
@@ -82,8 +114,24 @@ button:focus-visible,
 }
 
 .contribution-empty {
-  margin: 0;
+  margin: 0 0 10px;
   color: var(--secondary-text-color);
+}
+
+/* A5: lege week — geen kader (dat leest als een uitgeschakeld invoerveld)
+   maar de contouren van de segmenten die er kunnen komen. */
+.contribution.empty {
+  background: none;
+  border: none;
+  padding: 8px 0;
+}
+
+.bar.ghost .segment {
+  background: none;
+  border: 1.5px dashed var(--person-color);
+  opacity: 0.55;
+  flex: 1;
+  border-radius: 8px;
 }
 
 .bar {
@@ -214,11 +262,59 @@ button:focus-visible,
   align-self: center;
 }
 
+/* A2/A6: het persoonschipje — kleuraccent én bedieningselement voor wie de
+   credits krijgt. De rand plus het pijltje maken tikbaarheid zichtbaar. */
+button.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--divider-color);
+  border-radius: 14px;
+  font-size: 0.85rem;
+  color: var(--primary-text-color);
+  vertical-align: middle;
+}
+
+button.chip.neutral {
+  color: var(--secondary-text-color);
+}
+
+.chip-caret {
+  color: var(--secondary-text-color);
+  font-size: 0.7rem;
+}
+
+.meta-text {
+  vertical-align: middle;
+}
+
+.steps-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0;
+  margin-top: 4px;
+  color: var(--secondary-text-color);
+  font-size: 0.85rem;
+}
+
+/* A1: rustige outline-knop — acht gevulde vlakken concurreerden met de
+   bijdragebalk. Vol blauw is voor hover/focus en de bevestigingssnackbar. */
 button.primary {
-  background: var(--primary-color);
-  color: var(--text-primary-color, #fff);
+  background: none;
+  border: 1px solid var(--primary-color);
+  color: var(--primary-color);
   padding: 0 16px;
   font-weight: 500;
+}
+
+button.primary:hover,
+button.primary:focus-visible {
+  background: var(--primary-color);
+  color: var(--text-primary-color, #fff);
 }
 
 button.secondary {
@@ -397,9 +493,8 @@ button.person.cancel {
   align-items: center;
   gap: 12px;
   max-width: min(92vw, 480px);
-  background: var(--card-background-color);
-  color: var(--primary-text-color);
-  border: 1px solid var(--divider-color);
+  background: var(--primary-color);
+  color: var(--text-primary-color, #fff);
   border-radius: var(--ha-card-border-radius, 12px);
   box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0, 0, 0, 0.25));
   padding: 10px 16px;
@@ -412,11 +507,12 @@ button.person.cancel {
 }
 
 #snackbar.error {
-  border-color: var(--error-color, #b3261e);
+  background: var(--error-color, #b3261e);
 }
 
 #snackbar button {
-  color: var(--primary-color);
+  color: inherit;
+  text-decoration: underline;
   font-weight: 600;
   white-space: nowrap;
 }

@@ -6,12 +6,19 @@
  * get(), muteren via set(), en de renderlus luistert via subscribe().
  *
  * Vorm van de toestand:
- *   loading  eerste keer laden bezig
- *   error    foutmelding (string) of null
- *   data     het volledige antwoord van chores_manager/state, of null
- *   pending  Set van chore-ids die optimistisch als afgevinkt gelden
- *            (verdwenen uit de lijst vóór de server bevestigt)
- *   chooser  {choreId, subtaskId} als de wie-deed-het-keuze openstaat, anders null
+ *   loading   eerste keer laden bezig
+ *   error     foutmelding (string) of null
+ *   data      het volledige antwoord van chores_manager/state, of null
+ *   pending   Set van chore-ids die optimistisch als afgevinkt gelden
+ *             (verdwenen uit de lijst vóór de server bevestigt)
+ *   chooser   {choreId, subtaskId, mode} als de persoonskeuze openstaat;
+ *             mode 'complete' vinkt af bij keuze, mode 'credit' zet alleen
+ *             het chipje
+ *   credits   per taak wie de credits krijgt als dat afwijkt van de
+ *             toewijzing (§4.4); geleegd zodra de taak volledig is afgerond
+ *   view      actieve weergave: vandaag | alles | activiteit | beheer
+ *   expanded  Set van chore-ids waarvan de checklist op Alles openstaat
+ *   editing   {kind, id, confirm} als er een beheersformulier openstaat
  */
 
 let state = {
@@ -20,6 +27,10 @@ let state = {
   data: null,
   pending: new Set(),
   chooser: null,
+  credits: {},
+  view: 'vandaag',
+  expanded: new Set(),
+  editing: null,
 };
 
 const listeners = new Set();

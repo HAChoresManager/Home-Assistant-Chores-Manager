@@ -9,18 +9,24 @@
  * kind doet niet mee in de tijdsranglijst van volwassenen, maar zijn minuten
  * kleuren wél de balk).
  */
-import { html } from '../core/html.js?v=2.0.0-20260728-fase3a';
-import { formatDuration, taskCount } from '../core/format.js?v=2.0.0-20260728-fase3a';
+import { html } from '../core/html.js?v=2.1.0-20260728-fase3b';
+import { formatDuration, taskCount } from '../core/format.js?v=2.1.0-20260728-fase3b';
 
 export function renderContributionBar(leaderboard) {
   const total = leaderboard.total_minutes;
 
   if (total === 0) {
+    // Geen kader (dat leest als een uitgeschakeld invoerveld) maar de
+    // contouren van de segmenten die er kunnen komen, in ieders eigen kleur.
+    const ghosts = leaderboard.persons.map((person) => html`
+      <div class="segment ghost" style="--person-color: ${person.color}"
+        title="${person.name}"></div>`);
     return html`
-      <section class="contribution">
+      <section class="contribution empty">
         <p class="contribution-empty">
           Nog niets afgevinkt deze week. De eerste taak kleurt de balk.
         </p>
+        <div class="bar ghost" aria-hidden="true">${ghosts}</div>
       </section>`;
   }
 
