@@ -157,6 +157,23 @@ Samen 887 regels.
 Samen 1266 regels. `css/styles.css` is het grootste bestand van de hele repo en
 heeft geen enkele `<link>` of import.
 
+**Correctie 28-07-2026 — Lovelace-resources.** De twee tabellen hierboven
+beschrijven het **binnenste** document (de iframe met `index.html`). In HA zelf
+stonden daarnaast twee resource-registraties, buiten de repo om:
+
+| Resource | Type |
+|---|---|
+| `/local/chores-dashboard/js/components.js` | JavaScript-module |
+| `/local/chores-dashboard/js/utils.js` | JavaScript-module |
+
+Daardoor werden die twee bestanden ook in het **buitenste** HA-document geladen,
+op élk dashboard. `js/components.js` was dus niet "nooit geladen" maar
+buiten-wel/binnen-niet, en `js/utils.js` werd dubbel geladen: binnen via
+`index.html` én buiten als resource. Voor de classificatie binnen het eigen
+document blijven de tabellen kloppen. Beide registraties zijn op 28-07-2026
+verwijderd; sindsdien geldt de oorspronkelijke lezing alsnog, en kunnen beide
+bestanden zonder 404-risico weg.
+
 ---
 
 ## 3. Bekende gebreken op het moment van vastleggen
@@ -191,6 +208,29 @@ Die listener heeft nooit gevuurd.
 
 **Twee geneste iframes.** `panel.py:28` staat op `embed_iframe: True`, en
 `chores-dashboard.js:77` bouwt daarbinnen nog een eigen iframe.
+
+**De panelroute `/chores` is kapot en was dat altijd al.** (Vastgesteld
+28-07-2026.) De binnenste iframe in `chores-dashboard.js` is een direct kind
+van de shadow root (regel 24, `this.shadowRoot.innerHTML`), en voor een direct
+kind van een ShadowRoot is `parentElement` **null** — dat geeft alleen
+Element-ouders terug, en een ShadowRoot is een DocumentFragment. De inline
+handlers gebruiken hem toch:
+
+- regel 81, `onload`: `this.parentElement.querySelector('#loading')…` gooit
+  `TypeError: can't access property querySelector, this.parentElement is null`.
+  Het tweede statement — `this.style.display='block'` — draait daardoor nooit,
+  dus de iframe blijft op zijn inline `display: none` van regel 80 staan.
+- regel 82, `onerror`: identieke bug.
+
+Gevolg: de app laadt en draait volledig, maar onzichtbaar. De laadindicator
+wordt nooit opgeruimd, dus de timeout op regels 91-102 vuurt na 15 seconden en
+toont "Dashboard is taking longer than expected to load". Ironisch genoeg doen
+regels 87-88 het in dezelfde functie wél goed (`this.shadowRoot.querySelector`);
+`parentNode` had in de handlers ook gewerkt.
+
+Bewust niet gerepareerd: `chores-dashboard.js` verdwijnt in fase 3 samen met
+`embed_iframe: True`. Tot die tijd is het Lovelace-dashboard
+`/dashboard-chores/taken` de enige werkende ingang.
 
 **Externe afhankelijkheden.** `index.html:15` laadt Tailwind van
 `cdn.tailwindcss.com`, `index.html:150-151` laden React en ReactDOM van

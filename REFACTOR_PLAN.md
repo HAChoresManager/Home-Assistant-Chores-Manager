@@ -308,8 +308,10 @@ huidige muur waarin 8 van de 8 taken rood zijn.
 - `anyone` — niemand specifiek; iedereen kan afvinken.
 
 Op de kaart staat bij `rotating` zichtbaar wie aan de beurt is. Dat is nu de
-onduidelijkste plek in het formulier: `alternate_with` is bij vijf taken gevuld
-terwijl `use_alternating` op 0 staat, dus die instelling doet niets.
+onduidelijkste plek in het formulier: `alternate_with` is bij vijf taken
+gevuld, maar bij vier daarvan staat `use_alternating` op 0, dus daar doet de
+instelling niets. Alleen de AH-boodschappenlijst roteert echt (Martijn ↔
+Laura); zie `docs/legacy-state.yaml` en `tests/test_legacy_tasks.py`.
 
 ### 4.5 Deeltaken
 
@@ -493,6 +495,15 @@ daadwerkelijk.
 
 - `TECHNICAL_DESCRIPTION.md` — dubbel.
 
+**Lovelace-resources — opgeruimd op 28-07-2026.** In HA stonden twee
+resource-registraties (buiten de repo) die naar deze map wezen:
+`/local/chores-dashboard/js/components.js` en
+`/local/chores-dashboard/js/utils.js`, beide als JavaScript-module. Daardoor
+werden die twee bestanden ook in het **buitenste** HA-document geladen, op elk
+dashboard. Beide registraties zijn verwijderd; `js/components.js` en
+`js/utils.js` kunnen dus zonder 404-risico geschrapt worden. Zie
+`docs/legacy-notes.md` voor de correctie op de oorspronkelijke classificatie.
+
 ### `database.py` verhuist, het verdwijnt niet
 
 `database.py` (384 regels) stond eerder op deze lijst. Dat was onjuist.
@@ -602,13 +613,35 @@ wordt nergens geladen. Het wit verdwijnt pas in fase 3, met de HA-CSS-variabelen
 **Klaar wanneer:** één initialisatie in de console, en een tweede pageload haalt
 bestanden uit de cache.
 
-### Fase 2 — Backend (2–3 dagen)
+### Fase 2 — Backend (2–3 dagen, branch `refactor/v2`)
 
-- Nieuw schema (§3), verse database.
-- `scheduling/` met de vijf types en de doorrollogica (§4.1, §4.2).
+**Branchstrategie.** Fase 2 en 3 leven samen op één branch, `refactor/v2`, en
+gaan pas sámen naar main. Reden: fase 2 vervangt het schema en slankt de sensor
+af, en daarmee breekt de huidige frontend — die leest `overdue_tasks` uit de
+sensorattributen — vóórdat fase 3 hem vervangt. Main houdt dus de werkende oude
+app tot het geheel af is.
+
+**Wat er in fase 2 wél en niet verdwijnt.** Alleen de twee onbereikbare
+Python-bestanden gaan weg: `services.py` en `utils.py`. Alles onder `www/`
+blijft staan tot fase 3; de overige verwijderingen uit §7 schuiven mee naar
+fase 3.
+
+#### Fase 2a — Schema en planningslogica (zelfstandig verifieerbaar)
+
+- Nieuw schema (§3) in `db/schema.py`, verbindingslaag in `db/connection.py`.
+  De bestaande DDL in `db/base.py`, `theme_service.py` en `db/migrations.py`
+  blijft in 2a onaangeroerd; die wordt in 2b ontmanteld.
+- `scheduling/` met de vijf types (§4.1), de doorrollogica (§4.2), urgentie
+  (§4.3) en rotatie (§4.4).
 - **Unit tests, alleen hier.** De planningslogica is de enige plek waar tests
   echt lonen: `next_due` bij elk type, doorrollen over maand- en jaargrenzen,
   schrikkeljaar, achterstandsberekening per prioriteit, rotatie-index.
+- Sluit nog nergens op HA aan.
+
+**Klaar wanneer:** de tests slagen met pytest, zonder draaiende Home Assistant.
+
+#### Fase 2b — Aansluiten op HA
+
 - WS-commando's (§2.3).
 - Afgeslankte sensor + sensor per persoon (§2.4).
 - `scheduler.py` met de nachtelijke rol.
@@ -620,16 +653,24 @@ bestanden uit de cache.
   `services/chore_services.py:17`, `services/chore_services.py:249`,
   `services/user_services.py:9`, `services/notification_services.py:9` en
   `utils/notifications.py:13`. Pas als die alle acht om zijn, mag het bestand weg.
-- DDL samenbrengen in `db/schema.py`. Die staat nu op drie plekken:
-  `db/base.py:77-176`, `theme_service.py:18` en `db/migrations.py:117`.
-- Overige oude bestanden verwijderen (§7).
+- Oude DDL ontmantelen; alle DDL staat daarna alleen nog in `db/schema.py`. De
+  oude staat nu op drie plekken: `db/base.py:77-176`, `theme_service.py:18` en
+  `db/migrations.py:117`.
+- `services.py` en `utils.py` (onbereikbaar, §7) verwijderen.
 
 **Klaar wanneer:** je kunt via Developer Tools → Services een taak aanmaken,
 afvinken en zien dat `next_due` correct doorrolt; de tests slagen; de sensor toont
 kloppende samenvattingen.
 
-### Fase 3 — Frontend (3–5 dagen)
+### Fase 3 — Frontend (3–5 dagen, branch `refactor/v2`)
 
+- Doorwerken op `refactor/v2`; aan het einde van deze fase gaat de branch als
+  geheel naar main.
+- **De oude ingang blijft tot het einde staan.** De panelroute `/chores` is al
+  kapot — `chores-dashboard.js` gooit een TypeError in zijn onload-handler, zie
+  `docs/legacy-notes.md` — dus het Lovelace-dashboard `/dashboard-chores/taken`
+  is de enige werkende ingang. Die mag pas verdwijnen als het nieuwe panel
+  aantoonbaar draait.
 - `panel.py` omzetten naar `module_url`, `embed_iframe: false`.
 - `chores-panel.js` met `hass`-setter en WS-abonnement.
 - `core/` (api, store, html, format).
@@ -637,6 +678,8 @@ kloppende samenvattingen.
 - Optimistisch afvinken met terugdraaien bij fout, plus "Ongedaan maken" in de
   bevestiging.
 - `styles.css` op HA-variabelen.
+- De uitgestelde verwijderingen uit §7 (alles onder `www/`, `theme_service.py`,
+  de `theme_settings`-tabel) alsnog doorvoeren zodra het nieuwe panel draait.
 
 **Klaar wanneer:** koude pageload onder een seconde, één enkel JS-bestand per
 module, geen externe requests, thema klopt automatisch, werkt op de telefoon.
