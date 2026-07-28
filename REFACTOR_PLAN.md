@@ -292,12 +292,14 @@ prioriteit bepaalt hoe snel iets escaleert.
 |---|---|---|
 | `low` | 7 dagen | Rustig; pas na een week dringend |
 | `normal` | 3 dagen | Standaard |
-| `high` | 1 dag | Direct de dag erna dringend |
+| `high` | 1 dag | Dag 1 gedempt, dag 2 dringend |
 | `critical` | 0 dagen | Dringend zodra hij verloopt |
 
 Visueel: neutraal tot de vervaldatum, gedempt gemarkeerd binnen de coulance,
-nadrukkelijk daarna. Rood is dus zeldzaam en betekent iets — in plaats van de
-huidige muur waarin 8 van de 8 taken rood zijn.
+nadrukkelijk daarna. Dringend betekent: méér dagen over tijd dan de coulance.
+Met coulance 0 bestaat de gedempte toestand niet — dat is precies het verschil
+tussen `critical` en `high`. Rood is dus zeldzaam en betekent iets — in plaats
+van de huidige muur waarin 8 van de 8 taken rood zijn.
 
 ### 4.4 Toewijzing
 
@@ -356,9 +358,18 @@ Martijn     2u 45m     9 taken    🔥 7 weken
 
 ### 5.2 Periode
 
-Maandag 00:00 tot en met zondag 23:59, wekelijkse reset. Bij de reset wordt de
-uitslag weggeschreven in `week_summaries` zodat er historie is om op terug te
-kijken, en gaat er zondagavond een samenvatting uit (zie 6).
+Maandag 00:00 tot en met zondag 23:59. **Er is geen aparte weektabel en geen
+geplande reset-schrijfactie** — alles wordt afgeleid uit `completions`:
+weekstand, minuten, taken en streak. Twee redenen om dat zo vast te leggen:
+
+1. De minuten zijn al bij het afvinken bevroren (§3.4, `minutes` is een
+   momentopname), dus er valt bij een weekwissel niets meer te bevriezen.
+2. Een tabel die door een geplande taak gevuld wordt, mist een week zodra HA
+   zondagavond uit staat. Een afleiding uit `completions` kan niet
+   achterlopen.
+
+De "reset" is dus niets meer dan de weekgrens zelf; de zondagavondsamenvatting
+(§6) leest dezelfde afleiding.
 
 ### 5.3 Streak
 
@@ -368,6 +379,13 @@ Bewust wekelijks en niet dagelijks. De huidige dagelijkse streak staat op 0 voor
 iedereen en dat blijft zo: één dag missen wist alles. Dat straft in plaats van
 motiveert. "Zeven weken op rij" is haalbaar en blijft betekenen dat je het
 volhoudt.
+
+**Afleiding** (uit `completions`, geen aparte opslag): neem per persoon de
+weken (maandag als start, §5.2) waarin minstens één voltooiing staat. Tel
+terug vanaf de huidige week: elke aaneengesloten week met een voltooiing telt
+mee. Is de huidige week nog leeg, dan begint het tellen bij vorige week — een
+week die nog bezig is kan de streak niet breken; hij breekt pas als een week
+écht leeg is afgesloten.
 
 ### 5.4 Activiteitenfeed
 
@@ -437,6 +455,14 @@ custom_components/chores_manager/
     └── calculator.py     # next_due, achterstand, urgentie
 ```
 
+**Tussentoestand tijdens fase 2b: de v2-datalaag heet `store/`.** De oude app
+draait tijdens 2b nog op het oude `db/`-pakket, dus de nieuwe datalaag kan die
+naam nog niet innemen. Daarom leeft hij tijdelijk als `store/` (zelfde inhoud
+als het `db/` hierboven: schema, connection, chores, assignees, completions,
+subtasks). In fase 3, zodra het oude `db/` leeg is, neemt `store/` met een
+`git mv` de plaats van `db/` in. `db/schema.py` en `db/connection.py` uit fase
+2a zijn daarom naar `store/` verplaatst.
+
 ### Frontend
 
 ```
@@ -485,7 +511,7 @@ daadwerkelijk.
 | `js/app-init.js` | 223 | Gaat op in `chores-panel.js` |
 | `js/state/store.js` | 213 | Nooit geladen; vervangen door `core/store.js` |
 | `js/app-state.js` | 135 | Wordt geladen, maar `useAppState` wordt nergens aangeroepen |
-| `chores-dashboard.js` | 126 | Bouwt de binnenste iframe (§2.2); vervangen door `chores-panel.js` |
+| `chores-dashboard.js` | 126 | Bouwde de binnenste iframe (§2.2) — **verwijderd op 28-07-2026**, samen met `panel.py` en de route `/chores`; zie hieronder |
 | `js/theme-integration.js` | 70 | Nooit geladen; eigen themasysteem |
 | `js/components/fallback.js` | 65 | Staat niet in de componentmanifest; nooit geladen |
 | `js/components.js` | 37 | Nooit geladen |
@@ -503,6 +529,16 @@ werden die twee bestanden ook in het **buitenste** HA-document geladen, op elk
 dashboard. Beide registraties zijn verwijderd; `js/components.js` en
 `js/utils.js` kunnen dus zonder 404-risico geschrapt worden. Zie
 `docs/legacy-notes.md` voor de correctie op de oorspronkelijke classificatie.
+
+**De route `/chores` — verwijderd op 28-07-2026.** De panelroute was altijd al
+kapot (zie `docs/legacy-notes.md`) en is niet gerepareerd maar geschrapt:
+`panel.py` en `chores-dashboard.js` zijn weg, en de
+`async_setup_panel`-aanroep is uit `__init__.py` gehaald.
+`_setup_web_assets()` blijft wél bestaan — het Lovelace-dashboard
+`/dashboard-chores/taken` serveert `/local/chores-dashboard/index.html` uit de
+kopie die die functie maakt, en dat is tot fase 3 de enige ingang. Het nieuwe
+panel van fase 3 krijgt een nieuw `panel.py` en wordt op **`/taken`**
+geregistreerd, niet op `/chores`.
 
 ### `database.py` verhuist, het verdwijnt niet
 
@@ -666,12 +702,15 @@ kloppende samenvattingen.
 
 - Doorwerken op `refactor/v2`; aan het einde van deze fase gaat de branch als
   geheel naar main.
-- **De oude ingang blijft tot het einde staan.** De panelroute `/chores` is al
-  kapot — `chores-dashboard.js` gooit een TypeError in zijn onload-handler, zie
-  `docs/legacy-notes.md` — dus het Lovelace-dashboard `/dashboard-chores/taken`
-  is de enige werkende ingang. Die mag pas verdwijnen als het nieuwe panel
-  aantoonbaar draait.
-- `panel.py` omzetten naar `module_url`, `embed_iframe: false`.
+- **De oude ingang blijft tot het einde staan.** Het Lovelace-dashboard
+  `/dashboard-chores/taken` is de enige werkende ingang (de kapotte panelroute
+  `/chores` is op 28-07-2026 al verwijderd, zie §7). Het Lovelace-dashboard mag
+  pas verdwijnen als het nieuwe panel aantoonbaar draait — en daarmee ook
+  `_setup_web_assets()` in `__init__.py`, dat de kopie serveert waar dat
+  dashboard op draait.
+- Nieuw `panel.py`: `panel_custom` met `module_url` en `embed_iframe: false`,
+  **geregistreerd op `/taken`** — niet op `/chores`; die route is weg en komt
+  niet terug.
 - `chores-panel.js` met `hass`-setter en WS-abonnement.
 - `core/` (api, store, html, format).
 - Weergaven Vandaag → Alles → Activiteit → Beheer, in die volgorde.

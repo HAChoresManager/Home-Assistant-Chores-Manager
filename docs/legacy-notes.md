@@ -228,9 +228,14 @@ toont "Dashboard is taking longer than expected to load". Ironisch genoeg doen
 regels 87-88 het in dezelfde functie wél goed (`this.shadowRoot.querySelector`);
 `parentNode` had in de handlers ook gewerkt.
 
-Bewust niet gerepareerd: `chores-dashboard.js` verdwijnt in fase 3 samen met
-`embed_iframe: True`. Tot die tijd is het Lovelace-dashboard
-`/dashboard-chores/taken` de enige werkende ingang.
+Niet gerepareerd maar geschrapt: op 28-07-2026 zijn `panel.py` en
+`chores-dashboard.js` verwijderd en is de `async_setup_panel`-aanroep uit
+`__init__.py` gehaald. `/chores` geeft sindsdien een 404.
+`_setup_web_assets()` bleef staan — het Lovelace-dashboard
+`/dashboard-chores/taken` draait op de kopie die die functie maakt en is tot
+fase 3 de enige ingang. Let op: de kopieerstap verwijdert geen bestanden uit
+`<config>/www/chores-dashboard/`, dus daar blijft een wees-exemplaar van
+`chores-dashboard.js` liggen; onschadelijk, niets verwijst ernaar.
 
 **Externe afhankelijkheden.** `index.html:15` laadt Tailwind van
 `cdn.tailwindcss.com`, `index.html:150-151` laden React en ReactDOM van
