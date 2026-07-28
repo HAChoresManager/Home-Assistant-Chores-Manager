@@ -6,7 +6,7 @@ een dinsdag, 2026-07-31 een vrijdag.
 """
 from datetime import date, timedelta
 
-from scheduling.calculator import overdue_days, roll_forward
+from chores_manager.scheduling.calculator import overdue_days, roll_forward
 
 DINSDAG = date(2026, 7, 28)
 VRIJDAG = date(2026, 7, 31)

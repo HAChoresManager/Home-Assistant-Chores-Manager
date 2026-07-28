@@ -1,7 +1,7 @@
 """Validatie van de vijf planningstypen (§4.1)."""
 import pytest
 
-from scheduling.types import ScheduleError, parse_schedule_config, validate_schedule
+from chores_manager.scheduling.types import ScheduleError, parse_schedule_config, validate_schedule
 
 
 class TestGeldigeConfigs:

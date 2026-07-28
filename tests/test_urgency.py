@@ -10,8 +10,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from scheduling.calculator import DUE, GRACE, UPCOMING, URGENT, urgency
-from scheduling.types import ScheduleError
+from chores_manager.scheduling.calculator import DUE, GRACE, UPCOMING, URGENT, urgency
+from chores_manager.scheduling.types import ScheduleError
 
 VANDAAG = date(2026, 7, 28)
 
