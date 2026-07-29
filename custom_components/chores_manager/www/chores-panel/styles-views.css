@@ -221,3 +221,59 @@ button.danger {
   border: 1px solid var(--error-color, #b3261e);
   padding: 0 16px;
 }
+
+/* --- gearchiveerde taken (E1) ----------------------------------------- */
+
+.archived {
+  margin-top: 24px;
+}
+
+.archived summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.archived summary:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.archived .manage-rows {
+  opacity: 0.75;
+}
+
+/* --- rotatievolgorde (E3) ---------------------------------------------- */
+
+.rotation-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rotation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rotation-arrows {
+  display: flex;
+  gap: 4px;
+}
+
+.arrow {
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid var(--divider-color);
+  border-radius: var(--ha-card-border-radius, 12px);
+  background: none;
+  color: var(--primary-text-color);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.arrow:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}

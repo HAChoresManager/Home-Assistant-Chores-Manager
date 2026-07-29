@@ -1,5 +1,5 @@
 /**
- * Dunne laag over hass.connection voor de negen WS-commando's (plan §2.3).
+ * Dunne laag over hass.connection voor de tien WS-commando's (plan §2.3).
  *
  * Geen fetch, geen tokens, geen headers: alles loopt over de WebSocket die HA
  * zelf al open heeft. subscribeMessage van home-assistant-js-websocket
@@ -111,6 +111,13 @@ class ChoresApi {
   choreSnooze(choreId, mode) {
     return this._send({
       type: 'chores_manager/chore/snooze', chore_id: choreId, mode,
+    });
+  }
+
+  /** Gearchiveerde taak terugzetten met een verse vervaldatum (E1). */
+  choreRestore(choreId) {
+    return this._send({
+      type: 'chores_manager/chore/restore', chore_id: choreId,
     });
   }
 

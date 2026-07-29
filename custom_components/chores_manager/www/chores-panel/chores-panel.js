@@ -12,6 +12,15 @@
  * Omdat beide routes hetzelfde bestand op twee URL's kunnen laden, staat er
  * een guard om customElements.define.
  *
+ * KAARTMODUS EN DE URL (fase 5): in kaartmodus (setConfig is aangeroepen,
+ * dat doet alleen Lovelace en altijd vóór connectedCallback) blijft de
+ * actieve weergave in de store en raakt niets de URL aan — geen hash zetten,
+ * geen hashchange/location-changed-listeners. Popup-kaarten (Bubble Card)
+ * leven zelf op hashes; een tabklik die de hash zou zetten sluit zo'n popup.
+ * De tabs zijn daar knoppen in plaats van ankers, zodat ook de HA-router
+ * nergens iets te onderscheppen heeft. Panelmodus houdt de hash-routing en
+ * de werkende terugknop precies zoals ze waren.
+ *
  * ROUTERVALKUIL: de HA-frontend onderschept elke klik op een <a> (ook door
  * shadow DOM heen) en vertaalt hem naar history.pushState() — en pushState
  * vuurt géén hashchange. Daarom krijgt de tabklik hier een preventDefault en
@@ -94,18 +103,23 @@ function haOptionsFromHass(hass) {
   return { users, services };
 }
 
-function renderNav(view, narrow) {
+function renderNav(view, narrow, cardMode) {
   // Smal scherm: HA verbergt de zijbalk, dus zonder eigen knop is er geen
   // enkele weg terug het menu in. hass-toggle-menu is HA's standaardevent
   // om de zijbalk te openen.
+  // In kaartmodus zijn de tabs knoppen zonder href: niets voor de HA-router
+  // om te onderscheppen, niets dat een popup-hash kan verstoren.
+  const tab = ([id, label]) => (cardMode
+    ? html`<button type="button" class="tab ${view === id ? 'active' : ''}"
+        data-view="${id}" ${view === id ? html`aria-current="page"` : ''}>${label}</button>`
+    : html`<a class="tab ${view === id ? 'active' : ''}" href="#${id}"
+        ${view === id ? html`aria-current="page"` : ''}>${label}</a>`);
   return html`
     <nav class="tabs" aria-label="Weergave">
       ${narrow ? html`
         <button type="button" class="menu-btn" data-action="menu"
           aria-label="Zijbalk openen">☰</button>` : ''}
-      ${TABS.map(([id, label]) => html`
-        <a class="tab ${view === id ? 'active' : ''}" href="#${id}"
-          ${view === id ? html`aria-current="page"` : ''}>${label}</a>`)}
+      ${TABS.map(tab)}
     </nav>`;
 }
 
@@ -114,6 +128,7 @@ class ChoresPanel extends HTMLElement {
     super();
     this._hass = null;
     this._started = false;
+    this._cardMode = false;
     this._unsubStore = null;
     this._snackbarTimer = 0;
     this._renderedEditing = null;
@@ -150,11 +165,13 @@ class ChoresPanel extends HTMLElement {
     return store.get().narrow;
   }
 
-  /** Lovelace-kaartmodus: een lege configuratie is geldig. */
+  /** Lovelace-kaartmodus: een lege configuratie is geldig. Alleen Lovelace
+   * roept dit aan (vóór connectedCallback) — dus dit ís de modusdetectie. */
   setConfig(config) {
     if (config !== undefined && typeof config !== 'object') {
       throw new Error('chores-panel: kaartconfiguratie hoort leeg te zijn');
     }
+    this._cardMode = true;
   }
 
   getCardSize() {
@@ -180,9 +197,12 @@ class ChoresPanel extends HTMLElement {
       root.addEventListener('change', this._onChange);
     }
     // Beide events: hashchange voor echte hashnavigatie (tabklik, terugknop),
-    // location-changed voor HA's pushState-navigatie (zie de kop).
-    window.addEventListener('hashchange', this._onLocationChanged);
-    window.addEventListener('location-changed', this._onLocationChanged);
+    // location-changed voor HA's pushState-navigatie (zie de kop). In
+    // kaartmodus niet: daar is de URL van de popup/het dashboard, niet van ons.
+    if (!this._cardMode) {
+      window.addEventListener('hashchange', this._onLocationChanged);
+      window.addEventListener('location-changed', this._onLocationChanged);
+    }
     if (this._hass && !this._started) this._start();
   }
 
@@ -202,7 +222,11 @@ class ChoresPanel extends HTMLElement {
     // Bewaarde themakeuze toepassen vóór de eerste render — geen flits.
     this._syncThemes();
     // Voor de chip-default op 'anyone'-taken (§4.4, fase 4): wie ben ik?
-    store.set({ view: viewFromHash(), currentUserId: this._hass?.user?.id || null });
+    // Kaartmodus leest de URL niet; die begint gewoon op Vandaag.
+    store.set({
+      view: this._cardMode ? 'vandaag' : viewFromHash(),
+      currentUserId: this._hass?.user?.id || null,
+    });
     this._unsubStore = store.subscribe(() => this._render());
     this._render();
     await this._refresh();
@@ -252,7 +276,7 @@ class ChoresPanel extends HTMLElement {
     const verbinden = state.connecting && state.data
       ? html`<p class="reconnect" role="status">Verbinden…</p>` : '';
     setContent(this._app,
-      html`${renderNav(state.view, state.narrow)}${verbinden}${body}`);
+      html`${renderNav(state.view, state.narrow, this._cardMode)}${verbinden}${body}`);
   }
 
   /**
@@ -296,15 +320,22 @@ class ChoresPanel extends HTMLElement {
   async _onClick(event) {
     const path = event.composedPath();
 
-    // Tabklik: alleen de hash zetten, verder niets. Zonder preventDefault
-    // maakt de HA-router er een pushState van en vuurt hashchange nooit.
+    // Tabklik. Panelmodus: alleen de hash zetten, verder niets — zonder
+    // preventDefault maakt de HA-router er een pushState van en vuurt
+    // hashchange nooit. Kaartmodus: de weergave wisselt in de store en de
+    // URL blijft met rust (een popup-hash mag niet sneuvelen).
     const tab = path.find(
       (el) => el instanceof HTMLElement && el.classList?.contains('tab'));
     if (tab) {
       event.preventDefault();
-      const target = tab.getAttribute('href');
-      if (target && target !== window.location.hash) {
-        window.location.hash = target;
+      const view = tab.dataset.view || (tab.getAttribute('href') || '').slice(1);
+      if (!view) return;
+      if (this._cardMode) {
+        if (view !== store.get().view) {
+          store.set({ view, chooser: null, editing: null });
+        }
+      } else if (`#${view}` !== window.location.hash) {
+        window.location.hash = `#${view}`;
       }
       return;
     }
@@ -366,6 +397,18 @@ class ChoresPanel extends HTMLElement {
       store.set({ editing: { ...state.editing, confirm: true } });
     } else if (action === 'delete-cancel') {
       store.set({ editing: { ...state.editing, confirm: false } });
+    } else if (action === 'rotation-up' || action === 'rotation-down') {
+      // Beurtvolgorde wisselen ín de DOM (E3): geen render, dus al het
+      // getypte werk in het formulier blijft staan. collectChoreForm leest
+      // de rijvolgorde terug.
+      const row = button.closest('[data-rotation-row]');
+      if (row && action === 'rotation-up' && row.previousElementSibling) {
+        row.parentElement.insertBefore(row, row.previousElementSibling);
+      } else if (row && action === 'rotation-down' && row.nextElementSibling) {
+        row.parentElement.insertBefore(row.nextElementSibling, row);
+      }
+    } else if (action === 'restore-chore') {
+      await this._restore(choreId);
     } else if (action === 'delete-confirm') {
       await this._delete();
     } else if (action === 'menu') {
@@ -420,6 +463,19 @@ class ChoresPanel extends HTMLElement {
       slot.hidden = false;
     } else {
       this._showSnackbar(message, { error: true });
+    }
+  }
+
+  /** Gearchiveerde taak terugzetten (E1); de server bepaalt de verse datum. */
+  async _restore(choreId) {
+    const name = store.get().data?.archived_chores
+      ?.find((c) => c.id === choreId)?.name || choreId;
+    try {
+      await api.choreRestore(choreId);
+      this._showSnackbar(`Teruggezet: ${name}`);
+      await this._refresh();
+    } catch (err) {
+      this._showSnackbar(err?.message || String(err), { error: true });
     }
   }
 

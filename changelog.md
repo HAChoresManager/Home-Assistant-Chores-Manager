@@ -1,5 +1,25 @@
 # Changelog
 
+## v2.4.0 (2026-07-29)
+
+Fase 5 — polish en de doorgeschoven punten; hiermee is de refactor afgerond.
+
+- De "Klaar"-knop in de ochtendmelding draagt de taaknaam.
+- `sensor.chores_overview`: nieuw attribuut `tasks_today` (compacte
+  weergavelijst mét toegewezen persoon) en `color` per persoon in `persons`,
+  voor eigen Lovelace-kaarten.
+- Kaartmodus raakt de URL niet meer aan: tabs werken in een Bubble
+  Card-popup zonder hem te sluiten; het panel op /taken behoudt hash-routing
+  en terugknop.
+- Gearchiveerde taken zijn terug te zetten (sectie "Gearchiveerd" in Beheer,
+  WS-commando `chore/restore`) met een verse vervaldatum.
+- Checkliststappen zijn ook mét historie te bewerken:
+  `completions.subtask_id` → ON DELETE SET NULL via een geteste
+  tabel-rebuildmigratie; minuten en historie blijven staan.
+- Rotatievolgorde herordenen met pijltjes in het taakformulier.
+- De tijdelijke service `seed` en `seed.py` zijn verwijderd;
+  `send_daily_summary`/`send_weekly_summary` blijven.
+
 ## v2.2.0 (2026-07-28)
 
 De omschakeling (fase 3c): de oude React/CDN-app is volledig verwijderd; het

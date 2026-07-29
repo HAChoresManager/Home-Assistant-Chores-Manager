@@ -1,4 +1,4 @@
-"""De negen WS-commando's uit §2.3 (fase 2b).
+"""De tien WS-commando's uit §2.3 (negen uit fase 2b, chore/restore uit fase 5).
 
 Authenticatie is de standaard van websocket_api: elke ingelogde gebruiker mag
 ze aanroepen, geen admin vereist — Laura en Noud moeten kunnen afvinken. Alle
@@ -30,7 +30,13 @@ from .const import (
     UNDO_WINDOW_SECONDS,
 )
 from .db.assignees import delete_assignee, save_assignee
-from .db.chores import delete_chore, get_chore, save_chore, snooze_chore
+from .db.chores import (
+    delete_chore,
+    get_chore,
+    restore_chore,
+    save_chore,
+    snooze_chore,
+)
 from .db.completions import complete_chore, undo_completion
 from .db.overview import build_state
 from .db.subtasks import set_subtasks
@@ -112,9 +118,10 @@ async def ws_undo(hass, connection, msg):
 async def ws_chore_save(hass, connection, msg):
     """Taak aanmaken of bijwerken; validatie zit in de store-laag.
 
-    Een optionele lijst "subtasks" (namen) in het taakobject vervangt de
-    checklist-deeltaken. Deeltaken met voltooiingshistorie kunnen niet
-    vervangen worden; dat geeft een nette foutmelding terug.
+    Een optionele lijst "subtasks" (namen) in het taakobject werkt de
+    checklist-deeltaken bij. Sinds fase 5 mag dat ook mét historie: een
+    geschrapte stap laat zijn voltooiingen staan (ON DELETE SET NULL);
+    stappen met dezelfde naam behouden rij, vinkje en historie.
     """
     now = dt_util.now()
     chore_data = dict(msg["chore"])
@@ -168,6 +175,25 @@ async def ws_chore_snooze(hass, connection, msg):
 
 
 @websocket_api.websocket_command({
+    vol.Required("type"): "chores_manager/chore/restore",
+    vol.Required("chore_id"): str,
+})
+@websocket_api.async_response
+async def ws_chore_restore(hass, connection, msg):
+    """Gearchiveerde taak terugzetten met een verse vervaldatum (fase 5, E1)."""
+    now = dt_util.now()
+    try:
+        chore = await hass.async_add_executor_job(
+            restore_chore, _path(hass), msg["chore_id"],
+            now.date(), now.isoformat())
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_input", str(err))
+        return
+    _notify(hass, "chore_restore", chore_id=msg["chore_id"])
+    connection.send_result(msg["id"], {"chore": chore})
+
+
+@websocket_api.websocket_command({
     vol.Required("type"): "chores_manager/assignee/save",
     vol.Required("assignee"): dict,
 })
@@ -213,14 +239,14 @@ async def ws_subscribe(hass, connection, msg):
 
 COMMANDS = (
     ws_state, ws_complete, ws_undo,
-    ws_chore_save, ws_chore_delete, ws_chore_snooze,
+    ws_chore_save, ws_chore_delete, ws_chore_snooze, ws_chore_restore,
     ws_assignee_save, ws_assignee_delete, ws_subscribe,
 )
 
 
 @callback
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
-    """Registreer de negen commando's. Eén keer per HA-run aanroepen."""
+    """Registreer de commando's (COMMANDS). Eén keer per HA-run aanroepen."""
     for command in COMMANDS:
         websocket_api.async_register_command(hass, command)
     _LOGGER.info("Chores Manager: %d WS-commando's geregistreerd", len(COMMANDS))

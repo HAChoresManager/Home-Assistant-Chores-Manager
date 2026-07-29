@@ -61,6 +61,17 @@ button:focus-visible,
   font-size: 0.95rem;
 }
 
+/* In kaartmodus zijn de tabs knoppen (geen href); zelfde uiterlijk. */
+button.tab {
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
 .tab.active {
   color: var(--primary-color);
   border-bottom-color: var(--primary-color);

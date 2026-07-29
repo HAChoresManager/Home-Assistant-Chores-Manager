@@ -1,13 +1,6 @@
-# De twintig services van de oude app zijn in fase 3c verdwenen; alle
-# bediening loopt via de WS-commando's (websocket.py). Wat hier staat is
-# het volledige service-aanbod.
-
-seed:
-  name: Seed (tijdelijk)
-  description: >-
-    TIJDELIJK — vult de database met de acht taken en drie personen uit de
-    oude app. Bestaande rijen met dezelfde id's worden overschreven. Dit
-    verdwijnt in fase 5, zodra de taken definitief opnieuw zijn ingevoerd.
+# De twintig services van de oude app zijn in fase 3c verdwenen en de
+# tijdelijke seed in fase 5; alle bediening loopt via de WS-commando's
+# (websocket.py). Wat hier staat is het volledige service-aanbod.
 
 roll_forward:
   name: Achterstand doorrollen
@@ -18,15 +11,14 @@ roll_forward:
     gesproken is deze service niet nodig.
 
 send_daily_summary:
-  name: Ochtendmelding nu versturen (tijdelijk)
+  name: Ochtendmelding nu versturen
   description: >-
-    TIJDELIJK, net als seed — verstuurt de ochtendmelding van 08:00 nu
-    meteen, om de meldingen te testen zonder de klok te verzetten. Alleen
-    personen met een ingevulde meldingsservice en iets te doen krijgen er
-    één.
+    Verstuurt de ochtendmelding van 08:00 nu meteen. Alleen personen met een
+    ingevulde meldingsservice, meldingen aan én iets te doen krijgen er één;
+    de knop in de melding draagt de naam van de belangrijkste taak.
 
 send_weekly_summary:
-  name: Weeksamenvatting nu versturen (tijdelijk)
+  name: Weeksamenvatting nu versturen
   description: >-
-    TIJDELIJK, net als seed — verstuurt de weeksamenvatting van zondag
-    20:00 nu meteen, naar iedereen met een ingevulde meldingsservice.
+    Verstuurt de weeksamenvatting van zondag 20:00 nu meteen, naar iedereen
+    met een ingevulde meldingsservice en meldingen aan.

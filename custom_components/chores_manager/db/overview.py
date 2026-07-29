@@ -52,16 +52,47 @@ def enrich_chore(database_path: str, chore: dict, today: date) -> dict:
     return enriched
 
 
+_TASKS_TODAY_LIMIT = 8
+
+
+def _tasks_today(chores: list[dict], assignees_by_id: dict) -> list[dict]:
+    """Compacte weergavelijst voor Lovelace (fase 5, stap B): wat er vandaag
+    speelt mét wie het moet doen. Puur weergave — geen ids, geen
+    beschrijvingen. Eerst vandaag (prioriteit, dan naam), dan achterstand op
+    cyclusfractie; maximaal acht items."""
+    def rij(chore: dict, status: str) -> dict:
+        assignee = (None if chore["assignment_type"] == "anyone"
+                    else assignees_by_id.get(chore["current_assignee"]))
+        return {
+            "name": chore["name"],
+            "icon": chore["icon"],
+            "status": status,
+            "assignee_name": assignee["name"] if assignee else "wie kan",
+            "assignee_color": assignee["color"] if assignee else None,
+        }
+
+    vandaag = sorted(
+        (c for c in chores if c["urgency"] == "due"),
+        key=lambda c: (_PRIORITY_RANK.get(c["priority"], 9), c["name"]))
+    achter = sorted(
+        (c for c in chores if c["overdue_days"] > 0),
+        key=lambda c: -(c["cycle_fraction"] or 0))
+    return ([rij(c, "today") for c in vandaag]
+            + [rij(c, "overdue") for c in achter])[:_TASKS_TODAY_LIMIT]
+
+
 def overview(database_path: str, today: date) -> dict:
     """De samenvatting van §2.4: sensortoestand plus attributen."""
-    chores = list_chores(database_path)
-    due_dates = [date.fromisoformat(c["next_due"]) for c in chores]
-    due_today = sum(1 for d in due_dates if d == today)
-    overdue = sum(1 for d in due_dates if d < today)
+    chores = [enrich_chore(database_path, chore, today)
+              for chore in list_chores(database_path)]
+    due_today = sum(1 for c in chores if c["urgency"] == "due")
+    overdue = sum(1 for c in chores if c["overdue_days"] > 0)
+    assignees_by_id = {a["id"]: a for a in list_assignees(database_path)}
     board = leaderboard(database_path, today)
     streaks = assignee_streaks(database_path, today)
     # Iedereen die iets deed telt mee, mét de ranglijstvlag erbij: filteren
     # is presentatie en hoort bij de afnemer (Lovelace), niet bij de sensor.
+    # De kleur zit erbij (fase 5) zodat een kaart de naam kan kleuren.
     persons = {
         p["id"]: {
             "name": p["name"],
@@ -69,6 +100,7 @@ def overview(database_path: str, today: date) -> dict:
             "tasks": p["tasks"],
             "streak": streaks.get(p["id"], 0),
             "in_leaderboard": bool(p["include_in_leaderboard"]),
+            "color": p.get("color"),
         }
         for p in board["persons"]
     }
@@ -79,6 +111,7 @@ def overview(database_path: str, today: date) -> dict:
         "completed_today": completed_today_count(database_path, today),
         "week_minutes_total": board["total_minutes"],
         "persons": persons,
+        "tasks_today": _tasks_today(chores, assignees_by_id),
     }
 
 
@@ -139,7 +172,19 @@ def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
     """
     counts = history_counts(database_path)
     chores = []
-    for chore in list_chores(database_path):
+    archived = []
+    for chore in list_chores(database_path, include_inactive=True):
+        if not chore["active"]:
+            # gearchiveerd (E1): alleen wat Beheer nodig heeft om ze te
+            # tonen en terug te zetten — geen urgentie, die is betekenisloos
+            archived.append({
+                "id": chore["id"],
+                "name": chore["name"],
+                "icon": chore["icon"],
+                "schedule_type": chore["schedule_type"],
+                "schedule_config": chore["schedule_config"],
+            })
+            continue
         enriched = enrich_chore(database_path, chore, today)
         enriched["has_history"] = bool(counts.get(chore["id"]))
         chores.append(enriched)
@@ -155,6 +200,7 @@ def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
     return {
         "today": today.isoformat(),
         "chores": chores,
+        "archived_chores": archived,
         "assignees": assignees,
         "leaderboard": board,
         "feed": feed(database_path, feed_limit),
