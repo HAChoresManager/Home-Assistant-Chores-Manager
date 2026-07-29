@@ -173,7 +173,33 @@ export function renderManage(state) {
       <ul class="manage-rows">${data.assignees.map(assigneeRow)}</ul>
       <button type="button" class="secondary add" data-action="new-assignee">+ Nieuwe persoon</button>
     </section>
+    ${archivedSection(data.archived_chores || [])}
     ${themeSection(state.themes)}`;
+}
+
+function archivedRow(chore) {
+  return html`
+    <li class="manage-row">
+      <span class="card-icon" aria-hidden="true">${chore.icon}</span>
+      <span class="manage-text">
+        <span class="manage-name">${chore.name}</span>
+        <span class="manage-sub">${scheduleLabel(chore.schedule_type, chore.schedule_config)}</span>
+      </span>
+      <button type="button" class="secondary" data-action="restore-chore"
+        data-chore="${chore.id}">Terugzetten</button>
+    </li>`;
+}
+
+function archivedSection(archived) {
+  // Ingeklapt via <details>: geen state, geen render nodig voor open/dicht.
+  if (!archived.length) return '';
+  return html`
+    <details class="archived">
+      <summary class="section-title">Gearchiveerd (${archived.length})</summary>
+      <p class="manage-sub">Terugzetten maakt de taak weer actief, met een verse
+        vervaldatum volgens zijn eigen planning. De historie is nooit weggeweest.</p>
+      <ul class="manage-rows">${archived.map(archivedRow)}</ul>
+    </details>`;
 }
 
 /** Lees het personenformulier terug voor assignee/save. */

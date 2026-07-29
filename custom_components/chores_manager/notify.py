@@ -69,6 +69,15 @@ def _opsomming(namen: list[str]) -> str:
     return f"{', '.join(namen[:-1])} en {namen[-1]}"
 
 
+def _knoptekst(taaknaam: str, limiet: int = 22) -> str:
+    """"✓ Planten water geven" — de knop draagt de taaknaam, zodat je ziet
+    wát je afvinkt. iOS toont maar ~20-25 tekens, dus netjes afkappen."""
+    tekst = f"✓ {taaknaam}"
+    if len(tekst) <= limiet:
+        return tekst
+    return tekst[:limiet - 1].rstrip() + "…"
+
+
 def _notify_target(notify_service: str) -> str | None:
     """"notify.mobile_app_x" → "mobile_app_x"; kale servicenaam mag ook."""
     if not notify_service:
@@ -109,7 +118,7 @@ def _daily_payload(entry: dict) -> dict | None:
         payload["data"]["actions"] = [{
             "action": (f"{NOTIFY_ACTION_PREFIX}:{actie['id']}"
                        f":{entry['assignee']['id']}"),
-            "title": "Klaar",
+            "title": _knoptekst(actie["name"]),
         }]
     return payload
 

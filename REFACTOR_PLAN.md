@@ -1,7 +1,9 @@
 # Chores Manager — Refactorplan
 
-Status: vastgesteld 27-07-2026. Dit document is de bron van waarheid voor de
-refactor. Wijk er niet van af zonder het bij te werken.
+Status: vastgesteld 27-07-2026; **refactor afgerond op 29-07-2026** (fase 0
+t/m 5 uitgevoerd, versie 2.4.0). Dit document blijft de bron van waarheid
+voor de ontwerpbesluiten; wat er nog ooit bij kan, staat in §10 onder
+"Later, misschien".
 
 ---
 
@@ -100,9 +102,13 @@ een container met 1 CPU. Push in plaats van poll haalt dat weg én maakt de
 | `chores_manager/assignee/save` | Persoon aanmaken of bijwerken |
 | `chores_manager/assignee/delete` | Persoon verwijderen |
 | `chores_manager/subscribe` | Abonneren op wijzigingen (push) |
+| `chores_manager/chore/restore` | Gearchiveerde taak terugzetten, verse vervaldatum *(fase 5)* |
 
 De HA-services (`chores_manager.mark_done` etc.) blijven bestaan voor gebruik in
-automations en voor de actieknop in notificaties.
+automations en voor de actieknop in notificaties. *(Achterhaald in 3c/4: de
+oude services zijn verdwenen; de actieknop vinkt af via een event-listener in
+`notify.py`, zie §6. Wat er nog aan services is: `roll_forward`,
+`send_daily_summary`, `send_weekly_summary`.)*
 
 ### 2.4 Sensor
 
@@ -476,7 +482,7 @@ Alles onder de 600 regels. Bij overschrijding: splitsen.
 
 ```
 custom_components/chores_manager/
-├── __init__.py           # setup, config entry, services seed/roll_forward
+├── __init__.py           # setup, config entry, services (roll_forward, meldingen)
 ├── manifest.json
 ├── const.py
 ├── config_flow.py        # één instantie, niets in te stellen
@@ -484,7 +490,6 @@ custom_components/chores_manager/
 ├── websocket.py          # WS-commando's (zie 2.3)
 ├── sensor.py             # overzichtssensor (§2.4), push via dispatcher
 ├── scheduler.py          # nachtelijke rol; meldingen (§6) komen in fase 4
-├── seed.py               # TIJDELIJK; vervalt in fase 5
 ├── notify.py             # fase 4: actionable notificaties
 ├── db/
 │   ├── __init__.py
@@ -504,8 +509,9 @@ custom_components/chores_manager/
 
 Geen `migrations.py` meer in de boom: v2 heeft een vers schema; migraties
 komen pas terug zodra dat schema ná ingebruikname wijzigt. Geen los
-`services.py`: de twee overgebleven services (seed, roll_forward) zijn klein
-genoeg voor `__init__.py`; fase 4 voegt `notify.py` toe voor de meldingen.
+`services.py`: de overgebleven services (roll_forward en de twee
+meldingsservices) zijn klein genoeg voor `__init__.py`; `notify.py` (fase 4)
+bevat de meldingen. `seed.py` was tijdelijk en is in fase 5 verwijderd.
 
 **Tussentoestand (2b–3b): de v2-datalaag heette `store/`** omdat de oude app
 het oude `db/`-pakket nog bezette. **Uitgevoerd in 3c (28-07-2026):** het oude
@@ -856,22 +862,51 @@ werk in de HA-config zelf, geen repowerk.
 
 **Klaar wanneer:** je gebruikt het een week zonder je aan iets te storen.
 
+**Status: uitgevoerd op 29-07-2026 (versie 2.4.0).** De "Klaar"-knop draagt
+de taaknaam (afgekapt voor iOS); `sensor.chores_overview` kreeg `tasks_today`
+en kleur in `persons` voor eigen Lovelace-kaarten; kaartmodus houdt de
+weergave in de store en raakt de URL niet aan (Bubble-popups blijven open);
+`seed.py` en de service `seed` zijn verwijderd (de testservices voor
+meldingen blijven); gearchiveerde taken zijn terug te zetten met een verse
+vervaldatum (`chore/restore`, ingeklapte sectie in Beheer); checkliststappen
+zijn mét historie te bewerken (`completions.subtask_id` → ON DELETE SET NULL
+via een tabel-rebuild in één transactie, migratie expliciet getest op een
+database mét voltooiingen); en de rotatievolgorde is te herordenen met
+pijltjes in het taakformulier.
+
 ---
 
-## 10. Open punten
+## 10. Open punten — en wat er "Later, misschien" bij kan
+
+De genummerde punten hieronder zijn de oorspronkelijke open punten van
+27-07-2026; wat inmiddels besloten of achterhaald is, staat er cursief bij.
+
+**Later, misschien** (bewust niet gedaan; geen van alle nodig voor dagelijks
+gebruik):
+
+- Meldingstijden (08:00 / zondag 20:00) instelbaar maken via de UI — nu
+  constanten in `const.py`.
+- Handmatige tijdcorrectie bij het afvinken (punt 4 hieronder).
+- De wekelijkse rapportage uitbreiden met een vergelijking met vorige week.
+- HACS-publicatie; tot die tijd is de installatie een kopieerslag.
+- `notify.py` meerdere actieknoppen per melding geven (nu bewust één).
 
 1. **Doet Noud mee?** Hij staat in de database maar heeft geen taken. Aanname:
    wel taken en een eigen streak, maar `include_in_leaderboard = 0` zodat hij niet
-   in de tijdsranglijst van volwassenen staat.
+   in de tijdsranglijst van volwassenen staat. *(Zo gebouwd; de sensor en de
+   kaartattributen dragen de vlag zodat afnemers zelf filteren.)*
 2. **Snooze-gedrag.** Voorstel: "naar morgen" of "sla deze keer over" (rolt door
-   naar de volgende geplande keer). Nog te bevestigen.
-3. **Weekstart.** Aanname maandag.
+   naar de volgende geplande keer). Nog te bevestigen. *(Zo gebouwd:
+   `chore/snooze` met 'tomorrow' en 'skip'.)*
+3. **Weekstart.** Aanname maandag. *(Zo gebouwd: maandag 00:00.)*
 4. **Handmatige tijdcorrectie.** Als een taak veel langer duurde dan geschat, wil
    je dat dan kunnen bijstellen bij het afvinken? Voegt eerlijkheid toe aan de
-   ranglijst, maar ook wrijving. Voorstel: niet in de eerste versie.
+   ranglijst, maar ook wrijving. Voorstel: niet in de eerste versie. *(Niet
+   gedaan; staat hierboven onder "Later, misschien".)*
 5. **Vier HACS-kaarten geven een 404** (`weather-card`, `power-flow-card-plus`,
    `ha-card-weather-conditions`). Staat los van dit project, maar het zijn vier
-   mislukte requests bij elke pageload.
+   mislukte requests bij elke pageload. *(Buiten scope gebleven; opruimen kan
+   in de HA-config zelf.)*
 6. **`services.yaml` documenteert 8 van de 22 geregistreerde services.** Niet
    gedocumenteerd: `delete_chore`, `complete_subtask`, `add_subtask`,
    `delete_subtask`, `save_theme`, `get_theme`, `reset_theme`,
@@ -880,9 +915,13 @@ werk in de HA-config zelf, geen repowerk.
    `run_migrations`. Die verschijnen zonder velden in Developer Tools → Acties.
    Bij het herschrijven van de services in fase 2 moet `services.yaml` compleet
    worden — of de overbodige services verdwijnen, wat waarschijnlijker is.
+   *(Het laatste gebeurde: alle 22 zijn in 3c verdwenen; `services.yaml`
+   beschrijft nu het volledige aanbod van drie.)*
 7. **Twee services worden geregistreerd maar niet opgeruimd.**
    `async_unregister_services` (`services/__init__.py:107-122`) noemt twintig
    namen, maar `get_pending_notifications` (`services/notification_services.py:101`)
    en `reset_theme` (`services/theme_services.py:108`) staan er niet bij. Bij het
    herladen van de integratie blijven ze achter. Klein, maar nu vastgelegd zodat
    het niet opnieuw ontstaat als de servicelijst in fase 2 verandert.
+   *(Met de oude app verdwenen; de huidige unload ruimt alle drie de
+   services op.)*

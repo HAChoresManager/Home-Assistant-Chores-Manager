@@ -153,6 +153,28 @@ def delete_chore(database_path: str, chore_id: str) -> str:
         return "deleted"
 
 
+def restore_chore(database_path: str, chore_id: str, today: date, now_iso: str) -> dict:
+    """Gearchiveerde taak terugzetten (fase 5, E1): active = 1 en een verse
+    next_due — de datum van vóór het archiveren kan maanden oud zijn en zou
+    de taak meteen diep in de achterstand zetten.
+
+    Bewust initial_next_due en niet roll_forward: roll_forward laat
+    binnen-cyclus-achterstand staan (een intervaltaak van 180 dagen zou tot
+    een volle cyclus achterstand terugkrijgen). Terugzetten is een nieuwe
+    start: interval begint vandaag, kalendertypen op de eerstvolgende
+    geplande keer op of na vandaag."""
+    chore = get_chore(database_path, chore_id)
+    if chore is None:
+        raise StoreError(f"onbekende taak {chore_id!r}")
+    new_due = initial_next_due(
+        chore["schedule_type"], chore["schedule_config"], today)
+    with get_connection(database_path) as conn:
+        conn.execute(
+            "UPDATE chores SET active = 1, next_due = ?, updated_at = ? WHERE id = ?",
+            (new_due.isoformat(), now_iso, chore_id))
+    return get_chore(database_path, chore_id)
+
+
 def set_next_due(database_path: str, chore_id: str, next_due: date, now_iso: str) -> None:
     with get_connection(database_path) as conn:
         conn.execute(

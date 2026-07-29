@@ -1,6 +1,6 @@
 # Technical Description — Chores Manager 2.x
 
-Stand: 28-07-2026, na fase 4. De oude app (1.x) is volledig verwijderd; dit
+Stand: 29-07-2026, na fase 5 — de refactor is afgerond. De oude app (1.x) is volledig verwijderd; dit
 document beschrijft alleen wat er draait. Ontwerpmotivatie: `REFACTOR_PLAN.md`.
 
 ## Database
@@ -21,6 +21,11 @@ tabellen, DDL in `db/schema.py`:
 
 Verwijderen is eerlijk: met historie wordt een taak of persoon gedeactiveerd
 (`active = 0`, historie blijft), zonder historie echt verwijderd.
+Gearchiveerde taken staan in Beheer onder "Gearchiveerd" en zijn terug te
+zetten (`chore/restore`). Checkliststappen zijn ook mét historie te bewerken:
+`completions.subtask_id` heeft sinds fase 5 `ON DELETE SET NULL`, dus een
+geschrapte stap laat zijn voltooiingen (en minuten) staan. Kleine
+schemamigraties draaien idempotent bij het opstarten (`db/schema.py`).
 
 ## Planning (`scheduling/`)
 
@@ -39,8 +44,9 @@ Vijf planningstypen: `interval`, `weekly` (weekdagen), `monthly_day`,
 
 ## WebSocket-API (`websocket.py`)
 
-Negen commando's onder `chores_manager/*`, standaard-auth (geen admin):
+Tien commando's onder `chores_manager/*`, standaard-auth (geen admin):
 `state`, `complete`, `undo`, `chore/save`, `chore/delete`, `chore/snooze`,
+`chore/restore` (gearchiveerde taak terug, met verse vervaldatum),
 `assignee/save`, `assignee/delete`, `subscribe`. Mutaties sturen
 `SIGNAL_UPDATED` over de dispatcher; `subscribe`-abonnees krijgen een event
 met alleen de reden en halen zelf verse staat op via `state`. Undo werkt op
@@ -49,11 +55,20 @@ een geheugenbuffer met een venster van vijf minuten.
 ## Sensor (`sensor.py`)
 
 `sensor.chores_overview` — state = openstaande taken vandaag (due +
-achterstallig). Attributen: `due_today`, `overdue`, `completed_today`,
-`week_minutes_total` en `persons` (per persoon: naam, minuten, taken, streak
-en `in_leaderboard` — de sensor toont iedereen; filteren op de ranglijstvlag
-is aan de afnemer). Geen polling: updates via de dispatcher. Het unique_id is
+achterstallig). Geen polling: updates via de dispatcher. Het unique_id is
 dat van de oude 1.x-sensor, zodat de entiteit dezelfde naam behield.
+
+Attributen, gedocumenteerd voor Lovelace-gebruik:
+
+- `due_today`, `overdue`, `completed_today`, `week_minutes_total` — tellers;
+- `persons` — dict per persoon-id: `name`, `minutes`, `tasks`, `streak`,
+  `in_leaderboard`, `color`. De sensor toont iedereen die iets deed;
+  filteren op de ranglijstvlag is aan de afnemer, de kleur is er om namen
+  in persoonskleur te tonen;
+- `tasks_today` — maximaal acht items, puur weergave (geen ids of
+  beschrijvingen): `name`, `icon`, `status` (`today` | `overdue`),
+  `assignee_name` (bij 'anyone': "wie kan"), `assignee_color` (dan `null`).
+  Eerst vandaag (prioriteit, dan naam), dan achterstand op cyclusfractie.
 
 ## Scheduler
 
@@ -68,7 +83,8 @@ Alleen naar personen met een `notify_service` én `notifications_enabled`.
 - **08:00** per persoon, alleen als er iets te doen is: "3 voor vandaag,
   1 loopt achter" met taaknamen, plus één "Klaar"-knop voor de belangrijkste
   taak (zwaarste achterstand op cyclusfractie; anders hoogste prioriteit,
-  dan kortste). De rol van 03:00 draait hier bewust vóór.
+  dan kortste); de knop draagt de taaknaam ("✓ Planten wat…", afgekapt op
+  ~22 tekens voor iOS). De rol van 03:00 draait hier bewust vóór.
 - **Zondag 20:00** de weeksamenvatting: samen eerst, dan de verdeling met
   tijd, taken en reeksen. Feiten, geen ranglijsttaal.
 - **"Klaar"** loopt via `mobile_app_notification_action`; de action-string is
@@ -101,9 +117,9 @@ Lovelace-resource-URL.
 
 ## Services
 
-- `chores_manager.seed` — TIJDELIJK; acht legacy-taken en drie personen.
 - `chores_manager.roll_forward` — de nachtelijke rol nu.
-- `chores_manager.send_daily_summary` — TIJDELIJK; de ochtendmelding nu.
-- `chores_manager.send_weekly_summary` — TIJDELIJK; de weeksamenvatting nu.
+- `chores_manager.send_daily_summary` — de ochtendmelding nu.
+- `chores_manager.send_weekly_summary` — de weeksamenvatting nu.
 
-Meer services zijn er niet; alle bediening loopt via de WebSocket-API.
+Meer services zijn er niet; alle bediening loopt via de WebSocket-API. De
+tijdelijke `seed` is in fase 5 verwijderd, met `seed.py` erbij.

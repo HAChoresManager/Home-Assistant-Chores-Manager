@@ -7,7 +7,7 @@ praktische kaart: waar staat wat, hoe draai je de tests, hoe deploy je.
 ## Architectuur in één alinea
 
 Eén custom integration (`custom_components/chores_manager/`) met een eigen
-SQLite-database (`<config>/chores_v2.db`), negen WebSocket-commando's, één
+SQLite-database (`<config>/chores_v2.db`), tien WebSocket-commando's, één
 overzichtssensor en één frontend: het panel `<chores-panel>` op `/taken`,
 vanilla ES-modules zonder build-stap, geserveerd rechtstreeks uit
 `custom_components/`. Geen iframe, geen eigen auth, geen eigen themadata —
@@ -32,8 +32,9 @@ python3 -m pytest tests/ -q
 ```
 
 Dekking: `scheduling/` volledig (typen, next_due, doorrollen, urgentie,
-cyclusfractie, rotatie), rooktests op de datalaag (schema, opslag, overzicht,
-weekhistorie) en de seed. De frontend heeft geen testrunner; controleer
+cyclusfractie, rotatie), rooktests op de datalaag (schema incl. migraties,
+opslag, overzicht, weekhistorie, meldingsdata). De frontend heeft geen
+testrunner; controleer
 syntax met `node --check` (kopieer het bestand naar `.mjs`, anders weigert
 node de ES-module).
 
@@ -43,10 +44,9 @@ node de ES-module).
 - Frontend gewijzigd → `PANEL_VERSION` in `panel.py` ophogen en HA herstarten.
   De versie zit in het statische pad; zie `CLAUDE.md` § Deployment voor het
   waarom en de valkuilen (Cloudflare!).
-- Services voor de hand: `chores_manager.seed` (tijdelijk, vult de acht
-  legacy-taken), `chores_manager.roll_forward` (nachtelijke rol nu draaien)
-  en — tijdelijk, om meldingen te testen — `send_daily_summary` en
-  `send_weekly_summary`.
+- Services voor de hand: `chores_manager.roll_forward` (nachtelijke rol nu
+  draaien), `send_daily_summary` en `send_weekly_summary` (meldingen nu
+  versturen, handig om ze te testen).
 
 ## Kaartgebruik (optioneel)
 

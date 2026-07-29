@@ -19,30 +19,35 @@ def list_subtasks(database_path: str, chore_id: str) -> list[dict]:
 
 
 def set_subtasks(database_path: str, chore_id: str, names: list[str]) -> list[dict]:
-    """Vervang de deeltakenlijst van een taak.
+    """Werk de deeltakenlijst van een taak bij naar precies deze namen.
 
-    Deeltaken waar voltooiingshistorie aan hangt kunnen niet weg — §3.4
-    verwijst met subtask_id naar deze tabel en het schema kent geen SET NULL.
-    In dat geval faalt de vervanging met een duidelijke melding; het schrappen
-    van deeltaken met historie is een fase-3-besluit (zie rapportage 2b).
+    Sinds fase 5 (E2) mag dat ook mét voltooiingshistorie: het schema heeft
+    ON DELETE SET NULL, dus een geschrapte stap laat zijn voltooiingen staan
+    (minuten en feit blijven; alleen de koppeling naar de stapnaam vervalt).
+    Stappen waarvan de naam blijft, behouden hun rij — en daarmee hun
+    historie én hun vinkje in de lopende ronde. Alleen wat echt verdwijnt
+    wordt verwijderd, alleen wat echt nieuw is komt erbij.
     """
     cleaned = [n.strip() for n in names if n and n.strip()]
+    if len(set(cleaned)) != len(cleaned):
+        raise StoreError("elke deeltaak heeft een unieke naam nodig")
     with get_connection(database_path) as conn:
-        referenced = conn.execute(
-            "SELECT COUNT(*) FROM completions co JOIN subtasks st ON st.id = co.subtask_id"
-            " WHERE st.chore_id = ?", (chore_id,)).fetchone()[0]
-        existing = [r["name"] for r in conn.execute(
-            "SELECT name FROM subtasks WHERE chore_id = ? ORDER BY position, id",
+        existing = [(r["id"], r["name"]) for r in conn.execute(
+            "SELECT id, name FROM subtasks WHERE chore_id = ? ORDER BY position, id",
             (chore_id,))]
-        if referenced:
-            if cleaned == existing:
-                # ongewijzigd: niets doen, anders sneuvelen de FK-verwijzingen
-                return list_subtasks(database_path, chore_id)
-            raise StoreError(
-                "deeltaken met voltooiingshistorie kunnen niet vervangen worden")
-        conn.execute("DELETE FROM subtasks WHERE chore_id = ?", (chore_id,))
+        keep = {name: sid for sid, name in existing}
+        for sid, name in existing:
+            # weg als de naam vervalt, of als dit een oude dubbele rij is
+            # (van vóór de uniekheidscheck hierboven) — per naam blijft er één
+            if name not in cleaned or keep[name] != sid:
+                # ON DELETE SET NULL laat de voltooiingen van deze stap staan
+                conn.execute("DELETE FROM subtasks WHERE id = ?", (sid,))
         for position, name in enumerate(cleaned):
-            conn.execute(
-                "INSERT INTO subtasks (chore_id, name, position) VALUES (?, ?, ?)",
-                (chore_id, name, position))
+            if name in keep:
+                conn.execute("UPDATE subtasks SET position = ? WHERE id = ?",
+                             (position, keep[name]))
+            else:
+                conn.execute(
+                    "INSERT INTO subtasks (chore_id, name, position) VALUES (?, ?, ?)",
+                    (chore_id, name, position))
     return list_subtasks(database_path, chore_id)

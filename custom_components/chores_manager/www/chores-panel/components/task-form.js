@@ -8,7 +8,7 @@
  * tonen/verbergen gebeurt in de DOM (data-switch in chores-panel.js), zonder
  * re-render, zodat ingevuld werk blijft staan.
  */
-import { esc, html } from '../core/html.js';
+import { html } from '../core/html.js';
 
 const WEEKDAY_OPTIONS = [
   [1, 'maandag'], [2, 'dinsdag'], [3, 'woensdag'], [4, 'donderdag'],
@@ -103,19 +103,34 @@ function assignmentFields(chore, assignees) {
       </label>
     </div>
     <div class="field-group" data-switch-group="assignment" data-switch-value="rotating"
-      ${type === 'rotating' ? '' : 'hidden'}
-      data-rotation-original="${esc(JSON.stringify(rotation))}">
-      <span class="field-label">Wie doen er mee</span>
-      <div class="checks">
-        ${assignees.map((person) => html`
-          <label class="check"><input type="checkbox" name="rotation" value="${person.id}"
-            ${inRotation.has(person.id) ? 'checked' : ''}>${person.name}</label>`)}
+      ${type === 'rotating' ? '' : 'hidden'}>
+      <span class="field-label">Wie doen er mee, in welke volgorde</span>
+      <div class="rotation-rows" data-rotation-list>
+        ${rotationOrder(rotation, assignees).map((person) => html`
+          <div class="rotation-row" data-rotation-row="${person.id}">
+            <label class="check"><input type="checkbox" name="rotation" value="${person.id}"
+              ${inRotation.has(person.id) ? 'checked' : ''}>${person.name}</label>
+            <span class="rotation-arrows">
+              <button type="button" class="arrow" data-action="rotation-up"
+                aria-label="${person.name} omhoog">↑</button>
+              <button type="button" class="arrow" data-action="rotation-down"
+                aria-label="${person.name} omlaag">↓</button>
+            </span>
+          </div>`)}
       </div>
-      ${rotation.length
-    ? html`<p class="field-hint">Volgorde: ${rotation.join(' → ')}.
-          ${currentTurn ? html`Nu aan de beurt: <strong>${currentTurn}</strong>.` : ''}</p>`
-    : html`<p class="field-hint">Nieuwe leden komen achteraan in de volgorde.</p>`}
+      <p class="field-hint">De volgorde van de rijen is de beurtvolgorde;
+        verschuif met de pijltjes.
+        ${currentTurn ? html`Nu aan de beurt: <strong>${currentTurn}</strong>.` : ''}</p>
     </div>`;
+}
+
+/** Rijvolgorde in het formulier: rotatieleden in beurtvolgorde, de rest
+ * (nog niet meedoend) daaronder — aankruisen zet ze achteraan de beurt. */
+function rotationOrder(rotation, assignees) {
+  const byId = new Map(assignees.map((p) => [p.id, p]));
+  const members = rotation.map((id) => byId.get(id)).filter(Boolean);
+  const rest = assignees.filter((p) => !rotation.includes(p.id));
+  return [...members, ...rest];
 }
 
 function subtaskFields(chore) {
@@ -221,15 +236,12 @@ export function collectChoreForm(form) {
   if (assignmentType === 'fixed') {
     chore.assigned_to = String(data.get('assigned_to') || '');
   } else if (assignmentType === 'rotating') {
-    const checked = data.getAll('rotation').map(String);
-    if (checked.length < 2) throw new Error('Een rotatie heeft minstens twee personen nodig.');
-    // bestaande volgorde behouden; nieuwe leden achteraan
-    const group = form.querySelector('[data-rotation-original]');
-    const original = JSON.parse(group?.dataset.rotationOriginal || '[]');
-    chore.rotation = [
-      ...original.filter((pid) => checked.includes(pid)),
-      ...checked.filter((pid) => !original.includes(pid)),
-    ];
+    // de DOM-volgorde van de rijen ís de beurtvolgorde (pijltjes, E3)
+    const rotation = [...form.querySelectorAll('[data-rotation-row]')]
+      .filter((row) => row.querySelector('input[name="rotation"]:checked'))
+      .map((row) => row.dataset.rotationRow);
+    if (rotation.length < 2) throw new Error('Een rotatie heeft minstens twee personen nodig.');
+    chore.rotation = rotation;
   }
 
   const subtaskMode = String(data.get('subtask_mode') || '');

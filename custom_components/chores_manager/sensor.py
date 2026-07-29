@@ -1,7 +1,7 @@
 """De overzichtssensor (§2.4).
 
 Geen polling: should_poll staat uit en updates komen via de dispatcher
-(SIGNAL_UPDATED) na elke mutatie, rol of seed — push in plaats van de
+(SIGNAL_UPDATED) na elke mutatie of rol — push in plaats van de
 30-secondenpoll van de oude sensor (§2.3-besluit).
 
 Het unique_id is dat van de oude sensor. Daardoor neemt deze entiteit in het
@@ -84,6 +84,8 @@ class ChoresOverviewSensor(SensorEntity):
             "completed_today": data["completed_today"],
             "week_minutes_total": data["week_minutes_total"],
             "persons": data["persons"],
+            # compacte weergavelijst voor Lovelace-kaarten (fase 5, stap B)
+            "tasks_today": data["tasks_today"],
         }
         if write:
             self.async_write_ha_state()

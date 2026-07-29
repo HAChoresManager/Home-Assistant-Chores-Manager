@@ -35,10 +35,12 @@ Het panel werkt ook als kaart in een bestaand dashboard:
 ## Sensor en services
 
 - `sensor.chores_overview` — openstaande taken vandaag, met attributen
-  (`due_today`, `overdue`, `completed_today`, `week_minutes_total`,
-  `persons` incl. `in_leaderboard`-vlag per persoon).
+  voor eigen Lovelace-kaarten: `tasks_today` (compacte lijst mét wie het
+  moet doen) en `persons` (weekstand per persoon, met kleur en streak).
+  Zie `docs/technical-description.md` voor de velden.
 - `chores_manager.roll_forward` — voer de nachtelijke doorrol (03:00) nu uit.
-- `chores_manager.seed` — tijdelijk: vult de database met de starttaken.
+- `chores_manager.send_daily_summary` / `send_weekly_summary` — verstuur de
+  ochtendmelding of weeksamenvatting nu.
 
 ## Documentatie
 

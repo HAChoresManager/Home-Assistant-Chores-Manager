@@ -3,7 +3,7 @@
 Sinds fase 3c is dit de enige app. De opzet is klein gehouden:
 
 - eigen SQLite-database (zie const.DB_FILENAME), alle toegang via db/;
-- negen WS-commando's (websocket.py) met push via de dispatcher;
+- tien WS-commando's (websocket.py) met push via de dispatcher;
 - één overzichtssensor (sensor.py), zonder polling;
 - nachtelijke rol om 03:00 (scheduler.py);
 - meldingen om 08:00 en zondag 20:00 plus de "Klaar"-knop (notify.py, fase 4);
@@ -18,8 +18,6 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.util import dt as dt_util
 
 from .const import (
     DATA_DB_PATH,
@@ -29,13 +27,11 @@ from .const import (
     DB_FILENAME,
     DOMAIN,
     PLATFORMS,
-    SIGNAL_UPDATED,
 )
 from .db.schema import create_database
 from .notify import async_send_daily, async_send_weekly, async_setup_notifications
 from .panel import async_remove_panel, async_setup_panel
 from .scheduler import async_run_roll, async_setup_scheduler
-from .seed import seed_v2
 from .websocket import async_register_websocket_commands
 
 _LOGGER = logging.getLogger(__name__)
@@ -68,29 +64,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await async_setup_panel(hass)
 
-    async def handle_seed(call: ServiceCall) -> None:
-        """TIJDELIJK (fase 5 verwijdert dit): de acht legacy-taken seeden."""
-        now = dt_util.now()
-        summary = await hass.async_add_executor_job(
-            seed_v2, database_path, now.date(), now.isoformat())
-        _LOGGER.info("Chores Manager: seed klaar: %s", summary)
-        async_dispatcher_send(hass, SIGNAL_UPDATED, {"reason": "seed"})
-
     async def handle_roll(call: ServiceCall) -> None:
         """De nachtelijke rol nu draaien, zonder op 03:00 te wachten."""
         await async_run_roll(hass, database_path)
 
     async def handle_send_daily(call: ServiceCall) -> None:
-        """TIJDELIJK (net als seed): de ochtendmelding nu versturen."""
+        """De ochtendmelding nu versturen, zonder op 08:00 te wachten."""
         verzonden = await async_send_daily(hass, database_path)
         _LOGGER.info("Chores Manager: send_daily_summary → %d meldingen", verzonden)
 
     async def handle_send_weekly(call: ServiceCall) -> None:
-        """TIJDELIJK (net als seed): de weeksamenvatting nu versturen."""
+        """De weeksamenvatting nu versturen, zonder op zondag te wachten."""
         verzonden = await async_send_weekly(hass, database_path)
         _LOGGER.info("Chores Manager: send_weekly_summary → %d meldingen", verzonden)
 
-    hass.services.async_register(DOMAIN, "seed", handle_seed)
     hass.services.async_register(DOMAIN, "roll_forward", handle_roll)
     hass.services.async_register(DOMAIN, "send_daily_summary", handle_send_daily)
     hass.services.async_register(DOMAIN, "send_weekly_summary", handle_send_weekly)
@@ -110,8 +97,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if unsub:
             unsub()
 
-    for service in ("seed", "roll_forward",
-                    "send_daily_summary", "send_weekly_summary"):
+    for service in ("roll_forward", "send_daily_summary", "send_weekly_summary"):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)
 

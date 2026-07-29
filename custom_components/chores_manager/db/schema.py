@@ -70,7 +70,9 @@ CREATE TABLE IF NOT EXISTS subtasks (
 CREATE TABLE IF NOT EXISTS completions (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     chore_id           TEXT NOT NULL REFERENCES chores(id),
-    subtask_id         INTEGER REFERENCES subtasks(id),
+    -- SET NULL (fase 5, E2): een geschrapte checkliststap laat de voltooiing
+    -- staan — minuten en feit blijven, alleen de koppeling vervalt
+    subtask_id         INTEGER REFERENCES subtasks(id) ON DELETE SET NULL,
     is_full_completion INTEGER NOT NULL DEFAULT 1,
     assignee_id        TEXT NOT NULL REFERENCES assignees(id),
     completed_at       TIMESTAMP NOT NULL,
@@ -105,6 +107,70 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # fase 4: meldingen aan/uit per persoon; standaard aan (§6)
         conn.execute("ALTER TABLE assignees ADD COLUMN"
                      " notifications_enabled INTEGER NOT NULL DEFAULT 1")
+
+    _migrate_completions_fk(conn)
+
+
+def _migrate_completions_fk(conn: sqlite3.Connection) -> None:
+    """Fase 5 (E2): completions.subtask_id krijgt ON DELETE SET NULL.
+
+    SQLite kan een foreign key niet wijzigen met ALTER TABLE, dus dit is de
+    documenteerde weg: tabel herbouwen en de rijen overzetten — in één
+    transactie, zodat de (echte!) data bij elke fout onaangeroerd blijft.
+    De pragma foreign_keys werkt alleen buiten een transactie; vandaar de
+    expliciete commit vooraf (een eerdere migratiestap kan er een geopend
+    hebben) en het herstel in de finally.
+    """
+    # Op index (2 = table, 6 = on_delete): de verbinding heeft hier niet
+    # altijd een Row-factory (apply_schema accepteert elke verbinding).
+    fk = next((tuple(row) for row
+               in conn.execute("PRAGMA foreign_key_list(completions)")
+               if row[2] == "subtasks"), None)
+    if fk is None or fk[6] == "SET NULL":
+        return
+
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        # Zelfherstel: een eerder afgebroken poging kan de tussentabel
+        # achtergelaten hebben; zonder deze regel faalt elke start daarna
+        # op "table completions_nieuw already exists".
+        conn.execute("DROP TABLE IF EXISTS completions_nieuw")
+        # Expliciete BEGIN: Python's sqlite3 (legacy-transactiebeheer) laat
+        # DDL in autocommit lopen — zonder BEGIN staat de CREATE al vast
+        # vóór de INSERT en is de rollback hieronder een halve leugen. Mét
+        # BEGIN is de hele rebuild echt één transactie.
+        conn.execute("BEGIN")
+        conn.execute("""
+            CREATE TABLE completions_nieuw (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                chore_id           TEXT NOT NULL REFERENCES chores(id),
+                subtask_id         INTEGER REFERENCES subtasks(id) ON DELETE SET NULL,
+                is_full_completion INTEGER NOT NULL DEFAULT 1,
+                assignee_id        TEXT NOT NULL REFERENCES assignees(id),
+                completed_at       TIMESTAMP NOT NULL,
+                minutes            INTEGER NOT NULL,
+                note               TEXT
+            )""")
+        conn.execute(
+            "INSERT INTO completions_nieuw (id, chore_id, subtask_id,"
+            " is_full_completion, assignee_id, completed_at, minutes, note)"
+            " SELECT id, chore_id, subtask_id, is_full_completion,"
+            " assignee_id, completed_at, minutes, note FROM completions")
+        conn.execute("DROP TABLE completions")
+        conn.execute("ALTER TABLE completions_nieuw RENAME TO completions")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_completions_completed_at"
+                     " ON completions (completed_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_completions_assignee"
+                     " ON completions (assignee_id, completed_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_completions_chore"
+                     " ON completions (chore_id)")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
 
 
 def create_database(database_path: str) -> None:

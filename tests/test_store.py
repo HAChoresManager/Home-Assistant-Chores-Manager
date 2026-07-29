@@ -294,10 +294,11 @@ class TestNachtelijkeRolEnOverzicht:
         assert data["completed_today"] == 1
         assert data["week_minutes_total"] == 20
         # in_leaderboard zit er sinds 3c bij (C3): de sensor toont iedereen,
-        # filteren op de ranglijstvlag is aan de afnemer.
+        # filteren op de ranglijstvlag is aan de afnemer. De kleur sinds
+        # fase 5, zodat een Lovelace-kaart de naam kan kleuren.
         assert data["persons"]["laura"] == {
             "name": "Laura", "minutes": 20, "tasks": 1, "streak": 1,
-            "in_leaderboard": True}
+            "in_leaderboard": True, "color": "#83c44a"}
 
     def test_build_state_structuur(self, db):
         _gewone_taak(db, subtask_mode="checklist")
