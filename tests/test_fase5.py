@@ -115,6 +115,26 @@ class TestRestore:
         assert staat["archived_chores"] == []
         assert any(c["id"] == "was" for c in staat["chores"])
 
+    def test_intervaltaak_komt_vers_terug_niet_in_de_achterstand(self, db):
+        # roll_forward zou binnen-cyclus-achterstand laten staan (116 dagen
+        # op een 180-dagentaak); terugzetten is een nieuwe start: vandaag.
+        _taak(db, id="vriezer", name="Vriezer", schedule_type="interval",
+              schedule_config={"days": 180},
+              next_due=VANDAAG - timedelta(days=116))
+        save_chore(db, {**get_chore(db, "vriezer"), "active": 0}, VANDAAG, NU)
+        chore = restore_chore(db, "vriezer", VANDAAG, NU)
+        assert chore["next_due"] == VANDAAG.isoformat()
+
+    def test_weektaak_komt_terug_op_de_eerstvolgende_geplande_dag(self, db):
+        # VANDAAG is een woensdag; taak gepland op maandag (1) -> volgende
+        # maandag, niet de gemiste van deze week.
+        _taak(db, id="stof", name="Stofzuigen", schedule_type="weekly",
+              schedule_config={"weekday": 1},
+              next_due=VANDAAG - timedelta(days=30))
+        save_chore(db, {**get_chore(db, "stof"), "active": 0}, VANDAAG, NU)
+        chore = restore_chore(db, "stof", VANDAAG, NU)
+        assert chore["next_due"] == (VANDAAG + timedelta(days=5)).isoformat()
+
     def test_onbekende_taak_geeft_nette_fout(self, db):
         with pytest.raises(ValueError):
             restore_chore(db, "bestaat-niet", VANDAAG, NU)
@@ -223,3 +243,21 @@ class TestMigratieSetNull:
 
     def test_verse_database_heeft_meteen_set_null(self, db):
         assert self._on_delete(db) == "SET NULL"
+
+    def test_achtergebleven_tussentabel_blokkeert_de_migratie_niet(self, db):
+        # Een eerder afgebroken poging liet completions_nieuw achter (DDL
+        # committe destijds buiten de transactie). De migratie moet daar
+        # zelfherstellend overheen: geen "table already exists", data intact.
+        _taak(db)
+        complete_chore(db, "was", "laura", VANDAAG, NU)
+        self._downgrade_completions(db)
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE completions_nieuw (id INTEGER PRIMARY KEY)")
+        conn.commit()
+        conn.close()
+        voor = _completions(db)
+
+        create_database(db)  # mag niet stikken in de achtergebleven tabel
+
+        assert self._on_delete(db) == "SET NULL"
+        assert _completions(db) == voor

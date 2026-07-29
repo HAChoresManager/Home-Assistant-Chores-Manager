@@ -132,6 +132,15 @@ def _migrate_completions_fk(conn: sqlite3.Connection) -> None:
     conn.commit()
     conn.execute("PRAGMA foreign_keys = OFF")
     try:
+        # Zelfherstel: een eerder afgebroken poging kan de tussentabel
+        # achtergelaten hebben; zonder deze regel faalt elke start daarna
+        # op "table completions_nieuw already exists".
+        conn.execute("DROP TABLE IF EXISTS completions_nieuw")
+        # Expliciete BEGIN: Python's sqlite3 (legacy-transactiebeheer) laat
+        # DDL in autocommit lopen — zonder BEGIN staat de CREATE al vast
+        # vóór de INSERT en is de rollback hieronder een halve leugen. Mét
+        # BEGIN is de hele rebuild echt één transactie.
+        conn.execute("BEGIN")
         conn.execute("""
             CREATE TABLE completions_nieuw (
                 id                 INTEGER PRIMARY KEY AUTOINCREMENT,
