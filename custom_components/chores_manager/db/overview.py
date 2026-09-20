@@ -56,17 +56,21 @@ _TASKS_TODAY_LIMIT = 8
 
 
 def _tasks_today(chores: list[dict], assignees_by_id: dict) -> list[dict]:
-    """Compacte weergavelijst voor Lovelace (fase 5, stap B): wat er vandaag
-    speelt mét wie het moet doen. Puur weergave — geen ids, geen
-    beschrijvingen. Eerst vandaag (prioriteit, dan naam), dan achterstand op
-    cyclusfractie; maximaal acht items."""
+    """Compacte lijst voor Lovelace (fase 5, stap B): wat er vandaag speelt
+    mét wie het moet doen. Compact — geen beschrijvingen, geen andere
+    velden — maar wél de ids: met `id` en `assignee_id` kan een kaart de
+    service chores_manager.mark_done aanroepen en zo een taak met één tik
+    afvinken zonder het panel te openen. Eerst vandaag (prioriteit, dan
+    naam), dan achterstand op cyclusfractie; maximaal acht items."""
     def rij(chore: dict, status: str) -> dict:
         assignee = (None if chore["assignment_type"] == "anyone"
                     else assignees_by_id.get(chore["current_assignee"]))
         return {
+            "id": chore["id"],
             "name": chore["name"],
             "icon": chore["icon"],
             "status": status,
+            "assignee_id": assignee["id"] if assignee else None,
             "assignee_name": assignee["name"] if assignee else "wie kan",
             "assignee_color": assignee["color"] if assignee else None,
         }

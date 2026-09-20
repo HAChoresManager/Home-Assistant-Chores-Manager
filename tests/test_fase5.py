@@ -48,11 +48,14 @@ def _completions(db):
 
 
 class TestTasksToday:
-    def test_velden_zijn_puur_weergave(self, db):
+    def test_velden_compact_met_ids(self, db):
         _taak(db)
         (item,) = overview(db, VANDAAG)["tasks_today"]
         assert set(item) == {
-            "name", "icon", "status", "assignee_name", "assignee_color"}
+            "id", "name", "icon", "status", "assignee_id", "assignee_name",
+            "assignee_color"}
+        assert item["id"] == "was"
+        assert item["assignee_id"] == "laura"
         assert item["name"] == "Was draaien"
         assert item["status"] == "today"
         assert item["assignee_name"] == "Laura"
@@ -66,7 +69,9 @@ class TestTasksToday:
         per_naam = {t["name"]: t for t in overview(db, VANDAAG)["tasks_today"]}
         assert per_naam["Afwassen"]["assignee_name"] == "wie kan"
         assert per_naam["Afwassen"]["assignee_color"] is None
+        assert per_naam["Afwassen"]["assignee_id"] is None
         assert per_naam["Vuilnis"]["assignee_name"] == "Martijn"
+        assert per_naam["Vuilnis"]["assignee_id"] == "martijn"
 
     def test_eerst_vandaag_dan_achterstand_op_cyclusfractie(self, db):
         _taak(db, id="dagelijks", name="Dagelijks",

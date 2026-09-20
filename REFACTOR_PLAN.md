@@ -108,7 +108,8 @@ De HA-services (`chores_manager.mark_done` etc.) blijven bestaan voor gebruik in
 automations en voor de actieknop in notificaties. *(Achterhaald in 3c/4: de
 oude services zijn verdwenen; de actieknop vinkt af via een event-listener in
 `notify.py`, zie §6. Wat er nog aan services is: `roll_forward`,
-`send_daily_summary`, `send_weekly_summary`.)*
+`send_daily_summary`, `send_weekly_summary` — en sinds 20-09-2026 weer
+`mark_done`, als dunne laag voor Lovelace-dashboards, zie §6.)*
 
 ### 2.4 Sensor
 
@@ -122,7 +123,11 @@ oude services zijn verdwenen; de actieknop vinkt af via een event-listener in
   getal.
 - **attributen** = alleen een samenvatting: `due_today`, `overdue`,
   `completed_today`, `week_minutes_total`, en per persoon `{minutes, tasks,
-  streak}`. Geen volledige takenlijst meer.
+  streak}`. Geen volledige takenlijst meer. *(Aangevuld: sinds fase 5 ook
+  `tasks_today`, een compacte lijst van maximaal acht items voor
+  Lovelace-kaarten, en sinds 20-09-2026 mét `id` en `assignee_id` zodat zo'n
+  kaart `chores_manager.mark_done` kan aanroepen — zie §6 en
+  `docs/technical-description.md`.)*
 
 Dezelfde semantiek geldt op het scherm Vandaag: de kop toont het totaal
 ("8 taken"), daaronder twee secties — wat vandaag gepland staat en wat
@@ -466,7 +471,13 @@ de oorspronkelijke tekst noemde `chores_manager.mark_done`, maar die service is
 in 3c met de oude app verdwenen. De listener in `notify.py` vangt het event en
 roept dezelfde db-functie aan als het panel, met dezelfde undo-buffer en
 hetzelfde dispatchersignaal. Taak en ontvanger zitten in de action-string:
-`chores_manager_complete:<chore_id>:<assignee_id>`.)*
+`chores_manager_complete:<chore_id>:<assignee_id>`. Op 20-09-2026 is
+`chores_manager.mark_done` teruggekomen als dunne servicelaag voor
+Lovelace-dashboards — die kunnen alleen services aanroepen, geen
+WS-commando's — zonder eigen logica: hij roept dezelfde `async_complete` in
+`notify.py` aan als de knop, en zoekt zonder `assignee_id` de aanroepende
+HA-gebruiker op via `ha_user_id`; `tasks_today` op de sensor draagt daarvoor
+`id` en `assignee_id`.)*
 
 Aan/uit per persoon, niet per taak (kolom `notifications_enabled`, fase 4;
 standaard aan). De oude `notify_when_due`-vlag per taak was een instelling die
@@ -482,7 +493,7 @@ Alles onder de 600 regels. Bij overschrijding: splitsen.
 
 ```
 custom_components/chores_manager/
-├── __init__.py           # setup, config entry, services (roll_forward, meldingen)
+├── __init__.py           # setup, config entry, services (roll_forward, meldingen, mark_done)
 ├── manifest.json
 ├── const.py
 ├── config_flow.py        # één instantie, niets in te stellen
@@ -490,7 +501,7 @@ custom_components/chores_manager/
 ├── websocket.py          # WS-commando's (zie 2.3)
 ├── sensor.py             # overzichtssensor (§2.4), push via dispatcher
 ├── scheduler.py          # nachtelijke rol; meldingen (§6) komen in fase 4
-├── notify.py             # fase 4: actionable notificaties
+├── notify.py             # fase 4: actionable notificaties; async_complete (ook achter mark_done)
 ├── db/
 │   ├── __init__.py
 │   ├── schema.py         # DDL op één plek
@@ -509,9 +520,11 @@ custom_components/chores_manager/
 
 Geen `migrations.py` meer in de boom: v2 heeft een vers schema; migraties
 komen pas terug zodra dat schema ná ingebruikname wijzigt. Geen los
-`services.py`: de overgebleven services (roll_forward en de twee
-meldingsservices) zijn klein genoeg voor `__init__.py`; `notify.py` (fase 4)
-bevat de meldingen. `seed.py` was tijdelijk en is in fase 5 verwijderd.
+`services.py`: de overgebleven services (roll_forward, de twee
+meldingsservices en sinds 20-09-2026 mark_done) zijn klein genoeg voor
+`__init__.py`; `notify.py` (fase 4) bevat de meldingen én `async_complete`,
+de gedeelde afvinkstap achter de "Klaar"-knop en mark_done. `seed.py` was
+tijdelijk en is in fase 5 verwijderd.
 
 **Tussentoestand (2b–3b): de v2-datalaag heette `store/`** omdat de oude app
 het oude `db/`-pakket nog bezette. **Uitgevoerd in 3c (28-07-2026):** het oude
@@ -916,12 +929,13 @@ gebruik):
    Bij het herschrijven van de services in fase 2 moet `services.yaml` compleet
    worden — of de overbodige services verdwijnen, wat waarschijnlijker is.
    *(Het laatste gebeurde: alle 22 zijn in 3c verdwenen; `services.yaml`
-   beschrijft nu het volledige aanbod van drie.)*
+   beschrijft nu het volledige aanbod van drie — vier sinds `mark_done`
+   op 20-09-2026, zie §6.)*
 7. **Twee services worden geregistreerd maar niet opgeruimd.**
    `async_unregister_services` (`services/__init__.py:107-122`) noemt twintig
    namen, maar `get_pending_notifications` (`services/notification_services.py:101`)
    en `reset_theme` (`services/theme_services.py:108`) staan er niet bij. Bij het
    herladen van de integratie blijven ze achter. Klein, maar nu vastgelegd zodat
    het niet opnieuw ontstaat als de servicelijst in fase 2 verandert.
-   *(Met de oude app verdwenen; de huidige unload ruimt alle drie de
-   services op.)*
+   *(Met de oude app verdwenen; de huidige unload ruimt alle vier de
+   services op — mark_done meegenomen op 20-09-2026.)*
