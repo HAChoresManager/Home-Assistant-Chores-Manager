@@ -1,7 +1,9 @@
 # Technical Description — Chores Manager 2.x
 
-Stand: 29-07-2026, na fase 5 — de refactor is afgerond. De oude app (1.x) is volledig verwijderd; dit
-document beschrijft alleen wat er draait. Ontwerpmotivatie: `REFACTOR_PLAN.md`.
+Stand: 29-07-2026, na fase 5 — de refactor is afgerond; bijgewerkt op
+20-09-2026 voor de service `mark_done`. De oude app (1.x) is volledig
+verwijderd; dit document beschrijft alleen wat er draait. Ontwerpmotivatie:
+`REFACTOR_PLAN.md`.
 
 ## Database
 
@@ -65,10 +67,12 @@ Attributen, gedocumenteerd voor Lovelace-gebruik:
   `in_leaderboard`, `color`. De sensor toont iedereen die iets deed;
   filteren op de ranglijstvlag is aan de afnemer, de kleur is er om namen
   in persoonskleur te tonen;
-- `tasks_today` — maximaal acht items, puur weergave (geen ids of
-  beschrijvingen): `name`, `icon`, `status` (`today` | `overdue`),
-  `assignee_name` (bij 'anyone': "wie kan"), `assignee_color` (dan `null`).
-  Eerst vandaag (prioriteit, dan naam), dan achterstand op cyclusfractie.
+- `tasks_today` — maximaal acht items, compact (geen beschrijvingen):
+  `id`, `name`, `icon`, `status` (`today` | `overdue`), `assignee_id`,
+  `assignee_name` (bij 'anyone': "wie kan"), `assignee_color` (bij 'anyone'
+  zijn `assignee_id` en `assignee_color` `null`). De ids zijn er zodat een
+  kaart met één tik `chores_manager.mark_done` kan aanroepen. Eerst vandaag
+  (prioriteit, dan naam), dan achterstand op cyclusfractie.
 
 ## Scheduler
 
@@ -120,6 +124,18 @@ Lovelace-resource-URL.
 - `chores_manager.roll_forward` — de nachtelijke rol nu.
 - `chores_manager.send_daily_summary` — de ochtendmelding nu.
 - `chores_manager.send_weekly_summary` — de weeksamenvatting nu.
+- `chores_manager.mark_done` — taak afvinken vanaf een Lovelace-dashboard,
+  zonder het panel te openen. Velden: `chore_id` (verplicht, uit
+  `tasks_today`) en `assignee_id` (optioneel; leeg of `null` = de
+  aanroepende HA-gebruiker, opgezocht via `ha_user_id`; geen koppeling
+  geeft een `ServiceValidationError` en dus een toast. Vanuit een
+  automatisering of script zonder gebruiker is er geen aanroeper, dus daar
+  is `assignee_id` verplicht). Dunne laag zonder eigen
+  logica: dezelfde `async_complete` in `notify.py` als de "Klaar"-knop,
+  dus dezelfde undo-buffer en dezelfde push. Een checklist wordt in één
+  keer afgerond, een counter krijgt één tik.
 
-Meer services zijn er niet; alle bediening loopt via de WebSocket-API. De
-tijdelijke `seed` is in fase 5 verwijderd, met `seed.py` erbij.
+Meer services zijn er niet; alle overige bediening loopt via de
+WebSocket-API — `mark_done` is de ene uitzondering, omdat Lovelace alleen
+services kan aanroepen. De tijdelijke `seed` is in fase 5 verwijderd, met
+`seed.py` erbij.

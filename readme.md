@@ -38,6 +38,9 @@ Het panel werkt ook als kaart in een bestaand dashboard:
   voor eigen Lovelace-kaarten: `tasks_today` (compacte lijst mét wie het
   moet doen) en `persons` (weekstand per persoon, met kleur en streak).
   Zie `docs/technical-description.md` voor de velden.
+- `chores_manager.mark_done` — vink een taak af vanaf een Lovelace-kaart
+  (`chore_id` uit `tasks_today`; `assignee_id` optioneel, leeg = de
+  aanroepende gebruiker via zijn koppeling).
 - `chores_manager.roll_forward` — voer de nachtelijke doorrol (03:00) nu uit.
 - `chores_manager.send_daily_summary` / `send_weekly_summary` — verstuur de
   ochtendmelding of weeksamenvatting nu.

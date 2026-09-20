@@ -1,6 +1,8 @@
 # De twintig services van de oude app zijn in fase 3c verdwenen en de
 # tijdelijke seed in fase 5; alle bediening loopt via de WS-commando's
-# (websocket.py). Wat hier staat is het volledige service-aanbod.
+# (websocket.py). De ene uitzondering is mark_done: een dunne laag zonder
+# eigen logica, omdat Lovelace alleen services kan aanroepen en geen
+# WS-commando's. Wat hier staat is het volledige service-aanbod.
 
 roll_forward:
   name: Achterstand doorrollen
@@ -22,3 +24,30 @@ send_weekly_summary:
   description: >-
     Verstuurt de weeksamenvatting van zondag 20:00 nu meteen, naar iedereen
     met een ingevulde meldingsservice en meldingen aan.
+
+mark_done:
+  name: Taak afvinken
+  description: >-
+    Vinkt een taak af zoals het panel dat doet (zelfde undo-venster van vijf
+    minuten, zelfde push). Zonder assignee_id komt de voltooiing op naam van de
+    aanroepende HA-gebruiker, mits die aan een persoon gekoppeld is (ha_user_id).
+    Bedoeld voor Lovelace-kaarten; een checklist wordt in één keer afgerond,
+    een counter krijgt één tik.
+  fields:
+    chore_id:
+      name: Taak
+      description: Het id van de taak (zie tasks_today op sensor.chores_overview).
+      required: true
+      example: badkamer_grondig_schoonmaken
+      selector:
+        text:
+    assignee_id:
+      name: Persoon
+      description: >-
+        Persoon-id (bijv. martijn of laura). Leeg of null = de aanroepende
+        gebruiker. Vanuit een automatisering is er geen aanroepende
+        gebruiker; geef het dan altijd mee.
+      required: false
+      example: laura
+      selector:
+        text:

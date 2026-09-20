@@ -46,7 +46,10 @@ node de ES-module).
   waarom en de valkuilen (Cloudflare!).
 - Services voor de hand: `chores_manager.roll_forward` (nachtelijke rol nu
   draaien), `send_daily_summary` en `send_weekly_summary` (meldingen nu
-  versturen, handig om ze te testen).
+  versturen, handig om ze te testen). Daarnaast `mark_done` — geen
+  testservice maar de dunne laag waarmee een Lovelace-kaart afvinkt; hij
+  gebruikt `notify.async_complete`, dezelfde drie stappen als de
+  "Klaar"-knop en `ws_complete`.
 
 ## Kaartgebruik (optioneel)
 

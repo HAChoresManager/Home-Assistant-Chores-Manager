@@ -20,6 +20,11 @@ dubbele punt). De listener hieronder vangt het event, vinkt af via dezelfde
 db-functie als het panel, vult dezelfde undo-buffer en stuurt hetzelfde
 dispatchersignaal — het panel ziet het dus direct (push) en de minuten staan
 op naam van de ontvanger van de melding.
+
+Die drie stappen staan in ``async_complete``. Dezelfde functie zit achter de
+service ``chores_manager.mark_done`` (``__init__.py``): de dunne laag voor
+Lovelace-kaarten, die alleen services kunnen aanroepen en geen WS-commando's.
+Zo is er precies één plek waar "afvinken buiten het panel" gebeurt.
 """
 from __future__ import annotations
 
@@ -200,24 +205,41 @@ async def async_send_weekly(hass: HomeAssistant, database_path: str) -> int:
     return verzonden
 
 
+async def async_complete(
+    hass: HomeAssistant, database_path: str, chore_id: str, assignee_id: str,
+) -> dict:
+    """Afvinken zoals het panel het doet: zelfde db-functie, zelfde
+    undo-buffer, zelfde signaal — de drie stappen van ws_complete.
+
+    Gedeeld door de "Klaar"-knop en de service chores_manager.mark_done.
+    Een checklist wordt hiermee in één keer afgerond, een counter krijgt één
+    tik (geen subtask_id, geen notitie). Een onbekende of inactieve taak of
+    persoon komt als ValueError (StoreError) terug; wat daarmee gebeurt
+    bepaalt de aanroeper — een logregel bij een melding, een toast bij een
+    service. Geeft de undo-gegevens van complete_chore terug.
+    """
+    now = dt_util.now()
+    undo = await hass.async_add_executor_job(
+        complete_chore, database_path, chore_id, assignee_id,
+        now.date(), now.isoformat(), None, None)
+    hass.data[DOMAIN][DATA_UNDO] = {"undo": undo, "at": time.monotonic()}
+    async_dispatcher_send(hass, SIGNAL_UPDATED,
+                          {"reason": "complete", "chore_id": chore_id})
+    return undo
+
+
 async def _async_complete_from_action(
     hass: HomeAssistant, database_path: str, chore_id: str, assignee_id: str,
 ) -> None:
-    """Afvinken zoals het panel het doet: zelfde db-functie, zelfde
-    undo-buffer, zelfde signaal."""
-    now = dt_util.now()
+    """De "Klaar"-knop: afvinken via async_complete; een fout blijft een
+    logregel, want er is niemand om een melding aan terug te geven."""
     try:
-        undo = await hass.async_add_executor_job(
-            complete_chore, database_path, chore_id, assignee_id,
-            now.date(), now.isoformat(), None, None)
+        await async_complete(hass, database_path, chore_id, assignee_id)
     except ValueError as err:
         _LOGGER.warning(
             "Chores Manager: afvinken via melding mislukt (%s door %s): %s",
             chore_id, assignee_id, err)
         return
-    hass.data[DOMAIN][DATA_UNDO] = {"undo": undo, "at": time.monotonic()}
-    async_dispatcher_send(hass, SIGNAL_UPDATED,
-                          {"reason": "complete", "chore_id": chore_id})
     _LOGGER.info("Chores Manager: %s afgevinkt via melding door %s",
                  chore_id, assignee_id)
 
