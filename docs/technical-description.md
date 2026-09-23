@@ -70,11 +70,22 @@ Attributen, gedocumenteerd voor Lovelace-gebruik:
   filteren op de ranglijstvlag is aan de afnemer, de kleur is er om namen
   in persoonskleur te tonen;
 - `tasks_today` — maximaal acht items, compact (geen beschrijvingen):
-  `id`, `name`, `icon`, `status` (`today` | `overdue`), `assignee_id`,
-  `assignee_name` (bij 'anyone': "wie kan"), `assignee_color` (bij 'anyone'
-  zijn `assignee_id` en `assignee_color` `null`). De ids zijn er zodat een
-  kaart met één tik `chores_manager.mark_done` kan aanroepen. Eerst vandaag
-  (prioriteit, dan naam), dan achterstand op cyclusfractie;
+  `id`, `name`, `icon`, `status` (`today` | `overdue` | `done`),
+  `assignee_id`, `assignee_name` (bij 'anyone': "wie kan"),
+  `assignee_color` (bij 'anyone' zijn `assignee_id` en `assignee_color`
+  `null`). De ids zijn er zodat een kaart met één tik
+  `chores_manager.mark_done` kan aanroepen. Eerst vandaag (prioriteit, dan
+  naam), dan achterstand op cyclusfractie. Een taak met een volledige
+  voltooiing van minder dan twee minuten oud (`RECENT_DONE_SECONDS` = 120 in
+  `const.py`) die niet opnieuw openstaat, blijft staan met status `done` en
+  vier extra velden: `completion_id` (voor
+  `chores_manager.revert_completion`), `completed_at` (ISO), `done_by` en
+  `done_by_color` (wie afvinkte). Done-rijen sorteren mee in de
+  vandaag-groep, zodat een afgevinkte taak niet verspringt, en tellen mee
+  voor de limiet van acht, maar niet voor `open_today`, `due_today` en
+  `overdue`. Omdat er na twee minuten geen mutatie volgt, plant de sensor
+  zelf een verversing (`async_call_later`) voor het moment dat de oudste
+  done-rij verloopt;
 - `recent_completions` — de laatste acht voltooiingen, nieuwste eerst,
   uit dezelfde feed-query als het panel. Per item precies: `id`,
   `chore_id`, `chore_name`, `icon`, `assignee_id`, `assignee_name`,

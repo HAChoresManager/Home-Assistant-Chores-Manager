@@ -18,6 +18,10 @@ SIGNAL_UPDATED = "chores_manager_updated"
 # Undo-venster (§2.3): laatste voltooiing terugdraaien binnen 5 minuten.
 UNDO_WINDOW_SECONDS = 300
 
+# Net-afgevinkte taken blijven zo lang in tasks_today staan, als "done"
+# (sensor.py plant na afloop zelf een verversing).
+RECENT_DONE_SECONDS = 120
+
 # Meldingstijden (§6). Vast in fase 4; fase 5 kan ze instelbaar maken.
 # Volgorde-afhankelijkheid: de rol van 03:00 (scheduler.py) draait vóór de
 # ochtendmelding — die leest gewoon de dan actuele staat, maar zet je de

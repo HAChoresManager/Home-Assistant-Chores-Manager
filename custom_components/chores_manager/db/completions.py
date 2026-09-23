@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from ..scheduling.calculator import advance_rotation, next_due_after_completion
@@ -284,6 +284,38 @@ def feed(database_path: str, limit: int = 20) -> list[dict]:
             " JOIN assignees a ON a.id = co.assignee_id"
             " LEFT JOIN subtasks st ON st.id = co.subtask_id"
             " ORDER BY co.completed_at DESC, co.id DESC LIMIT ?", (limit,))]
+
+
+def recent_full_completions(database_path: str, since: datetime) -> dict:
+    """Volledige voltooiingen vanaf `since`, alleen de nieuwste per taak, in
+    één query: {chore_id: {completion_id, completed_at, done_by,
+    done_by_color}}. Voor de done-rijen in tasks_today.
+
+    De SQL-filter is een stringvergelijking op ISO-tijdstippen (zoals overal
+    in deze module); daarna wordt exact vergeleken als datetime, zodat een
+    afwijkende notatie (microseconden, offset) niets doorlaat wat te oud is.
+    """
+    with get_connection(database_path) as conn:
+        rows = conn.execute(
+            "SELECT co.id, co.chore_id, co.completed_at,"
+            " a.name AS done_by, a.color AS done_by_color"
+            " FROM completions co JOIN assignees a ON a.id = co.assignee_id"
+            " WHERE co.is_full_completion = 1 AND co.completed_at >= ?"
+            " ORDER BY co.completed_at DESC, co.id DESC",
+            (since.isoformat(),)).fetchall()
+    recent: dict = {}
+    for row in rows:
+        if row["chore_id"] in recent:
+            continue
+        if datetime.fromisoformat(row["completed_at"]) < since:
+            continue
+        recent[row["chore_id"]] = {
+            "completion_id": row["id"],
+            "completed_at": row["completed_at"],
+            "done_by": row["done_by"],
+            "done_by_color": row["done_by_color"],
+        }
+    return recent
 
 
 def history_counts(database_path: str) -> dict:
