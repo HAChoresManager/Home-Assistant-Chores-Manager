@@ -131,7 +131,9 @@ oude services zijn verdwenen; de actieknop vinkt af via een event-listener in
   kaart `chores_manager.mark_done` kan aanroepen — zie §6 en
   `docs/technical-description.md`. Sinds 23-09-2026 ook
   `recent_completions`: de laatste acht voltooiingen mét `id`, voor
-  `chores_manager.revert_completion`.)*
+  `chores_manager.revert_completion`. En sinds 23-09-2026 blijft een
+  net-afgevinkte taak twee minuten in `tasks_today` staan met status
+  `done` en `completion_id`; die telt niet mee in de tellers.)*
 
 Dezelfde semantiek geldt op het scherm Vandaag: de kop toont het totaal
 ("8 taken"), daaronder twee secties — wat vandaag gepland staat en wat

@@ -6,7 +6,8 @@ niets anders dan deze functies in een executor aanroepen.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
+from typing import Optional
 
 from ..scheduling.calculator import current_assignee, cycle_fraction, overdue_days, urgency
 from .assignees import assignee_in_use, list_assignees
@@ -18,6 +19,7 @@ from .completions import (
     history_counts,
     instance_progress,
     leaderboard,
+    recent_full_completions,
     week_history,
 )
 from .subtasks import list_subtasks
@@ -55,17 +57,26 @@ def enrich_chore(database_path: str, chore: dict, today: date) -> dict:
 _TASKS_TODAY_LIMIT = 8
 
 
-def _tasks_today(chores: list[dict], assignees_by_id: dict) -> list[dict]:
+def _tasks_today(chores: list[dict], assignees_by_id: dict,
+                 recent_done: dict) -> list[dict]:
     """Compacte lijst voor Lovelace (fase 5, stap B): wat er vandaag speelt
     mét wie het moet doen. Compact — geen beschrijvingen, geen andere
     velden — maar wél de ids: met `id` en `assignee_id` kan een kaart de
     service chores_manager.mark_done aanroepen en zo een taak met één tik
     afvinken zonder het panel te openen. Eerst vandaag (prioriteit, dan
-    naam), dan achterstand op cyclusfractie; maximaal acht items."""
+    naam), dan achterstand op cyclusfractie; maximaal acht items.
+
+    Net-afgevinkte taken blijven even staan als status "done" (recent_done,
+    uit recent_full_completions; overview bepaalt het venster). Ze sorteren
+    mee in de vandaag-groep, zodat een afgevinkte taak niet verspringt; een
+    taak uit de achterstand landt daar ook — acceptabel. Is een taak weer
+    open (vandaag of achterstand, bijv. na undo), dan telt dat, niet de
+    voltooiing. De limiet van acht geldt inclusief done-rijen.
+    """
     def rij(chore: dict, status: str) -> dict:
         assignee = (None if chore["assignment_type"] == "anyone"
                     else assignees_by_id.get(chore["current_assignee"]))
-        return {
+        row = {
             "id": chore["id"],
             "name": chore["name"],
             "icon": chore["icon"],
@@ -74,14 +85,23 @@ def _tasks_today(chores: list[dict], assignees_by_id: dict) -> list[dict]:
             "assignee_name": assignee["name"] if assignee else "wie kan",
             "assignee_color": assignee["color"] if assignee else None,
         }
+        if status == "done":
+            row.update(recent_done[chore["id"]])
+        return row
+
+    def is_open(chore: dict) -> bool:
+        return chore["urgency"] == "due" or chore["overdue_days"] > 0
 
     vandaag = sorted(
-        (c for c in chores if c["urgency"] == "due"),
-        key=lambda c: (_PRIORITY_RANK.get(c["priority"], 9), c["name"]))
+        [(c, "today") for c in chores if c["urgency"] == "due"]
+        + [(c, "done") for c in chores
+           if c["id"] in recent_done and not is_open(c)],
+        key=lambda pair: (_PRIORITY_RANK.get(pair[0]["priority"], 9),
+                          pair[0]["name"]))
     achter = sorted(
         (c for c in chores if c["overdue_days"] > 0),
         key=lambda c: -(c["cycle_fraction"] or 0))
-    return ([rij(c, "today") for c in vandaag]
+    return ([rij(c, status) for c, status in vandaag]
             + [rij(c, "overdue") for c in achter])[:_TASKS_TODAY_LIMIT]
 
 
@@ -111,13 +131,25 @@ def _recent_completions(database_path: str) -> list[dict]:
     ]
 
 
-def overview(database_path: str, today: date) -> dict:
-    """De samenvatting van §2.4: sensortoestand plus attributen."""
+def overview(database_path: str, today: date, now: Optional[datetime] = None,
+             recent_done_seconds: int = 0) -> dict:
+    """De samenvatting van §2.4: sensortoestand plus attributen.
+
+    Met `now` en `recent_done_seconds` (de sensor geeft
+    const.RECENT_DONE_SECONDS mee; const.py zelf kan hier niet geïmporteerd
+    worden, want die importeert HA) bevat tasks_today ook net-afgevinkte
+    taken met status "done". Zonder: alleen wat openstaat. De tellers
+    (open_today, due_today, overdue) tellen done-rijen nooit mee.
+    """
     chores = [enrich_chore(database_path, chore, today)
               for chore in list_chores(database_path)]
     due_today = sum(1 for c in chores if c["urgency"] == "due")
     overdue = sum(1 for c in chores if c["overdue_days"] > 0)
     assignees_by_id = {a["id"]: a for a in list_assignees(database_path)}
+    recent_done = (
+        recent_full_completions(
+            database_path, now - timedelta(seconds=recent_done_seconds))
+        if now is not None and recent_done_seconds > 0 else {})
     board = leaderboard(database_path, today)
     streaks = assignee_streaks(database_path, today)
     # Iedereen die iets deed telt mee, mét de ranglijstvlag erbij: filteren
@@ -141,7 +173,7 @@ def overview(database_path: str, today: date) -> dict:
         "completed_today": completed_today_count(database_path, today),
         "week_minutes_total": board["total_minutes"],
         "persons": persons,
-        "tasks_today": _tasks_today(chores, assignees_by_id),
+        "tasks_today": _tasks_today(chores, assignees_by_id, recent_done),
         "recent_completions": _recent_completions(database_path),
     }
 
