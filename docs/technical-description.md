@@ -2,9 +2,9 @@
 
 Stand: 29-07-2026, na fase 5 — de refactor is afgerond; bijgewerkt op
 20-09-2026 voor de service `mark_done` en op 23-09-2026 voor `undo_last`,
-`revert_completion` en het attribuut `recent_completions`. De oude app (1.x) is volledig
-verwijderd; dit document beschrijft alleen wat er draait. Ontwerpmotivatie:
-`REFACTOR_PLAN.md`.
+`revert_completion` en het attribuut `recent_completions`. De oude app
+(1.x) is volledig verwijderd; dit document beschrijft alleen wat er draait.
+Ontwerpmotivatie: `REFACTOR_PLAN.md`.
 
 ## Database
 
@@ -151,11 +151,14 @@ Lovelace-resource-URL.
 - `chores_manager.revert_completion` — een eerdere voltooiing weghalen, ook
   buiten het undo-venster ("toch niet gedaan"). Veld: `completion_id`
   (verplicht, het `id` uit `recent_completions`). De regel verdwijnt (en
-  daarmee de minuten uit de weekstand); was het een volledige voltooiing,
-  dan komt de taak vandaag terug (`next_due` = vandaag, tenzij die al op
-  of vóór vandaag lag) en gaat bij een roterende taak de beurt terug naar
-  wie de regel had (staat die niet in de rotatie, dan blijft de beurt
-  staan). Wijst de undo-buffer naar dezelfde regel, dan vervalt hij.
+  daarmee de minuten uit de weekstand); was het de laatste volledige
+  voltooiing van de taak (op `completed_at`, bij gelijke tijd het hoogste
+  `id`), dan komt de taak vandaag terug (`next_due` = vandaag, tenzij die
+  al op of vóór vandaag lag) en gaat bij een roterende taak de beurt terug
+  naar wie de regel had (staat die niet in de rotatie, dan blijft de beurt
+  staan). Bij een oudere volledige voltooiing gaat alleen de regel weg:
+  `next_due` en de beurt komen dan van een latere voltooiing. Wijst de
+  undo-buffer naar dezelfde regel, dan vervalt hij.
   Signaal met reason `revert`; een onbekend id geeft een
   `ServiceValidationError`.
 

@@ -74,6 +74,37 @@ class TestRevertCompletion:
         assert get_chore(db, "vuilnis")["next_due"] == (
             VANDAAG - timedelta(days=3)).isoformat()
 
+    def test_oudere_voltooiing_laat_datum_en_beurt_staan(self, db):
+        # Twee keer afgevinkt door martijn; de tweede bepaalt next_due en de
+        # beurt (laura, index 1). De eerste terugdraaien haalt alleen die
+        # regel en haar minuten weg — met de oude regel zou de beurt ten
+        # onrechte naar martijn (index 0) en de datum naar vandaag gaan.
+        _vuilnis(db)
+        oud = complete_chore(db, "vuilnis", "martijn",
+                             VANDAAG - timedelta(days=2),
+                             "2026-07-27T10:00:00+02:00")
+        nieuw = complete_chore(db, "vuilnis", "martijn", VANDAAG, NU)
+        voor = get_chore(db, "vuilnis")
+        assert voor["next_due"] == (VANDAAG + timedelta(days=7)).isoformat()
+        assert voor["rotation_index"] == 1
+        assert _minuten(db, "martijn") == 30
+
+        assert revert_completion(db, oud["row_id"], VANDAAG) == {
+            "chore_id": "vuilnis", "was_full": True}
+
+        na = get_chore(db, "vuilnis")
+        assert na["next_due"] == voor["next_due"]
+        assert na["rotation_index"] == voor["rotation_index"]
+        assert _minuten(db, "martijn") == 15
+        assert [i["id"] for i in overview(db, VANDAAG)["recent_completions"]] == [
+            nieuw["row_id"]]
+
+        # de overgebleven regel is nu de laatste: die zet wél terug
+        revert_completion(db, nieuw["row_id"], VANDAAG)
+        terug = get_chore(db, "vuilnis")
+        assert terug["next_due"] == VANDAAG.isoformat()
+        assert terug["rotation_index"] == 0
+
     def test_onbekend_id_geeft_storeerror(self, db):
         with pytest.raises(StoreError):
             revert_completion(db, 999, VANDAAG)

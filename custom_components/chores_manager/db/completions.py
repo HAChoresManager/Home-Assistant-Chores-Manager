@@ -168,16 +168,21 @@ def undo_completion(database_path: str, undo: dict) -> None:
 
 def revert_completion(database_path: str, completion_id: int, today: date) -> dict:
     """Voltooiing achteraf terugdraaien (buiten het undo-venster): de regel weg;
-    was het een volledige voltooiing, dan komt de taak vandaag terug (next_due =
-    today) en gaat bij een roterende taak de beurt terug naar de persoon die de
-    regel had — die stond immers aan de beurt. Geeft {chore_id, was_full} terug.
-    Onbekend id -> StoreError.
+    was het de laatste volledige voltooiing van de taak, dan komt de taak
+    vandaag terug (next_due = today) en gaat bij een roterende taak de beurt
+    terug naar de persoon die de regel had — die stond immers aan de beurt.
+    Geeft {chore_id, was_full} terug. Onbekend id -> StoreError.
 
     Anders dan undo_completion is er geen momentopname van vóór het afvinken;
     "toch niet gedaan" betekent daarom: de taak staat vandaag weer open. Een
     next_due die al op of vóór vandaag ligt (de taak verviel inmiddels opnieuw)
     blijft staan — die schuiven we niet naar achteren. Staat de persoon van de
     regel niet (meer) in de rotatielijst, dan blijft de beurt staan.
+
+    Een oudere volledige voltooiing gaat alleen weg, en daarmee haar minuten:
+    next_due en de beurt komen dan van een latere voltooiing, en die blijft
+    gelden. "Laatste" volgt de volgorde van de feed: completed_at, bij gelijke
+    tijd het hoogste id.
     """
     with get_connection(database_path) as conn:
         completion = conn.execute(
@@ -187,8 +192,13 @@ def revert_completion(database_path: str, completion_id: int, today: date) -> di
             raise StoreError(f"onbekende voltooiing {completion_id!r}")
         chore_id = completion["chore_id"]
         was_full = bool(completion["is_full_completion"])
+        latest_full = conn.execute(
+            "SELECT id FROM completions WHERE chore_id = ? AND is_full_completion = 1"
+            " ORDER BY completed_at DESC, id DESC LIMIT 1", (chore_id,)).fetchone()
+        # bij was_full is er altijd een latest_full: deze regel zelf, minstens
+        is_latest_full = was_full and latest_full["id"] == completion_id
         conn.execute("DELETE FROM completions WHERE id = ?", (completion_id,))
-        if was_full:
+        if is_latest_full:
             chore = conn.execute(
                 "SELECT next_due, assignment_type, rotation, rotation_index"
                 " FROM chores WHERE id = ?", (chore_id,)).fetchone()

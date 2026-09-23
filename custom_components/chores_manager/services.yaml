@@ -62,9 +62,11 @@ undo_last:
 revert_completion:
   name: Voltooiing terugdraaien
   description: >-
-    Haalt een eerdere voltooiing weg, ook buiten het undo-venster. De taak komt
-    vandaag terug en bij een roterende taak gaat de beurt terug naar wie hem had.
-    Bedoeld voor de "laatst gedaan"-lijst op een dashboard.
+    Haalt een eerdere voltooiing weg, ook buiten het undo-venster. Was het de
+    laatste volledige voltooiing van de taak, dan komt de taak vandaag terug en
+    gaat bij een roterende taak de beurt terug naar wie hem had; bij een oudere
+    gaat alleen de regel weg. Bedoeld voor de "laatst gedaan"-lijst op een
+    dashboard.
   fields:
     completion_id:
       name: Voltooiing
