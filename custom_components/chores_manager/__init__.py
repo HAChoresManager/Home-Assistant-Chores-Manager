@@ -7,9 +7,11 @@ Sinds fase 3c is dit de enige app. De opzet is klein gehouden:
 - één overzichtssensor (sensor.py), zonder polling;
 - nachtelijke rol om 03:00 (scheduler.py);
 - meldingen om 08:00 en zondag 20:00 plus de "Klaar"-knop (notify.py, fase 4);
-- vier services: roll_forward en de twee meldingsservices als handmatige
-  trigger, en mark_done als dunne laag voor Lovelace-kaarten (die kunnen
-  alleen services aanroepen); afvinken zelf loopt via notify.async_complete;
+- zes services: roll_forward en de twee meldingsservices als handmatige
+  trigger, en mark_done, undo_last en revert_completion als dunne laag voor
+  Lovelace-kaarten (die kunnen alleen services aanroepen); afvinken zelf
+  loopt via notify.async_complete, terugdraaien binnen het venster via
+  websocket.async_undo_last;
 - het panel op /taken (panel.py), rechtstreeks geserveerd uit deze map.
 
 De oude app (React-dashboard onder www/, eigen tokens, twintig services) is
@@ -25,17 +27,22 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DATA_DB_PATH,
+    DATA_UNDO,
     DATA_UNSUB_NOTIFY,
     DATA_UNSUB_ROLL,
     DATA_WS_REGISTERED,
     DB_FILENAME,
     DOMAIN,
     PLATFORMS,
+    SIGNAL_UPDATED,
 )
 from .db.assignees import list_assignees
+from .db.completions import revert_completion
 from .db.schema import create_database
 from .notify import (
     async_complete,
@@ -45,7 +52,7 @@ from .notify import (
 )
 from .panel import async_remove_panel, async_setup_panel
 from .scheduler import async_run_roll, async_setup_scheduler
-from .websocket import async_register_websocket_commands
+from .websocket import async_register_websocket_commands, async_undo_last
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,6 +62,14 @@ MARK_DONE_SCHEMA = vol.Schema({
     # kaart die dat veld doorgeeft moet dan op de aanroeper terugvallen.
     vol.Optional("assignee_id"): vol.Any(None, cv.string),
 })
+
+REVERT_COMPLETION_SCHEMA = vol.Schema({
+    # de number-selector levert een float (412.0); coerce maakt er een int van
+    vol.Required("completion_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+})
+
+SERVICES = ("roll_forward", "send_daily_summary", "send_weekly_summary",
+            "mark_done", "undo_last", "revert_completion")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -134,11 +149,48 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.info("Chores Manager: %s afgevinkt via mark_done door %s",
                      chore_id, assignee_id)
 
+    async def handle_undo_last(call: ServiceCall) -> None:
+        """Laatste voltooiing exact terugdraaien, binnen vijf minuten.
+
+        Dunne laag om dezelfde async_undo_last als het WS-commando
+        chores_manager/undo: zelfde buffer, zelfde venster, zelfde signaal.
+        Niets (meer) om terug te draaien geeft een ServiceValidationError.
+        """
+        chore_id = await async_undo_last(hass)
+        _LOGGER.info("Chores Manager: %s teruggedraaid via undo_last", chore_id)
+
+    async def handle_revert_completion(call: ServiceCall) -> None:
+        """Een eerdere voltooiing weghalen, ook buiten het undo-venster
+        ("toch niet gedaan"); het id komt uit recent_completions.
+
+        Wijst de undo-buffer naar dezelfde regel, dan vervalt hij: anders
+        zou undo_last daarna de toestand van vóór het afvinken terugzetten
+        over het terugdraaien heen.
+        """
+        completion_id = call.data["completion_id"]
+        try:
+            result = await hass.async_add_executor_job(
+                revert_completion, database_path, completion_id,
+                dt_util.now().date())
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+        buffered = domain_data.get(DATA_UNDO)
+        if buffered and buffered["undo"]["row_id"] == completion_id:
+            domain_data[DATA_UNDO] = None
+        async_dispatcher_send(hass, SIGNAL_UPDATED,
+                              {"reason": "revert", "chore_id": result["chore_id"]})
+        _LOGGER.info("Chores Manager: voltooiing %d (%s) teruggedraaid via "
+                     "revert_completion", completion_id, result["chore_id"])
+
     hass.services.async_register(DOMAIN, "roll_forward", handle_roll)
     hass.services.async_register(DOMAIN, "send_daily_summary", handle_send_daily)
     hass.services.async_register(DOMAIN, "send_weekly_summary", handle_send_weekly)
     hass.services.async_register(
         DOMAIN, "mark_done", handle_mark_done, schema=MARK_DONE_SCHEMA)
+    hass.services.async_register(DOMAIN, "undo_last", handle_undo_last)
+    hass.services.async_register(
+        DOMAIN, "revert_completion", handle_revert_completion,
+        schema=REVERT_COMPLETION_SCHEMA)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _LOGGER.info("Chores Manager: setup compleet")
@@ -155,8 +207,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if unsub:
             unsub()
 
-    for service in ("roll_forward", "send_daily_summary", "send_weekly_summary",
-                    "mark_done"):
+    for service in SERVICES:
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)
 

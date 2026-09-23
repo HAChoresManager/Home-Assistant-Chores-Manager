@@ -109,7 +109,9 @@ automations en voor de actieknop in notificaties. *(Achterhaald in 3c/4: de
 oude services zijn verdwenen; de actieknop vinkt af via een event-listener in
 `notify.py`, zie §6. Wat er nog aan services is: `roll_forward`,
 `send_daily_summary`, `send_weekly_summary` — en sinds 20-09-2026 weer
-`mark_done`, als dunne laag voor Lovelace-dashboards, zie §6.)*
+`mark_done`, als dunne laag voor Lovelace-dashboards, zie §6; sinds
+23-09-2026 ook `undo_last` (om dezelfde kern als `chores_manager/undo`) en
+`revert_completion` (voltooiing buiten het undo-venster weghalen).)*
 
 ### 2.4 Sensor
 
@@ -127,7 +129,9 @@ oude services zijn verdwenen; de actieknop vinkt af via een event-listener in
   `tasks_today`, een compacte lijst van maximaal acht items voor
   Lovelace-kaarten, en sinds 20-09-2026 mét `id` en `assignee_id` zodat zo'n
   kaart `chores_manager.mark_done` kan aanroepen — zie §6 en
-  `docs/technical-description.md`.)*
+  `docs/technical-description.md`. Sinds 23-09-2026 ook
+  `recent_completions`: de laatste acht voltooiingen mét `id`, voor
+  `chores_manager.revert_completion`.)*
 
 Dezelfde semantiek geldt op het scherm Vandaag: de kop toont het totaal
 ("8 taken"), daaronder twee secties — wat vandaag gepland staat en wat
@@ -493,7 +497,7 @@ Alles onder de 600 regels. Bij overschrijding: splitsen.
 
 ```
 custom_components/chores_manager/
-├── __init__.py           # setup, config entry, services (roll_forward, meldingen, mark_done)
+├── __init__.py           # setup, config entry, services (roll_forward, meldingen, mark_done, undo_last, revert_completion)
 ├── manifest.json
 ├── const.py
 ├── config_flow.py        # één instantie, niets in te stellen
@@ -521,7 +525,8 @@ custom_components/chores_manager/
 Geen `migrations.py` meer in de boom: v2 heeft een vers schema; migraties
 komen pas terug zodra dat schema ná ingebruikname wijzigt. Geen los
 `services.py`: de overgebleven services (roll_forward, de twee
-meldingsservices en sinds 20-09-2026 mark_done) zijn klein genoeg voor
+meldingsservices, sinds 20-09-2026 mark_done en sinds 23-09-2026
+undo_last en revert_completion) zijn klein genoeg voor
 `__init__.py`; `notify.py` (fase 4) bevat de meldingen én `async_complete`,
 de gedeelde afvinkstap achter de "Klaar"-knop en mark_done. `seed.py` was
 tijdelijk en is in fase 5 verwijderd.
@@ -930,12 +935,15 @@ gebruik):
    worden — of de overbodige services verdwijnen, wat waarschijnlijker is.
    *(Het laatste gebeurde: alle 22 zijn in 3c verdwenen; `services.yaml`
    beschrijft nu het volledige aanbod van drie — vier sinds `mark_done`
-   op 20-09-2026, zie §6.)*
+   op 20-09-2026, zes sinds `undo_last` en `revert_completion` op
+   23-09-2026, zie §6.)*
 7. **Twee services worden geregistreerd maar niet opgeruimd.**
    `async_unregister_services` (`services/__init__.py:107-122`) noemt twintig
    namen, maar `get_pending_notifications` (`services/notification_services.py:101`)
    en `reset_theme` (`services/theme_services.py:108`) staan er niet bij. Bij het
    herladen van de integratie blijven ze achter. Klein, maar nu vastgelegd zodat
    het niet opnieuw ontstaat als de servicelijst in fase 2 verandert.
-   *(Met de oude app verdwenen; de huidige unload ruimt alle vier de
-   services op — mark_done meegenomen op 20-09-2026.)*
+   *(Met de oude app verdwenen; de huidige unload ruimt alle
+   services op — mark_done meegenomen op 20-09-2026, undo_last en
+   revert_completion op 23-09-2026; de lijst staat nu als SERVICES in
+   `__init__.py`.)*

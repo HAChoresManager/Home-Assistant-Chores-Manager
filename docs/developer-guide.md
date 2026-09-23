@@ -49,7 +49,10 @@ node de ES-module).
   versturen, handig om ze te testen). Daarnaast `mark_done` — geen
   testservice maar de dunne laag waarmee een Lovelace-kaart afvinkt; hij
   gebruikt `notify.async_complete`, dezelfde drie stappen als de
-  "Klaar"-knop en `ws_complete`.
+  "Klaar"-knop en `ws_complete`. Het terugdraaien vanaf een kaart loopt
+  via `undo_last` (dezelfde `websocket.async_undo_last` als `ws_undo`) en
+  `revert_completion` (`db.completions.revert_completion`, voor
+  voltooiingen buiten het undo-venster).
 
 ## Kaartgebruik (optioneel)
 

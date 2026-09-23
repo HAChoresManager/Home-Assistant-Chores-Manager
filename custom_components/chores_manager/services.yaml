@@ -1,8 +1,9 @@
 # De twintig services van de oude app zijn in fase 3c verdwenen en de
 # tijdelijke seed in fase 5; alle bediening loopt via de WS-commando's
-# (websocket.py). De ene uitzondering is mark_done: een dunne laag zonder
-# eigen logica, omdat Lovelace alleen services kan aanroepen en geen
-# WS-commando's. Wat hier staat is het volledige service-aanbod.
+# (websocket.py). De uitzonderingen zijn mark_done, undo_last en
+# revert_completion: dunne lagen zonder eigen logica, omdat Lovelace alleen
+# services kan aanroepen en geen WS-commando's. Wat hier staat is het
+# volledige service-aanbod.
 
 roll_forward:
   name: Achterstand doorrollen
@@ -51,3 +52,26 @@ mark_done:
       example: laura
       selector:
         text:
+
+undo_last:
+  name: Laatste afvinken ongedaan maken
+  description: >-
+    Draait de laatste voltooiing exact terug (zelfde venster van vijf minuten als
+    de undo-knop in het panel). Daarna is er niets meer om terug te draaien.
+
+revert_completion:
+  name: Voltooiing terugdraaien
+  description: >-
+    Haalt een eerdere voltooiing weg, ook buiten het undo-venster. De taak komt
+    vandaag terug en bij een roterende taak gaat de beurt terug naar wie hem had.
+    Bedoeld voor de "laatst gedaan"-lijst op een dashboard.
+  fields:
+    completion_id:
+      name: Voltooiing
+      description: Het id uit recent_completions op sensor.chores_overview.
+      required: true
+      example: 412
+      selector:
+        number:
+          min: 1
+          mode: box

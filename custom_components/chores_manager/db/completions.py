@@ -166,6 +166,46 @@ def undo_completion(database_path: str, undo: dict) -> None:
                 (undo["prev_next_due"], undo["prev_rotation_index"], undo["chore_id"]))
 
 
+def revert_completion(database_path: str, completion_id: int, today: date) -> dict:
+    """Voltooiing achteraf terugdraaien (buiten het undo-venster): de regel weg;
+    was het een volledige voltooiing, dan komt de taak vandaag terug (next_due =
+    today) en gaat bij een roterende taak de beurt terug naar de persoon die de
+    regel had — die stond immers aan de beurt. Geeft {chore_id, was_full} terug.
+    Onbekend id -> StoreError.
+
+    Anders dan undo_completion is er geen momentopname van vóór het afvinken;
+    "toch niet gedaan" betekent daarom: de taak staat vandaag weer open. Een
+    next_due die al op of vóór vandaag ligt (de taak verviel inmiddels opnieuw)
+    blijft staan — die schuiven we niet naar achteren. Staat de persoon van de
+    regel niet (meer) in de rotatielijst, dan blijft de beurt staan.
+    """
+    with get_connection(database_path) as conn:
+        completion = conn.execute(
+            "SELECT chore_id, assignee_id, is_full_completion FROM completions"
+            " WHERE id = ?", (completion_id,)).fetchone()
+        if completion is None:
+            raise StoreError(f"onbekende voltooiing {completion_id!r}")
+        chore_id = completion["chore_id"]
+        was_full = bool(completion["is_full_completion"])
+        conn.execute("DELETE FROM completions WHERE id = ?", (completion_id,))
+        if was_full:
+            chore = conn.execute(
+                "SELECT next_due, assignment_type, rotation, rotation_index"
+                " FROM chores WHERE id = ?", (chore_id,)).fetchone()
+            next_due = chore["next_due"]
+            if date.fromisoformat(next_due) > today:
+                next_due = today.isoformat()
+            rotation_index = chore["rotation_index"]
+            if chore["assignment_type"] == "rotating":
+                rotation = json.loads(chore["rotation"])
+                if completion["assignee_id"] in rotation:
+                    rotation_index = rotation.index(completion["assignee_id"])
+            conn.execute(
+                "UPDATE chores SET next_due = ?, rotation_index = ? WHERE id = ?",
+                (next_due, rotation_index, chore_id))
+        return {"chore_id": chore_id, "was_full": was_full}
+
+
 def leaderboard(database_path: str, today: date) -> dict:
     """Weekstand (§5.1): per actieve persoon minuten en volledige taken sinds
     maandag, plus het weektotaal. 'Taken' telt alleen volledige voltooiingen;

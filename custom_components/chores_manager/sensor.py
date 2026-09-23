@@ -14,6 +14,10 @@ De persons-attributen tonen iedereen die deze week iets deed, mét een
 in_leaderboard-vlag per persoon. Filteren is presentatie: een Lovelace-kaart
 die alleen de ranglijst wil, filtert zelf op die vlag — de sensor verzwijgt
 geen bijdragen.
+
+tasks_today en recent_completions dragen ids, zodat een Lovelace-kaart met
+één tik chores_manager.mark_done respectievelijk
+chores_manager.revert_completion kan aanroepen.
 """
 from __future__ import annotations
 
@@ -86,6 +90,8 @@ class ChoresOverviewSensor(SensorEntity):
             "persons": data["persons"],
             # compacte weergavelijst voor Lovelace-kaarten (fase 5, stap B)
             "tasks_today": data["tasks_today"],
+            # laatste acht voltooiingen, voor revert_completion vanaf een kaart
+            "recent_completions": data["recent_completions"],
         }
         if write:
             self.async_write_ha_state()

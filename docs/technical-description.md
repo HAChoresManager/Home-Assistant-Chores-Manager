@@ -1,7 +1,8 @@
 # Technical Description — Chores Manager 2.x
 
 Stand: 29-07-2026, na fase 5 — de refactor is afgerond; bijgewerkt op
-20-09-2026 voor de service `mark_done`. De oude app (1.x) is volledig
+20-09-2026 voor de service `mark_done` en op 23-09-2026 voor `undo_last`,
+`revert_completion` en het attribuut `recent_completions`. De oude app (1.x) is volledig
 verwijderd; dit document beschrijft alleen wat er draait. Ontwerpmotivatie:
 `REFACTOR_PLAN.md`.
 
@@ -52,7 +53,8 @@ Tien commando's onder `chores_manager/*`, standaard-auth (geen admin):
 `assignee/save`, `assignee/delete`, `subscribe`. Mutaties sturen
 `SIGNAL_UPDATED` over de dispatcher; `subscribe`-abonnees krijgen een event
 met alleen de reden en halen zelf verse staat op via `state`. Undo werkt op
-een geheugenbuffer met een venster van vijf minuten.
+een geheugenbuffer met een venster van vijf minuten; de kern daarvan
+(`async_undo_last`) deelt `undo` met de service `undo_last`.
 
 ## Sensor (`sensor.py`)
 
@@ -72,7 +74,14 @@ Attributen, gedocumenteerd voor Lovelace-gebruik:
   `assignee_name` (bij 'anyone': "wie kan"), `assignee_color` (bij 'anyone'
   zijn `assignee_id` en `assignee_color` `null`). De ids zijn er zodat een
   kaart met één tik `chores_manager.mark_done` kan aanroepen. Eerst vandaag
-  (prioriteit, dan naam), dan achterstand op cyclusfractie.
+  (prioriteit, dan naam), dan achterstand op cyclusfractie;
+- `recent_completions` — de laatste acht voltooiingen, nieuwste eerst,
+  uit dezelfde feed-query als het panel. Per item precies: `id`,
+  `chore_id`, `chore_name`, `icon`, `assignee_id`, `assignee_name`,
+  `assignee_color`, `completed_at` (ISO, lokale tijd met offset),
+  `minutes`, `is_full` (bool; `false` bij een deelstap of counter-tik) en
+  `subtask_name` (of `null`). Geen notities. Met `id` roept een kaart
+  `chores_manager.revert_completion` aan.
 
 ## Scheduler
 
@@ -134,8 +143,23 @@ Lovelace-resource-URL.
   logica: dezelfde `async_complete` in `notify.py` als de "Klaar"-knop,
   dus dezelfde undo-buffer en dezelfde push. Een checklist wordt in één
   keer afgerond, een counter krijgt één tik.
+- `chores_manager.undo_last` — de laatste voltooiing exact terugdraaien,
+  zonder velden. Dunne laag om `async_undo_last` in `websocket.py`, de
+  kern van het WS-commando `undo`: zelfde buffer, zelfde venster van vijf
+  minuten, zelfde signaal (reason `undo`). Niets (meer) om terug te
+  draaien geeft een `ServiceValidationError`.
+- `chores_manager.revert_completion` — een eerdere voltooiing weghalen, ook
+  buiten het undo-venster ("toch niet gedaan"). Veld: `completion_id`
+  (verplicht, het `id` uit `recent_completions`). De regel verdwijnt (en
+  daarmee de minuten uit de weekstand); was het een volledige voltooiing,
+  dan komt de taak vandaag terug (`next_due` = vandaag, tenzij die al op
+  of vóór vandaag lag) en gaat bij een roterende taak de beurt terug naar
+  wie de regel had (staat die niet in de rotatie, dan blijft de beurt
+  staan). Wijst de undo-buffer naar dezelfde regel, dan vervalt hij.
+  Signaal met reason `revert`; een onbekend id geeft een
+  `ServiceValidationError`.
 
 Meer services zijn er niet; alle overige bediening loopt via de
-WebSocket-API — `mark_done` is de ene uitzondering, omdat Lovelace alleen
-services kan aanroepen. De tijdelijke `seed` is in fase 5 verwijderd, met
+WebSocket-API — `mark_done`, `undo_last` en `revert_completion` zijn de
+uitzonderingen, omdat Lovelace alleen services kan aanroepen. De tijdelijke `seed` is in fase 5 verwijderd, met
 `seed.py` erbij.

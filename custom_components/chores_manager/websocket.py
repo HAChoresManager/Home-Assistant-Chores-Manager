@@ -19,6 +19,7 @@ import voluptuous as vol
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
@@ -90,24 +91,42 @@ async def ws_complete(hass, connection, msg):
     })
 
 
-@websocket_api.websocket_command({vol.Required("type"): "chores_manager/undo"})
-@websocket_api.async_response
-async def ws_undo(hass, connection, msg):
-    """Laatste voltooiing terugdraaien, binnen vijf minuten (§2.3).
+NOTHING_TO_UNDO = "Geen voltooiing om terug te draaien; het venster is vijf minuten."
 
-    De buffer leeft in het geheugen; na een herstart van HA is er niets meer
-    om terug te draaien. Dat past bij een venster van vijf minuten.
+
+async def async_undo_last(hass: HomeAssistant) -> str:
+    """Laatste voltooiing terugdraaien, binnen vijf minuten (§2.3). Geeft het
+    chore_id terug.
+
+    Gedeeld door het WS-commando chores_manager/undo en de service
+    chores_manager.undo_last: zelfde buffer, zelfde venster, zelfde signaal.
+    Is er niets (meer) om terug te draaien, dan een ServiceValidationError —
+    de service laat die als toast zien, het WS-commando maakt er een
+    foutmelding van. De buffer leeft in het geheugen; na een herstart van HA
+    is er niets meer om terug te draaien. Dat past bij een venster van vijf
+    minuten.
     """
     buffered = hass.data[DOMAIN].get(DATA_UNDO)
     if not buffered or time.monotonic() - buffered["at"] > UNDO_WINDOW_SECONDS:
-        connection.send_error(msg["id"], "nothing_to_undo",
-                              "geen voltooiing om terug te draaien (venster is 5 minuten)")
-        return
+        raise ServiceValidationError(NOTHING_TO_UNDO)
     await hass.async_add_executor_job(
         undo_completion, _path(hass), buffered["undo"])
     hass.data[DOMAIN][DATA_UNDO] = None
-    _notify(hass, "undo", chore_id=buffered["undo"]["chore_id"])
-    connection.send_result(msg["id"], {"chore_id": buffered["undo"]["chore_id"]})
+    chore_id = buffered["undo"]["chore_id"]
+    _notify(hass, "undo", chore_id=chore_id)
+    return chore_id
+
+
+@websocket_api.websocket_command({vol.Required("type"): "chores_manager/undo"})
+@websocket_api.async_response
+async def ws_undo(hass, connection, msg):
+    """Laatste voltooiing terugdraaien; zie async_undo_last."""
+    try:
+        chore_id = await async_undo_last(hass)
+    except ServiceValidationError as err:
+        connection.send_error(msg["id"], "nothing_to_undo", str(err))
+        return
+    connection.send_result(msg["id"], {"chore_id": chore_id})
 
 
 @websocket_api.websocket_command({

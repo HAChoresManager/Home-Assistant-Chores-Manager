@@ -36,11 +36,17 @@ Het panel werkt ook als kaart in een bestaand dashboard:
 
 - `sensor.chores_overview` — openstaande taken vandaag, met attributen
   voor eigen Lovelace-kaarten: `tasks_today` (compacte lijst mét wie het
-  moet doen) en `persons` (weekstand per persoon, met kleur en streak).
+  moet doen), `recent_completions` (de laatste acht voltooiingen) en
+  `persons` (weekstand per persoon, met kleur en streak).
   Zie `docs/technical-description.md` voor de velden.
 - `chores_manager.mark_done` — vink een taak af vanaf een Lovelace-kaart
   (`chore_id` uit `tasks_today`; `assignee_id` optioneel, leeg = de
   aanroepende gebruiker via zijn koppeling).
+- `chores_manager.undo_last` — draai de laatste voltooiing exact terug,
+  binnen vijf minuten (zelfde venster als de undo-knop in het panel).
+- `chores_manager.revert_completion` — haal een eerdere voltooiing weg, ook
+  buiten dat venster (`completion_id` uit `recent_completions`); de taak
+  komt vandaag terug.
 - `chores_manager.roll_forward` — voer de nachtelijke doorrol (03:00) nu uit.
 - `chores_manager.send_daily_summary` / `send_weekly_summary` — verstuur de
   ochtendmelding of weeksamenvatting nu.

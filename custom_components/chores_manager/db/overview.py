@@ -85,6 +85,32 @@ def _tasks_today(chores: list[dict], assignees_by_id: dict) -> list[dict]:
             + [rij(c, "overdue") for c in achter])[:_TASKS_TODAY_LIMIT]
 
 
+_RECENT_COMPLETIONS_LIMIT = 8
+
+
+def _recent_completions(database_path: str) -> list[dict]:
+    """De laatste acht voltooiingen voor Lovelace, nieuwste eerst: dezelfde
+    feed-query als het panel, maar compact (geen notities). Met `id` kan een
+    kaart chores_manager.revert_completion aanroepen — een "laatst
+    gedaan"-lijst waarin een verkeerd afgevinkte taak terug kan."""
+    return [
+        {
+            "id": row["id"],
+            "chore_id": row["chore_id"],
+            "chore_name": row["chore_name"],
+            "icon": row["icon"],
+            "assignee_id": row["assignee_id"],
+            "assignee_name": row["assignee_name"],
+            "assignee_color": row["color"],
+            "completed_at": row["completed_at"],
+            "minutes": row["minutes"],
+            "is_full": bool(row["is_full_completion"]),
+            "subtask_name": row["subtask_name"],
+        }
+        for row in feed(database_path, _RECENT_COMPLETIONS_LIMIT)
+    ]
+
+
 def overview(database_path: str, today: date) -> dict:
     """De samenvatting van §2.4: sensortoestand plus attributen."""
     chores = [enrich_chore(database_path, chore, today)
@@ -116,6 +142,7 @@ def overview(database_path: str, today: date) -> dict:
         "week_minutes_total": board["total_minutes"],
         "persons": persons,
         "tasks_today": _tasks_today(chores, assignees_by_id),
+        "recent_completions": _recent_completions(database_path),
     }
 
 
