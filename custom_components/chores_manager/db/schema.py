@@ -7,6 +7,11 @@ De CHECK-constraints leggen de enumeraties uit §3 vast in de database zelf,
 zodat een typefout in aanroepende code niet stilletjes als data eindigt. NULL
 passeert een CHECK (SQL: unknown), dus het optionele subtask_mode blijft
 gewoon NULL-baar.
+
+Vijf tabellen: assignees, chores, subtasks, completions en (sinds v2.5) skips.
+Een nieuwe tabel komt er via CREATE TABLE IF NOT EXISTS vanzelf bij op een
+bestaande database — apply_schema draait bij elke start. Alleen een nieuwe
+kolom in een bestaande tabel heeft een stap in _migrate nodig.
 """
 from __future__ import annotations
 
@@ -86,6 +91,27 @@ CREATE INDEX IF NOT EXISTS idx_completions_assignee
     ON completions (assignee_id, completed_at);
 CREATE INDEX IF NOT EXISTS idx_completions_chore
     ON completions (chore_id);
+
+-- Overslaan (v2.5): "deze keer doet niemand het". Geen voltooiing — geen
+-- minuten, geen beurt — maar wel een instantiegrens (completions.py) en een
+-- regel in de activiteit. Terugdraaien zet previous_next_due terug.
+CREATE TABLE IF NOT EXISTS skips (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- CASCADE: een taak zónder voltooiingen mag echt weg (delete_chore) en
+    -- neemt zijn overslaglog mee; met voltooiingen wordt hij gearchiveerd
+    chore_id          TEXT NOT NULL REFERENCES chores(id) ON DELETE CASCADE,
+    -- wie oversloeg; NULL = onbekend (automatisering, ongekoppelde kijker).
+    -- SET NULL: iemand zonder andere historie mag echt weg
+    assignee_id       TEXT REFERENCES assignees(id) ON DELETE SET NULL,
+    skipped_at        TIMESTAMP NOT NULL,
+    previous_next_due DATE NOT NULL,
+    new_next_due      DATE NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_skips_chore
+    ON skips (chore_id, skipped_at);
+CREATE INDEX IF NOT EXISTS idx_skips_skipped_at
+    ON skips (skipped_at);
 """
 
 

@@ -11,7 +11,7 @@ import sqlite3
 from datetime import date, timedelta
 from typing import Any, Optional
 
-from ..scheduling.calculator import initial_next_due, next_due_after_completion
+from ..scheduling.calculator import initial_next_due
 from ..scheduling.types import validate_schedule
 from .connection import get_connection
 from .errors import StoreError
@@ -139,6 +139,8 @@ def save_chore(database_path: str, data: dict, today: date, now_iso: str) -> dic
 def delete_chore(database_path: str, chore_id: str) -> str:
     """Verwijder een taak. Met voltooiingshistorie: deactiveren in plaats van
     verwijderen, zodat feed en ranglijst (§5) hun verwijzingen houden.
+    Overslagen tellen niet als historie: een taak met alleen skips gaat echt
+    weg en neemt die via ON DELETE CASCADE mee.
 
     Geeft 'deleted' of 'deactivated' terug.
     """
@@ -184,16 +186,28 @@ def set_next_due(database_path: str, chore_id: str, next_due: date, now_iso: str
 
 def snooze_chore(database_path: str, chore_id: str, mode: str, today: date, now_iso: str) -> date:
     """§2.3 snooze: 'tomorrow' zet de taak op morgen; 'skip' slaat de komende
-    geplande keer over en rolt door naar de eerstvolgende daarna."""
+    geplande keer over en rolt door naar de eerstvolgende daarna.
+
+    'skip' is sinds v2.5 gewoon skips.skip_chore — dezelfde rekensom, maar nu
+    gelogd (activiteit, terugdraaien) en als instantiegrens. Zonder persoon
+    (snooze kende er nooit een) en mét allow_upcoming: snooze accepteerde
+    altijd ook een komende keer, en dat blijft zo. Gevolg daarvan: een
+    snooze-skip op een nog komende checklist sluit ook die ronde af. Een
+    gearchiveerde taak weigert nu, net als bij afvinken.
+    """
     chore = get_chore(database_path, chore_id)
     if chore is None:
         raise StoreError(f"onbekende taak {chore_id!r}")
     if mode == "tomorrow":
         new_due = today + timedelta(days=1)
     elif mode == "skip":
-        anchor = max(today, date.fromisoformat(chore["next_due"]))
-        new_due = next_due_after_completion(
-            chore["schedule_type"], chore["schedule_config"], anchor)
+        # lokaal: skips.py hoort niet van chores.py af te hangen of andersom
+        # op moduleniveau (precedent: roll_all_forward)
+        from .skips import skip_chore
+
+        logged = skip_chore(database_path, chore_id, None, today, now_iso,
+                            allow_upcoming=True)
+        return date.fromisoformat(logged["new_next_due"])
     else:
         raise StoreError(f"onbekende snooze-modus {mode!r}")
     set_next_due(database_path, chore_id, new_due, now_iso)

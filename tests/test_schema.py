@@ -23,14 +23,21 @@ def conn():
     conn.close()
 
 
-def test_alle_vier_tabellen_en_indexen_bestaan(conn):
-    tabellen = {r[0] for r in conn.execute(
+def _tabellen(conn):
+    return {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")}
-    assert tabellen == {"assignees", "chores", "subtasks", "completions"}
-    indexen = {r[0] for r in conn.execute(
+
+
+def _indexen(conn):
+    return {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%'")}
-    assert indexen == {"idx_completions_completed_at", "idx_completions_assignee",
-                       "idx_completions_chore"}
+
+
+def test_alle_tabellen_en_indexen_bestaan(conn):
+    assert _tabellen(conn) == {"assignees", "chores", "subtasks", "completions", "skips"}
+    assert _indexen(conn) == {"idx_completions_completed_at", "idx_completions_assignee",
+                              "idx_completions_chore", "idx_skips_chore",
+                              "idx_skips_skipped_at"}
 
 
 def test_apply_schema_is_idempotent(conn):
@@ -101,3 +108,60 @@ class TestVerbindingslaag:
                 conn.execute(
                     "INSERT INTO completions (chore_id, assignee_id, completed_at, minutes)"
                     " VALUES ('nee', 'nee', '2026-07-28', 10)")
+
+
+class TestSkipsTabel:
+    """v2.5: de tabel skips komt via CREATE TABLE IF NOT EXISTS ook op een
+    bestaande database, en de foreign keys doen wat schema.py belooft."""
+
+    def test_bestaande_database_krijgt_skips(self, tmp_path):
+        pad = str(tmp_path / "chores.db")
+        create_database(pad)
+        # terug naar de toestand van vóór v2.5: alleen de vier oude tabellen
+        with get_connection(pad) as conn:
+            conn.execute("DROP TABLE skips")
+            _insert_assignee(conn)
+            _insert_chore(conn)
+            conn.execute(
+                "INSERT INTO completions (chore_id, assignee_id, completed_at, minutes)"
+                " VALUES ('was-draaien', 'martijn', '2026-07-28T20:00:00+02:00', 20)")
+        with get_connection(pad) as conn:
+            assert "skips" not in _tabellen(conn)
+            assert not {"idx_skips_chore", "idx_skips_skipped_at"} & _indexen(conn)
+
+        create_database(pad)  # wat bij elke start van de integratie draait
+
+        with get_connection(pad) as conn:
+            assert "skips" in _tabellen(conn)
+            assert {"idx_skips_chore", "idx_skips_skipped_at"} <= _indexen(conn)
+            # bestaande data onaangeroerd
+            assert conn.execute("SELECT COUNT(*) FROM completions").fetchone()[0] == 1
+            assert conn.execute("SELECT COUNT(*) FROM chores").fetchone()[0] == 1
+            kolommen = [r["name"] for r in conn.execute("PRAGMA table_info(skips)")]
+            assert kolommen == ["id", "chore_id", "assignee_id", "skipped_at",
+                                "previous_next_due", "new_next_due"]
+
+    def test_skip_vereist_bestaande_taak(self, conn):
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO skips (chore_id, skipped_at, previous_next_due, new_next_due)"
+                " VALUES ('bestaat-niet', '2026-07-28T10:00:00+02:00',"
+                " '2026-07-28', '2026-07-29')")
+
+    def test_skips_cascaden_mee_met_hun_taak(self, conn):
+        _insert_chore(conn)
+        conn.execute(
+            "INSERT INTO skips (chore_id, skipped_at, previous_next_due, new_next_due)"
+            " VALUES ('was-draaien', '2026-07-28T10:00:00+02:00', '2026-07-28', '2026-07-29')")
+        conn.execute("DELETE FROM chores WHERE id = 'was-draaien'")
+        assert conn.execute("SELECT COUNT(*) FROM skips").fetchone()[0] == 0
+
+    def test_persoon_weg_laat_skip_staan_zonder_persoon(self, conn):
+        _insert_assignee(conn)
+        _insert_chore(conn)
+        conn.execute(
+            "INSERT INTO skips (chore_id, assignee_id, skipped_at, previous_next_due,"
+            " new_next_due) VALUES ('was-draaien', 'martijn',"
+            " '2026-07-28T10:00:00+02:00', '2026-07-28', '2026-07-29')")
+        conn.execute("DELETE FROM assignees WHERE id = 'martijn'")
+        assert conn.execute("SELECT assignee_id FROM skips").fetchone()[0] is None

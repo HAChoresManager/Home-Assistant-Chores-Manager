@@ -1,9 +1,10 @@
 # De twintig services van de oude app zijn in fase 3c verdwenen en de
 # tijdelijke seed in fase 5; alle bediening loopt via de WS-commando's
-# (websocket.py). De uitzonderingen zijn mark_done, undo_last en
-# revert_completion: dunne lagen zonder eigen logica, omdat Lovelace alleen
-# services kan aanroepen en geen WS-commando's. Wat hier staat is het
-# volledige service-aanbod.
+# (websocket.py). De uitzonderingen zijn mark_done, undo_last,
+# revert_completion, skip en revert_skip: dunne lagen zonder eigen logica
+# (dezelfde kernen als het panel), omdat Lovelace alleen services kan
+# aanroepen en geen WS-commando's. Wat hier staat is het volledige
+# service-aanbod.
 
 roll_forward:
   name: Achterstand doorrollen
@@ -54,10 +55,12 @@ mark_done:
         text:
 
 undo_last:
-  name: Laatste afvinken ongedaan maken
+  name: Laatste actie ongedaan maken
   description: >-
-    Draait de laatste voltooiing exact terug (zelfde venster van vijf minuten als
-    de undo-knop in het panel). Daarna is er niets meer om terug te draaien.
+    Draait de laatste voltooiing of overslag exact terug (zelfde venster van
+    vijf minuten als de undo-knop in het panel). Daarna is er niets meer om
+    terug te draaien. Een overslag gaat niet meer terug als er inmiddels aan
+    de taak gewerkt is of de datum gewijzigd is.
 
 revert_completion:
   name: Voltooiing terugdraaien
@@ -65,14 +68,62 @@ revert_completion:
     Haalt een eerdere voltooiing weg, ook buiten het undo-venster. Was het de
     laatste volledige voltooiing van de taak, dan komt de taak vandaag terug en
     gaat bij een roterende taak de beurt terug naar wie hem had; bij een oudere
-    gaat alleen de regel weg. Bedoeld voor de "laatst gedaan"-lijst op een
-    dashboard.
+    gaat alleen de regel weg. Is de taak daarna overgeslagen, dan blijft de
+    datum van die overslag staan en gaat alleen de beurt terug. Bedoeld voor
+    de "laatst gedaan"-lijst op een dashboard.
   fields:
     completion_id:
       name: Voltooiing
       description: Het id uit recent_completions op sensor.chores_overview.
       required: true
       example: 412
+      selector:
+        number:
+          min: 1
+          mode: box
+
+skip:
+  name: Taak overslaan
+  description: >-
+    Slaat de huidige keer van een taak over: deze keer doet niemand hem. De
+    taak schuift door naar de eerstvolgende geplande keer, zonder voltooiing
+    (geen minuten, geen invloed op ranglijst of reeks) en bij een roterende
+    taak blijft dezelfde persoon aan de beurt. Een half afgevinkte checklist
+    of teller begint opnieuw. Alleen voor taken die vandaag aan de beurt zijn
+    of achterlopen; zelfde undo-venster van vijf minuten als het panel.
+  fields:
+    chore_id:
+      name: Taak
+      description: Het id van de taak (zie tasks_today op sensor.chores_overview).
+      required: true
+      example: badkamer_grondig_schoonmaken
+      selector:
+        text:
+    assignee_id:
+      name: Persoon
+      description: >-
+        Wie oversloeg (bijv. martijn of laura). Leeg of null = de aanroepende
+        gebruiker, als die aan een persoon gekoppeld is; anders blijft het
+        onbekend. Overslaan lukt dus ook vanuit een automatisering.
+      required: false
+      example: laura
+      selector:
+        text:
+
+revert_skip:
+  name: Overslaan terugdraaien
+  description: >-
+    Toch niet overslaan, ook buiten het undo-venster: de taak krijgt zijn
+    datum van vóór het overslaan terug en de regel verdwijnt uit de
+    activiteit. Kan alleen zolang er sinds het overslaan niets met de taak is
+    gebeurd (niet afgevinkt, niet opnieuw overgeslagen, datum niet gewijzigd).
+    Bedoeld voor een "overgeslagen"-lijst op een dashboard.
+  fields:
+    skip_id:
+      name: Overslag
+      description: Het id uit recent_skips op sensor.chores_overview.
+      required: true
+      example: 37
       selector:
         number:
           min: 1

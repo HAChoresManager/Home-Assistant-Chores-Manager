@@ -1,8 +1,45 @@
 /*
- * Stijlen voor de 3b-schermen: Activiteit en Beheer (formulieren).
+ * Stijlen voor de 3b-schermen: Activiteit en Beheer (formulieren), plus
+ * de knoppen en feedregels van Overslaan.
  * Apart bestand om styles.css onder de 600-regelgrens te houden; zelfde
  * regels: uitsluitend HA-variabelen, telefoon eerst, 44px-raakvlakken.
  */
+
+/* --- Overslaan: keuze in de personenrij --------------------------------- */
+
+/* Secundair: geen stip, geen persoonskleur — het is geen persoon. */
+button.person.skip {
+  color: var(--secondary-text-color);
+}
+
+/* --- Activiteit: overslagen in de feed ---------------------------------- */
+
+/* Rustiger dan een voltooiing: secundaire tekst, lege stip, geen duur. */
+.feed-row.skip {
+  flex-wrap: wrap;
+  color: var(--secondary-text-color);
+}
+
+.feed-row.skip strong {
+  font-weight: 500;
+}
+
+.dot.skip-dot {
+  background: none;
+  border: 1px solid var(--divider-color);
+  box-sizing: border-box;
+}
+
+button.revert-skip {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--primary-text-color);
+}
+
+button.revert-skip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 /* --- Activiteit: weekhistorie ----------------------------------------- */
 

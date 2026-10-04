@@ -12,8 +12,12 @@
  *               core/api.js herstelt dit vanzelf
  *   error     foutmelding (string) of null
  *   data      het volledige antwoord van chores_manager/state, of null
- *   pending   Set van chore-ids die optimistisch als afgevinkt gelden
- *             (verdwenen uit de lijst vóór de server bevestigt)
+ *   pending   Set van chore-ids die optimistisch als afgevinkt of
+ *             overgeslagen gelden (verdwenen uit de lijst vóór de server
+ *             bevestigt)
+ *   reverting Set van skip-ids waarvoor "Toch niet overslaan" loopt; de
+ *             knop in Activiteit staat dan uit, zodat een dubbele tik geen
+ *             tweede aanroep stuurt
  *   chooser   {choreId, subtaskId, mode} als de persoonskeuze openstaat;
  *             mode 'complete' vinkt af bij keuze, mode 'credit' zet alleen
  *             het chipje
@@ -37,6 +41,7 @@ let state = {
   error: null,
   data: null,
   pending: new Set(),
+  reverting: new Set(),
   chooser: null,
   credits: {},
   view: 'vandaag',

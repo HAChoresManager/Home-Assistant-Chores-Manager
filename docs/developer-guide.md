@@ -7,7 +7,7 @@ praktische kaart: waar staat wat, hoe draai je de tests, hoe deploy je.
 ## Architectuur in één alinea
 
 Eén custom integration (`custom_components/chores_manager/`) met een eigen
-SQLite-database (`<config>/chores_v2.db`), tien WebSocket-commando's, één
+SQLite-database (`<config>/chores_v2.db`), twaalf WebSocket-commando's, één
 overzichtssensor en één frontend: het panel `<chores-panel>` op `/taken`,
 vanilla ES-modules zonder build-stap, geserveerd rechtstreeks uit
 `custom_components/`. Geen iframe, geen eigen auth, geen eigen themadata —
@@ -20,7 +20,7 @@ alles loopt via `hass` en HA's CSS-variabelen.
 | Pure planning | `scheduling/` | geen HA, geen sqlite; volledig door pytest gedekt |
 | Datalaag | `db/` | alle SQL, geparameteriseerd; DDL alleen in `db/schema.py`; geen HA-imports |
 | HA-koppeling | `websocket.py`, `sensor.py`, `scheduler.py`, `__init__.py` | dun; roept db/-functies aan in een executor |
-| Frontend | `www/chores-panel/` | ES-modules; één toestandsobject in `core/store.js` |
+| Frontend | `www/chores-panel/` | ES-modules; één toestandsobject in `core/store.js`; mutaties met hun terugkoppeling in `actions.js` |
 
 De datalaag en scheduling zijn bewust HA-vrij: `tests/conftest.py` plant een
 lege oudermodule zodat de tests zonder homeassistant-installatie draaien.
@@ -33,7 +33,8 @@ python3 -m pytest tests/ -q
 
 Dekking: `scheduling/` volledig (typen, next_due, doorrollen, urgentie,
 cyclusfractie, rotatie), rooktests op de datalaag (schema incl. migraties,
-opslag, overzicht, weekhistorie, meldingsdata). De frontend heeft geen
+opslag, overzicht, weekhistorie, meldingsdata, overslaan en terugdraaien —
+`tests/test_skip.py`, `tests/test_skip_revert.py`). De frontend heeft geen
 testrunner; controleer
 syntax met `node --check` (kopieer het bestand naar `.mjs`, anders weigert
 node de ES-module).
@@ -52,7 +53,11 @@ node de ES-module).
   "Klaar"-knop en `ws_complete`. Het terugdraaien vanaf een kaart loopt
   via `undo_last` (dezelfde `websocket.async_undo_last` als `ws_undo`) en
   `revert_completion` (`db.completions.revert_completion`, voor
-  voltooiingen buiten het undo-venster).
+  voltooiingen buiten het undo-venster). Overslaan vanaf een kaart:
+  `skip` (dezelfde `websocket.async_skip` als `ws_chore_skip`, dus ook
+  dezelfde undo-buffer) en `revert_skip` (dezelfde
+  `websocket.async_revert_skip` als `ws_skip_revert`). Samen acht services;
+  `SERVICES` in `__init__.py` is de lijst die de unload opruimt.
 
 ## Kaartgebruik (optioneel)
 

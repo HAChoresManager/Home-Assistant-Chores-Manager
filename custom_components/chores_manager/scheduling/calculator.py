@@ -142,6 +142,20 @@ def next_due_after_completion(schedule_type: str, config: dict, completed_on: da
     return _next_occurrence(schedule_type, cfg, completed_on, strict=True)
 
 
+def next_due_after_skip(schedule_type: str, config: dict, next_due: date, today: date) -> date:
+    """Overslaan: de eerstvolgende geplande keer ná de overgeslagen keer.
+
+    Gerekend vanaf de laatste van next_due en vandaag, alsof de taak op die
+    dag gedaan was. Een achterstand slaat zo in één keer door tot na vandaag
+    (wie een taak van drie dagen terug overslaat, wil hem niet morgen opnieuw
+    voor dezelfde gemiste keer zien); een komende keer — alleen via het
+    oude snooze 'skip' — schuift door naar de keer daarna. Exact de rekensom
+    die snooze_chore('skip') altijd deed, hier puur zodat hij per type
+    getest is.
+    """
+    return next_due_after_completion(schedule_type, config, max(today, next_due))
+
+
 def roll_forward(schedule_type: str, config: dict, next_due: date, today: date) -> date:
     """§4.2, de nachtelijke rol.
 

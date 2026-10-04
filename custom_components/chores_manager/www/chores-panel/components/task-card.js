@@ -13,6 +13,12 @@
  * Twee keuzemodi lopen door dezelfde personenrij: mode 'complete' vinkt af
  * bij de keuze (de anyone-flow), mode 'credit' zet alleen het chipje.
  *
+ * Overslaan (deze keer doet niemand het) staat uitsluitend achteraan in de
+ * rij "Wie heeft het gedaan?" op kaartniveau, en alleen als de taak vandaag
+ * aan de beurt is of achterloopt — niet bij de creditkeuze, niet bij een
+ * losse deelstap, en nergens als losse knop op de kaart (besluit van de
+ * gebruiker). Geen data-assignee: wie oversloeg bepaalt de server.
+ *
  * Op het scherm Alles (ctx.view 'tasks') toont de kaart vervaldatum en
  * planningsetiket, en staat de checklist ingeklapt achter "0 / 4 stappen".
  */
@@ -26,7 +32,7 @@ import {
 
 /**
  * Maakt deze actie de taak in één keer af? Bepaalt of we optimistisch mogen
- * doen alsof de kaart weg is (chores-panel.js draait het terug bij een fout).
+ * doen alsof de kaart weg is (actions.js draait het terug bij een fout).
  */
 export function isFinalAction(chore, subtaskId) {
   if (chore.subtask_mode === 'counter') {
@@ -67,10 +73,20 @@ function personButtons(chore, ctx, subtaskId, action) {
       ${subtaskId !== undefined ? html`data-subtask="${subtaskId}"` : ''}>
       <span class="dot" style="--person-color: ${person.color}"></span>${person.name}
     </button>`);
+  // Laatste keuze ná de personen, vóór "Toch niet" (dat is annuleren).
+  const skip = action === 'pick' && subtaskId === undefined
+    && chore.urgency !== 'upcoming'
+    ? html`<button type="button" class="person skip" data-action="skip"
+        data-chore="${chore.id}">Overslaan</button>`
+    : '';
+  // Met Overslaan erbij is de rij meer dan een antwoord op de vraag; een
+  // schermlezer hoort dat in de groepsnaam (de zichtbare vraag blijft).
+  const groupLabel = skip ? `${label} Of sla deze keer over.` : label;
   return html`
-    <div class="chooser" role="group" aria-label="${label}">
+    <div class="chooser" role="group" aria-label="${groupLabel}">
       <span class="chooser-label">${label}</span>
       ${buttons}
+      ${skip}
       <button type="button" class="person cancel" data-action="cancel-choose">Toch niet</button>
     </div>`;
 }

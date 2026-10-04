@@ -5,10 +5,17 @@ Puur sqlite plus scheduling; geen HA. Tijdstippen komen als ISO-string binnen
 completed_at is daardoor de lokale datum, en omdat ISO-strings lexicografisch
 sorteren, werken weekgrenzen als stringvergelijking op 'YYYY-MM-DD'.
 
-De minuteninvariant van §3.4 — de som over alle regels van een taakinstantie
-is altijd gelijk aan duration_minutes — wordt hier afgedwongen. Omdat minutes
-een geheel getal is en het plan met gladde delingen rekent (duration / 4),
-krijgen tussenstappen duration // n minuten en de afrondende regel de rest.
+Rond de instantiegrens (voltooiingen en overslagen ten opzichte van elkaar)
+wordt níet als string vergeleken maar als tijdstip, met SQLite's julianday():
+in het teruggezette uur van de wintertijdwissel komt 02:10+01:00 ná
+02:50+02:00, terwijl de strings andersom sorteren.
+
+De minuteninvariant van §3.4 — de som over alle regels van een afgeronde
+taakinstantie is gelijk aan duration_minutes — wordt hier afgedwongen. Omdat
+minutes een geheel getal is en het plan met gladde delingen rekent
+(duration / 4), krijgen tussenstappen duration // n minuten en de afrondende
+regel de rest. Een overgeslagen ronde (skips.py) wordt niet afgerond: die
+houdt alleen de minuten van wat er tot de overslag gedaan was.
 """
 from __future__ import annotations
 
@@ -28,22 +35,42 @@ def week_start(day: date) -> date:
 
 
 def _instance_start(conn: sqlite3.Connection, chore_id: str) -> str:
-    """Tijdstip van de laatste volledige voltooiing; '' als die er nooit was.
-    Alles ná dit tijdstip hoort bij de lopende taakinstantie."""
+    """Begin van de lopende taakinstantie: het laatste van de laatste
+    volledige voltooiing en de laatste overslag (skips); '' als geen van
+    beide er ooit was. Alles strikt ná dit tijdstip hoort bij de lopende
+    instantie.
+
+    Een overslag sluit de instantie af zonder voltooiing: deelstappen en
+    tikken van daarvóór blijven in feed en ranglijst staan, maar tellen niet
+    mee voor de volgende ronde. Wordt de overslag teruggedraaid (de regel
+    verdwijnt), dan schuift de grens vanzelf terug en telt de oude
+    voortgang weer — revert_skip staat dat alleen toe als er sindsdien
+    niets is afgevinkt, zodat de rondes nooit door elkaar lopen.
+    """
     row = conn.execute(
-        "SELECT MAX(completed_at) FROM completions"
-        " WHERE chore_id = ? AND is_full_completion = 1", (chore_id,)).fetchone()
-    return row[0] or ""
+        "SELECT moment FROM ("
+        " SELECT completed_at AS moment FROM completions"
+        " WHERE chore_id = ? AND is_full_completion = 1"
+        " UNION ALL SELECT skipped_at FROM skips WHERE chore_id = ?)"
+        " ORDER BY julianday(moment) DESC LIMIT 1", (chore_id, chore_id)).fetchone()
+    return row[0] if row else ""
+
+
+# "Strikt ná de instantiegrens", als tijdstip; zonder grens ('') telt alles.
+# Parameters: (since, since).
+_AFTER_INSTANCE_START = "(? = '' OR julianday(completed_at) > julianday(?))"
 
 
 def instance_progress(database_path: str, chore_id: str) -> dict:
-    """Voortgang van de lopende instantie: afgevinkte deeltaak-ids (checklist)
-    en het aantal tikken (counter), plus de al gecrediteerde minuten."""
+    """Voortgang van de lopende instantie (sinds _instance_start, dus ook
+    sinds de laatste overslag): afgevinkte deeltaak-ids (checklist) en het
+    aantal tikken (counter), plus de al gecrediteerde minuten."""
     with get_connection(database_path) as conn:
         since = _instance_start(conn, chore_id)
         rows = conn.execute(
             "SELECT subtask_id, minutes FROM completions"
-            " WHERE chore_id = ? AND completed_at > ?", (chore_id, since)).fetchall()
+            " WHERE chore_id = ? AND " + _AFTER_INSTANCE_START,
+            (chore_id, since, since)).fetchall()
         return {
             "done_subtask_ids": [r["subtask_id"] for r in rows if r["subtask_id"]],
             "ticks": len(rows),
@@ -72,10 +99,19 @@ def complete_chore(
       zodat de som altijd op duration_minutes uitkomt.
 
     Alleen een volledige voltooiing rolt next_due door en schuift de rotatie
-    (§4.4). Geeft een dict terug met alles wat nodig is om dit binnen vijf
-    minuten terug te draaien (§2.3 undo).
+    (§4.4). "De instantie" begint na de laatste volledige voltooiing of de
+    laatste overslag (_instance_start); na een overslag start een checklist
+    of counter dus opnieuw, met de volle duration te verdelen. Geeft een dict
+    terug met alles wat nodig is om dit binnen vijf minuten terug te draaien
+    (§2.3 undo).
+
+    Lezen en schrijven staan in één schrijftransactie (BEGIN IMMEDIATE): de
+    instantie wordt gelezen en aangevuld zonder dat een overslag of het
+    terugdraaien daarvan (skips.py, net zo vergrendeld) er tussendoor de
+    grens verlegt — anders kon een stap dubbel in een ronde belanden.
     """
     with get_connection(database_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM chores WHERE id = ?", (chore_id,)).fetchone()
         if row is None:
             raise StoreError(f"onbekende taak {chore_id!r}")
@@ -91,7 +127,8 @@ def complete_chore(
         since = _instance_start(conn, chore_id)
         instance_rows = conn.execute(
             "SELECT subtask_id, minutes FROM completions"
-            " WHERE chore_id = ? AND completed_at > ?", (chore_id, since)).fetchall()
+            " WHERE chore_id = ? AND " + _AFTER_INSTANCE_START,
+            (chore_id, since, since)).fetchall()
         credited = sum(r["minutes"] for r in instance_rows)
 
         if mode == "checklist" and subtask_id is not None:
@@ -157,8 +194,22 @@ def complete_chore(
 
 def undo_completion(database_path: str, undo: dict) -> None:
     """Draai één voltooiing terug: de regel weg, en bij een volledige
-    voltooiing ook next_due en rotation_index terugzetten (§2.3)."""
+    voltooiing ook next_due en rotation_index terugzetten (§2.3).
+
+    Is de taak ná deze volledige voltooiing overgeslagen (alleen mogelijk
+    via het oude snooze 'skip', dat de undo-buffer niet vult), dan weigert
+    dit met een StoreError: de momentopname zou de datum van die overslag
+    overschrijven en een overslagregel achterlaten die de herstelde ronde
+    leegmaakt. De HA-laag maakt er een nette foutmelding van.
+    """
     with get_connection(database_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if undo["was_full"] and conn.execute(
+                "SELECT 1 FROM skips WHERE chore_id = ?"
+                " AND julianday(skipped_at) >= julianday(?) LIMIT 1",
+                (undo["chore_id"], undo["completed_at"])).fetchone():
+            raise StoreError("De taak is daarna overgeslagen; terugdraaien kan"
+                             " niet meer.")
         conn.execute("DELETE FROM completions WHERE id = ?", (undo["row_id"],))
         if undo["was_full"]:
             conn.execute(
@@ -169,7 +220,8 @@ def undo_completion(database_path: str, undo: dict) -> None:
 def revert_completion(database_path: str, completion_id: int, today: date) -> dict:
     """Voltooiing achteraf terugdraaien (buiten het undo-venster): de regel weg;
     was het de laatste volledige voltooiing van de taak, dan komt de taak
-    vandaag terug (next_due = today) en gaat bij een roterende taak de beurt
+    vandaag terug (next_due = today; tenzij hij daarna is overgeslagen, zie
+    onder) en gaat bij een roterende taak de beurt
     terug naar de persoon die de regel had — die stond immers aan de beurt.
     Geeft {chore_id, was_full} terug. Onbekend id -> StoreError.
 
@@ -183,11 +235,17 @@ def revert_completion(database_path: str, completion_id: int, today: date) -> di
     next_due en de beurt komen dan van een latere voltooiing, en die blijft
     gelden. "Laatste" volgt de volgorde van de feed: completed_at, bij gelijke
     tijd het hoogste id.
+
+    Is de taak ná de laatste volledige voltooiing overgeslagen (een skip met
+    skipped_at > completed_at), dan blijft next_due staan: die datum komt
+    van de overslag, en de keer daarvóór is bewust overgeslagen — terughalen
+    naar vandaag zou die overslag ongedaan maken. De beurt gaat wél terug,
+    want een overslag raakt de rotatie niet.
     """
     with get_connection(database_path) as conn:
         completion = conn.execute(
-            "SELECT chore_id, assignee_id, is_full_completion FROM completions"
-            " WHERE id = ?", (completion_id,)).fetchone()
+            "SELECT chore_id, assignee_id, is_full_completion, completed_at"
+            " FROM completions WHERE id = ?", (completion_id,)).fetchone()
         if completion is None:
             raise StoreError(f"onbekende voltooiing {completion_id!r}")
         chore_id = completion["chore_id"]
@@ -203,7 +261,11 @@ def revert_completion(database_path: str, completion_id: int, today: date) -> di
                 "SELECT next_due, assignment_type, rotation, rotation_index"
                 " FROM chores WHERE id = ?", (chore_id,)).fetchone()
             next_due = chore["next_due"]
-            if date.fromisoformat(next_due) > today:
+            skipped_after = conn.execute(
+                "SELECT 1 FROM skips WHERE chore_id = ?"
+                " AND julianday(skipped_at) > julianday(?) LIMIT 1",
+                (chore_id, completion["completed_at"])).fetchone()
+            if skipped_after is None and date.fromisoformat(next_due) > today:
                 next_due = today.isoformat()
             rotation_index = chore["rotation_index"]
             if chore["assignment_type"] == "rotating":

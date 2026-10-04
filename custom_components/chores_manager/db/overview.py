@@ -22,6 +22,7 @@ from .completions import (
     recent_full_completions,
     week_history,
 )
+from .skips import skip_feed
 from .subtasks import list_subtasks
 
 
@@ -131,6 +132,27 @@ def _recent_completions(database_path: str) -> list[dict]:
     ]
 
 
+_RECENT_SKIPS_LIMIT = 8
+
+
+def _recent_skips(database_path: str) -> list[dict]:
+    """De laatste acht overslagen voor Lovelace, nieuwste eerst, los van
+    recent_completions (een overslag is geen voltooiing). Met skip_id kan
+    een kaart chores_manager.revert_skip aanroepen; skipped_by is de
+    weergavenaam, of None als niet bekend is wie oversloeg."""
+    return [
+        {
+            "skip_id": row["id"],
+            "chore_id": row["chore_id"],
+            "name": row["chore_name"],
+            "icon": row["icon"],
+            "skipped_by": row["assignee_name"],
+            "skipped_at": row["skipped_at"],
+        }
+        for row in skip_feed(database_path, _RECENT_SKIPS_LIMIT)
+    ]
+
+
 def overview(database_path: str, today: date, now: Optional[datetime] = None,
              recent_done_seconds: int = 0) -> dict:
     """De samenvatting van §2.4: sensortoestand plus attributen.
@@ -175,6 +197,7 @@ def overview(database_path: str, today: date, now: Optional[datetime] = None,
         "persons": persons,
         "tasks_today": _tasks_today(chores, assignees_by_id, recent_done),
         "recent_completions": _recent_completions(database_path),
+        "recent_skips": _recent_skips(database_path),
     }
 
 
@@ -225,6 +248,39 @@ def pick_notify_action(due: list, overdue: list):
     return None
 
 
+_SKIP_FEED_LIMIT = 100
+
+
+def activity_since(completions: list[dict], completions_limit: int,
+                   skips: list[dict], skips_limit: int) -> Optional[str]:
+    """Vanaf welk tijdstip de gemengde tijdlijn (voltooiingen plus
+    overslagen) compleet is, of None als hij helemaal compleet is.
+
+    Beide lijsten zijn nieuwste-eerst en afgekapt op hun limiet. Een lijst
+    die zijn limiet níet haalde, is volledig; een volle lijst is alleen
+    compleet tot en met zijn oudste regel — daarvóór kunnen regels
+    ontbreken. De grens is dus de jongste van de oudste regels van de volle
+    lijsten. De Activiteit-weergave laat alles ouder dan deze grens weg,
+    zodat er geen gaten in de menging vallen (honderd voltooiingen uit één
+    week naast overslagen van maanden terug). Vergeleken als tijdstip, niet
+    als string: rond de zomertijdwissel verschilt de offset.
+    """
+    cutoffs = []
+    if completions_limit > 0 and len(completions) >= completions_limit:
+        cutoffs.append(completions[-1]["completed_at"])
+    if skips_limit > 0 and len(skips) >= skips_limit:
+        cutoffs.append(skips[-1]["skipped_at"])
+    if not cutoffs:
+        return None
+    try:
+        return max(cutoffs, key=datetime.fromisoformat)
+    except (TypeError, ValueError):
+        # een oude regel zonder offset naast een nieuwe mét (of een
+        # onleesbare notatie): dan als string, zoals de rest van db/ — liever
+        # een grens die een uur scheelt dan een state die niet laadt
+        return max(cutoffs)
+
+
 def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
     """De volledige begintoestand voor chores_manager/state (§2.3).
 
@@ -232,6 +288,11 @@ def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
     beheer-UI nodig heeft om verwijderen eerlijk aan te kondigen: has_history
     per taak en in_use per persoon (archiveren versus echt weg, het
     2b-besluit).
+
+    Sinds v2.5: "feed" blijft alleen voltooiingen (Vandaag gebruikt hem zo);
+    "skips" is het overslaglog met can_revert per regel, en
+    "activity_since" de grens waarvóór de Activiteit-weergave de twee niet
+    meer mengt (zie activity_since).
     """
     counts = history_counts(database_path)
     chores = []
@@ -260,13 +321,18 @@ def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
         person = dict(person)
         person["in_use"] = assignee_in_use(database_path, person["id"])
         assignees.append(person)
+    completions = feed(database_path, feed_limit)
+    skips = skip_feed(database_path, _SKIP_FEED_LIMIT)
     return {
         "today": today.isoformat(),
         "chores": chores,
         "archived_chores": archived,
         "assignees": assignees,
         "leaderboard": board,
-        "feed": feed(database_path, feed_limit),
+        "feed": completions,
+        "skips": skips,
+        "activity_since": activity_since(
+            completions, feed_limit, skips, _SKIP_FEED_LIMIT),
         "week_history": week_history(database_path, today),
         "completed_today": completed_today_count(database_path, today),
     }

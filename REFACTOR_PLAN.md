@@ -93,16 +93,18 @@ een container met 1 CPU. Push in plaats van poll haalt dat weg én maakt de
 
 | Commando | Doel |
 |---|---|
-| `chores_manager/state` | Volledige begintoestand: taken, personen, ranglijst, feed |
+| `chores_manager/state` | Volledige begintoestand: taken, personen, ranglijst, feed *(sinds v2.5 plus `skips` en `activity_since`, §5.4)* |
 | `chores_manager/complete` | Taak of deeltaak afvinken |
-| `chores_manager/undo` | Laatste voltooiing terugdraaien (binnen 5 min) |
+| `chores_manager/undo` | Laatste voltooiing of overslag terugdraaien (binnen 5 min) |
 | `chores_manager/chore/save` | Taak aanmaken of bijwerken |
 | `chores_manager/chore/delete` | Taak verwijderen |
-| `chores_manager/chore/snooze` | Naar morgen of naar volgende geplande keer |
+| `chores_manager/chore/snooze` | Naar morgen of naar volgende geplande keer *('skip' sinds v2.5 gelogd als overslag, §3.5)* |
 | `chores_manager/assignee/save` | Persoon aanmaken of bijwerken |
 | `chores_manager/assignee/delete` | Persoon verwijderen |
 | `chores_manager/subscribe` | Abonneren op wijzigingen (push) |
 | `chores_manager/chore/restore` | Gearchiveerde taak terugzetten, verse vervaldatum *(fase 5)* |
+| `chores_manager/chore/skip` | Taak deze keer overslaan *(v2.5, §3.5)* |
+| `chores_manager/skip/revert` | Overslag terugdraaien ("Toch niet overslaan") *(v2.5, §3.5)* |
 
 De HA-services (`chores_manager.mark_done` etc.) blijven bestaan voor gebruik in
 automations en voor de actieknop in notificaties. *(Achterhaald in 3c/4: de
@@ -111,7 +113,10 @@ oude services zijn verdwenen; de actieknop vinkt af via een event-listener in
 `send_daily_summary`, `send_weekly_summary` — en sinds 20-09-2026 weer
 `mark_done`, als dunne laag voor Lovelace-dashboards, zie §6; sinds
 23-09-2026 ook `undo_last` (om dezelfde kern als `chores_manager/undo`) en
-`revert_completion` (voltooiing buiten het undo-venster weghalen).)*
+`revert_completion` (voltooiing buiten het undo-venster weghalen); sinds
+03-10-2026 ook `skip` en `revert_skip` (om dezelfde kernen als
+`chore/skip` en `skip/revert`, §3.5), en `undo_last` draait sindsdien de
+laatste voltooiing óf overslag terug.)*
 
 ### 2.4 Sensor
 
@@ -133,7 +138,10 @@ oude services zijn verdwenen; de actieknop vinkt af via een event-listener in
   `recent_completions`: de laatste acht voltooiingen mét `id`, voor
   `chores_manager.revert_completion`. En sinds 23-09-2026 blijft een
   net-afgevinkte taak twee minuten in `tasks_today` staan met status
-  `done` en `completion_id`; die telt niet mee in de tellers.)*
+  `done` en `completion_id`; die telt niet mee in de tellers. Sinds
+  03-10-2026 ook `recent_skips`: de laatste acht overslagen (§3.5) mét
+  `skip_id`, voor `chores_manager.revert_skip`; `recent_completions`
+  krijgt bewust geen overslagen.)*
 
 Dezelfde semantiek geldt op het scherm Vandaag: de kop toont het totaal
 ("8 taken"), daaronder twee secties — wat vandaag gepland staat en wat
@@ -262,7 +270,63 @@ altijd gelijk aan `duration_minutes`:
 | Checklist van 4 stappen | 4, laatste `is_full = 1` | `duration / 4` |
 | Counter, 8 wasjes | 8, achtste `is_full = 1` | `duration / 8` |
 
+*(Sinds v2.5: dit geldt voor een afgeronde instantie. Een overgeslagen
+ronde (§3.5) wordt niet afgerond en houdt alleen de minuten van wat er tot
+de overslag gedaan was; de volgende ronde begint opnieuw met de volle
+`duration_minutes`.)*
+
 Indexen op `(completed_at)`, `(assignee_id, completed_at)` en `(chore_id)`.
+
+### 3.5 `skips` *(sinds v2.5, 03-10-2026)*
+
+```sql
+CREATE TABLE skips (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    chore_id          TEXT NOT NULL REFERENCES chores(id) ON DELETE CASCADE,
+    assignee_id       TEXT REFERENCES assignees(id) ON DELETE SET NULL,
+    skipped_at        TIMESTAMP NOT NULL,
+    previous_next_due DATE NOT NULL,
+    new_next_due      DATE NOT NULL
+);
+```
+
+**Overslaan = deze keer doet niemand de taak.** `next_due` schuift door naar
+de eerstvolgende geplande keer ná de overgeslagen keer (gerekend vanaf de
+laatste van `next_due` en vandaag — dezelfde rekensom die `chore/snooze`
+'skip' altijd deed). Het is géén voltooiing: geen `completions`-regel, geen
+minuten, geen invloed op ranglijst, streak of weekhistorie, en
+`rotation_index` blijft staan — bij een roterende taak is dezelfde persoon
+opnieuw aan de beurt. Alleen voor een taak die vandaag aan de beurt is of
+achterloopt; `chore/snooze` 'skip' accepteert achterwaarts compatibel ook
+een komende keer.
+
+`assignee_id` is wie oversloeg; `NULL` = onbekend (een automatisering, of
+een kijker die aan geen persoon gekoppeld is). Verwijderen blijft eerlijk
+(met voltooiingshistorie archiveren, zonder historie echt verwijderen), en
+een overslag telt daarbij niet als historie: een taak met alleen
+overslagen gaat echt weg en neemt zijn log mee (CASCADE), een persoon die
+echt weg mag laat `NULL` achter (SET NULL).
+
+**Terugdraaien** ("Toch niet overslaan") zet `previous_next_due` terug en
+verwijdert de regel — alleen als er sindsdien niets met de taak gebeurde: de
+taak is actief, er is geen latere overslag van dezelfde taak, geen
+voltooiingsregel vanaf `skipped_at` (ook geen losse deelstap of tik: die
+hoort al bij de nieuwe ronde, en samenvoegen zou de minuteninvariant van
+§3.4 breken), `next_due` staat nog op `new_next_due`, en de taak is sindsdien
+niet gewijzigd (`updated_at` niet later dan `skipped_at` — ook een bewerking
+of terugzetten uit het archief dat toevallig op dezelfde datum uitkomt,
+blokkeert). Eén functie bepaalt die voorwaarden, voor de weigering én voor
+`can_revert` in de feed; daardoor kan hooguit de nieuwste overslag per taak
+terug, en na het terugdraaien daarvan de vorige.
+
+Afvinken, overslaan en terugdraaien lezen en schrijven in één
+schrijftransactie (`BEGIN IMMEDIATE`), zodat twee apparaten elkaar niet
+halverwege een instantie kruisen; en rond de instantiegrens wordt op tijdstip
+vergeleken (`julianday()`), niet op string, vanwege de wintertijdwissel.
+
+De tabel kwam er op een bestaande database bij via `CREATE TABLE IF NOT
+EXISTS` in het schema dat bij elke start draait — geen migratiestap nodig.
+Indexen op `(chore_id, skipped_at)` en `(skipped_at)`.
 
 ---
 
@@ -381,6 +445,16 @@ In beide gevallen mag de laatste deeltaak de hoofdtaak afronden en rolt
 `next_due` door. Dat "het is nu even geregeld"-moment is de beloning; de UI moet
 dat markeren met een duidelijke bevestiging.
 
+*(Aangevuld 03-10-2026: de lopende instantie begint ná de laatste volledige
+voltooiing óf de laatste overslag (§3.5), wat het laatst was. Een overslag
+sluit een half afgevinkte checklist of counter dus af: de afgevinkte stappen
+blijven in feed en ranglijst staan, maar de volgende ronde begint bij 0, met
+de volle `duration_minutes` te verdelen. Wordt de overslag teruggedraaid,
+dan telt de oude voortgang weer — dat mag alleen als er sindsdien niets is
+afgevinkt, zodat rondes nooit door elkaar lopen. `revert_completion` van de
+laatste volledige voltooiing laat `next_due` staan als de taak daarna is
+overgeslagen; de beurt gaat wél terug.)*
+
 ---
 
 ## 5. Motivatielaag
@@ -453,6 +527,14 @@ drie tellers en een rode lijst met wat je *niet* gedaan hebt.
 Op het hoofdscherm de laatste paar regels; het volledige overzicht op het
 tabblad Activiteit.
 
+*(Aangevuld 03-10-2026: op het tabblad Activiteit staan sinds v2.5 ook de
+overslagen (§3.5), gemengd met de voltooiingen tot één tijdlijn, als
+rustigere regel zonder duur ("⏭ Laura sloeg Badkamer over") en met "Toch
+niet overslaan" waar dat nog kan. De state levert ze los aan (`feed` blijft
+alleen voltooiingen — Vandaag toont alleen die — plus `skips`), elk met een
+eigen limiet; `activity_since` zegt vanaf wanneer de menging compleet is, en
+oudere regels laat Activiteit weg, zodat er geen gat in de tijdlijn valt.)*
+
 ---
 
 ## 6. Herinneringen
@@ -499,7 +581,7 @@ Alles onder de 600 regels. Bij overschrijding: splitsen.
 
 ```
 custom_components/chores_manager/
-├── __init__.py           # setup, config entry, services (roll_forward, meldingen, mark_done, undo_last, revert_completion)
+├── __init__.py           # setup, config entry, services (roll_forward, meldingen, mark_done, undo_last, revert_completion, skip, revert_skip)
 ├── manifest.json
 ├── const.py
 ├── config_flow.py        # één instantie, niets in te stellen
@@ -515,7 +597,8 @@ custom_components/chores_manager/
 │   ├── errors.py
 │   ├── chores.py
 │   ├── assignees.py
-│   ├── completions.py    # voltooiingen, ranglijst, feed, streaks
+│   ├── completions.py    # voltooiingen, ranglijst, feed, streaks, instantiegrens
+│   ├── skips.py          # overslaan, terugdraaien, overslaglog (§3.5)
 │   ├── subtasks.py
 │   └── overview.py       # samengestelde leesweergaven voor sensor en WS
 └── scheduling/
@@ -527,11 +610,13 @@ custom_components/chores_manager/
 Geen `migrations.py` meer in de boom: v2 heeft een vers schema; migraties
 komen pas terug zodra dat schema ná ingebruikname wijzigt. Geen los
 `services.py`: de overgebleven services (roll_forward, de twee
-meldingsservices, sinds 20-09-2026 mark_done en sinds 23-09-2026
-undo_last en revert_completion) zijn klein genoeg voor
-`__init__.py`; `notify.py` (fase 4) bevat de meldingen én `async_complete`,
-de gedeelde afvinkstap achter de "Klaar"-knop en mark_done. `seed.py` was
-tijdelijk en is in fase 5 verwijderd.
+meldingsservices, sinds 20-09-2026 mark_done, sinds 23-09-2026
+undo_last en revert_completion en sinds 03-10-2026 skip en revert_skip)
+zijn klein genoeg voor `__init__.py` — skip en revert_skip zijn dunne
+lagen om `async_skip`/`async_revert_skip` in `websocket.py`, dezelfde
+kernen als de WS-commando's; `notify.py` (fase 4) bevat de meldingen én
+`async_complete`, de gedeelde afvinkstap achter de "Klaar"-knop en
+mark_done. `seed.py` was tijdelijk en is in fase 5 verwijderd.
 
 **Tussentoestand (2b–3b): de v2-datalaag heette `store/`** omdat de oude app
 het oude `db/`-pakket nog bezette. **Uitgevoerd in 3c (28-07-2026):** het oude
@@ -543,6 +628,7 @@ overgenomen; alle imports en tests zijn omgelegd.
 ```
 www/chores-panel/
 ├── chores-panel.js       # entrypoint, definieert <chores-panel>, krijgt hass
+├── actions.js            # mutaties + terugkoppeling (afvinken, overslaan, terugdraaien, opslaan, verwijderen)
 ├── core/
 │   ├── api.js            # dunne laag over hass.connection
 │   ├── store.js          # één toestandsobject + subscribe
@@ -552,7 +638,7 @@ www/chores-panel/
 ├── views/
 │   ├── today.js          # bijdragebalk + wat er nu moet
 │   ├── tasks.js          # alle taken, gegroepeerd
-│   ├── activity.js       # feed + weekhistorie
+│   ├── activity.js       # feed (voltooiingen + overslagen) + weekhistorie
 │   └── manage.js         # taken en personen beheren + sectie Weergave
 ├── components/
 │   ├── task-card.js      # incl. deeltaakweergave (subtask-tracker is nooit los geworden)
@@ -570,6 +656,12 @@ meer. Hetzelfde element werkt ook als Lovelace-kaart via de stabiele,
 ongecachete resource-URL `/chores_manager-panel/chores-panel.js`
 (`type: custom:chores-panel`). Zie `CLAUDE.md` voor de deploymentdiscipline.
 De oude map `www/chores-dashboard/` is in 3c in zijn geheel verwijderd.
+
+`actions.js` (sinds v2.5) is uit `chores-panel.js` gesplitst toen dat tegen
+de 600 regels liep: de mutaties met hun terugkoppeling staan daar en krijgen
+een klein context-object `{refresh, showSnackbar, hideSnackbar}`, niet het
+hele element. Het staat naast de entrypoint en niet in `core/`: `core/`
+blijft blad-modules, en `actions.js` gebruikt `components/` en `views/`.
 
 ### Te verwijderen
 
@@ -901,6 +993,18 @@ pijltjes in het taakformulier.
 De genummerde punten hieronder zijn de oorspronkelijke open punten van
 27-07-2026; wat inmiddels besloten of achterhaald is, staat er cursief bij.
 
+*(Aangevuld 03-10-2026, v2.5.0: **Overslaan** is gebouwd — "deze keer doet
+niemand het". De taak rolt door naar de eerstvolgende geplande keer, zonder
+voltooiing en zonder de beurt te verschuiven, en sluit de lopende
+checklist- of counterronde af (§3.5, §4.5). Vastgelegd in de nieuwe tabel
+`skips`; zichtbaar in Activiteit met "Toch niet overslaan" (§5.4);
+terugdraaien via dezelfde undo-buffer als afvinken (die heeft nu een
+`kind`: completion of skip) of los via `skip/revert`. Nieuw: WS
+`chore/skip` en `skip/revert`, services `chores_manager.skip` en
+`chores_manager.revert_skip`, sensorattribuut `recent_skips`. In het panel
+staat de knop alleen achteraan in de rij "Wie heeft het gedaan?", voor
+taken die vandaag aan de beurt zijn of achterlopen.)*
+
 **Later, misschien** (bewust niet gedaan; geen van alle nodig voor dagelijks
 gebruik):
 
@@ -917,7 +1021,10 @@ gebruik):
    kaartattributen dragen de vlag zodat afnemers zelf filteren.)*
 2. **Snooze-gedrag.** Voorstel: "naar morgen" of "sla deze keer over" (rolt door
    naar de volgende geplande keer). Nog te bevestigen. *(Zo gebouwd:
-   `chore/snooze` met 'tomorrow' en 'skip'.)*
+   `chore/snooze` met 'tomorrow' en 'skip'. Sinds 03-10-2026 loopt 'skip'
+   via dezelfde functie als overslaan (§3.5) en wordt hij dus gelogd, zonder
+   persoon en zonder undo-buffer; hij accepteert, zoals altijd, ook een nog
+   komende keer.)*
 3. **Weekstart.** Aanname maandag. *(Zo gebouwd: maandag 00:00.)*
 4. **Handmatige tijdcorrectie.** Als een taak veel langer duurde dan geschat, wil
    je dat dan kunnen bijstellen bij het afvinken? Voegt eerlijkheid toe aan de
@@ -938,7 +1045,8 @@ gebruik):
    *(Het laatste gebeurde: alle 22 zijn in 3c verdwenen; `services.yaml`
    beschrijft nu het volledige aanbod van drie — vier sinds `mark_done`
    op 20-09-2026, zes sinds `undo_last` en `revert_completion` op
-   23-09-2026, zie §6.)*
+   23-09-2026, acht sinds `skip` en `revert_skip` op 03-10-2026, zie §6
+   en §3.5.)*
 7. **Twee services worden geregistreerd maar niet opgeruimd.**
    `async_unregister_services` (`services/__init__.py:107-122`) noemt twintig
    namen, maar `get_pending_notifications` (`services/notification_services.py:101`)
@@ -947,5 +1055,5 @@ gebruik):
    het niet opnieuw ontstaat als de servicelijst in fase 2 verandert.
    *(Met de oude app verdwenen; de huidige unload ruimt alle
    services op — mark_done meegenomen op 20-09-2026, undo_last en
-   revert_completion op 23-09-2026; de lijst staat nu als SERVICES in
-   `__init__.py`.)*
+   revert_completion op 23-09-2026, skip en revert_skip op 03-10-2026; de
+   lijst staat nu als SERVICES in `__init__.py`.)*

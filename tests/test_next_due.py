@@ -1,11 +1,16 @@
-"""next_due bij aanmaken en na afvinken, voor elk van de vijf types (§4.1, §4.2).
+"""next_due bij aanmaken, na afvinken en na overslaan, voor elk van de vijf
+types (§4.1, §4.2).
 
 Vaste datums, nooit date.today(): 2026-07-28 is een dinsdag, 2026-07-29 een
 woensdag, 2026-07-31 een vrijdag (geverifieerd met isoweekday).
 """
 from datetime import date
 
-from chores_manager.scheduling.calculator import initial_next_due, next_due_after_completion
+from chores_manager.scheduling.calculator import (
+    initial_next_due,
+    next_due_after_completion,
+    next_due_after_skip,
+)
 
 DINSDAG = date(2026, 7, 28)
 WOENSDAG = date(2026, 7, 29)
@@ -108,3 +113,60 @@ class TestNextDueAfterCompletion:
 
     def test_yearly_schrikkeldag_in_schrikkeljaar(self):
         assert next_due_after_completion("yearly", {"month": 2, "day": 29}, date(2027, 3, 1)) == date(2028, 2, 29)
+
+
+class TestNextDueAfterSkip:
+    """Overslaan: de eerstvolgende geplande keer ná max(next_due, vandaag).
+    Vanaf vandaag (de taak is nu aan de beurt) en vanuit achterstand (de
+    gemiste keer én alles tot en met vandaag vervalt in één keer)."""
+
+    def test_daily_weekdagen_vanaf_vandaag(self):
+        # wo+zo, woensdag aan de beurt en overgeslagen -> zondag
+        assert next_due_after_skip("daily", {"weekdays": [3, 7]}, WOENSDAG, WOENSDAG) == date(2026, 8, 2)
+
+    def test_daily_weekdagen_vanuit_achterstand(self):
+        # wo+zo, sinds woensdag 22-07 blijven liggen, overgeslagen op dinsdag
+        # 28-07 -> woensdag 29-07, niet zondag 26-07 (die is ook voorbij)
+        assert next_due_after_skip("daily", {"weekdays": [3, 7]}, date(2026, 7, 22), DINSDAG) == WOENSDAG
+
+    def test_weekly_vanaf_vandaag(self):
+        assert next_due_after_skip("weekly", {"weekday": 3}, WOENSDAG, WOENSDAG) == date(2026, 8, 5)
+
+    def test_weekly_vanuit_achterstand(self):
+        assert next_due_after_skip("weekly", {"weekday": 3}, date(2026, 7, 22), VRIJDAG) == date(2026, 8, 5)
+
+    def test_weekly_komende_keer_schuift_een_keer_door(self):
+        # alleen via het oude snooze 'skip': woensdag is morgen -> de week erna
+        assert next_due_after_skip("weekly", {"weekday": 3}, WOENSDAG, DINSDAG) == date(2026, 8, 5)
+
+    def test_monthly_over_maandgrens(self):
+        assert next_due_after_skip("monthly", {"monthday": 15}, date(2026, 7, 15), date(2026, 7, 15)) == date(2026, 8, 15)
+
+    def test_monthly_vanuit_achterstand(self):
+        # de 15e gemist, overgeslagen op de 28e -> 15 augustus
+        assert next_due_after_skip("monthly", {"monthday": 15}, date(2026, 7, 15), DINSDAG) == date(2026, 8, 15)
+
+    def test_monthly_31_kapt_af_op_30(self):
+        assert next_due_after_skip("monthly", {"monthday": 31}, date(2026, 8, 31), date(2026, 8, 31)) == date(2026, 9, 30)
+
+    def test_monthly_31_kapt_af_op_28_februari(self):
+        assert next_due_after_skip("monthly", {"monthday": 31}, date(2027, 1, 31), date(2027, 1, 31)) == date(2027, 2, 28)
+
+    def test_interval_vanaf_vandaag(self):
+        assert next_due_after_skip("interval", {"days": 7}, DINSDAG, DINSDAG) == date(2026, 8, 4)
+
+    def test_interval_vanuit_achterstand_telt_vanaf_vandaag(self):
+        # vijf dagen te laat: de nieuwe cyclus begint vandaag, niet bij next_due
+        assert next_due_after_skip("interval", {"days": 7}, date(2026, 7, 23), DINSDAG) == date(2026, 8, 4)
+
+    def test_yearly_vanaf_vandaag(self):
+        assert next_due_after_skip("yearly", {"month": 7, "day": 28}, DINSDAG, DINSDAG) == date(2027, 7, 28)
+
+    def test_yearly_vanuit_achterstand(self):
+        assert next_due_after_skip("yearly", {"month": 12, "day": 1}, date(2025, 12, 1), DINSDAG) == date(2026, 12, 1)
+
+    def test_yearly_29_februari_in_schrikkeljaar_naar_gewoon_jaar(self):
+        assert next_due_after_skip("yearly", {"month": 2, "day": 29}, date(2028, 2, 29), date(2028, 2, 29)) == date(2029, 2, 28)
+
+    def test_yearly_afgekapte_28_februari_naar_schrikkeljaar(self):
+        assert next_due_after_skip("yearly", {"month": 2, "day": 29}, date(2027, 2, 28), date(2027, 2, 28)) == date(2028, 2, 29)

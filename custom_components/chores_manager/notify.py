@@ -43,6 +43,7 @@ from .const import (
     MORNING_MINUTE,
     NOTIFY_ACTION_PREFIX,
     SIGNAL_UPDATED,
+    UNDO_KIND_COMPLETION,
     WEEKLY_DAY,
     WEEKLY_HOUR,
     WEEKLY_MINUTE,
@@ -217,12 +218,16 @@ async def async_complete(
     persoon komt als ValueError (StoreError) terug; wat daarmee gebeurt
     bepaalt de aanroeper — een logregel bij een melding, een toast bij een
     service. Geeft de undo-gegevens van complete_chore terug.
+
+    De buffer krijgt kind completion (zie const.py): undo_last en het panel
+    draaien hiermee dezelfde voltooiing terug als na een tik in het panel.
     """
     now = dt_util.now()
     undo = await hass.async_add_executor_job(
         complete_chore, database_path, chore_id, assignee_id,
         now.date(), now.isoformat(), None, None)
-    hass.data[DOMAIN][DATA_UNDO] = {"undo": undo, "at": time.monotonic()}
+    hass.data[DOMAIN][DATA_UNDO] = {
+        "kind": UNDO_KIND_COMPLETION, "undo": undo, "at": time.monotonic()}
     async_dispatcher_send(hass, SIGNAL_UPDATED,
                           {"reason": "complete", "chore_id": chore_id})
     return undo
