@@ -42,11 +42,18 @@
  *                  en "Datum opslaan" staan dan uit, en de schakelaar toont
  *                  de bedoeling (niet de oude serverstand) tot de nieuwe
  *                  staat binnen is
+ *   absenceDrafts  per persoon-id een gekozen "tot en met" voor de
+ *                  afwezigheid die nog niet bij de server ligt (v2.7):
+ *                  'YYYY-MM-DD' of '' (bewust leeggemaakt); geen sleutel =
+ *                  toon de serverwaarde. Zelfde reden als vacationDraft
+ *   absenceBusy    per persoon-id de bedoeling van de afwezigheidsaanroep
+ *                  die nu loopt: 'start' | 'end' | 'update' (v2.7); zelfde
+ *                  werking als vacationBusy, maar per persoon
  *
  * set(patch, { quiet: true }) werkt de toestand bij zonder de luisteraars
  * te wekken — dus zonder render. Alleen voor invoer die de DOM al toont
- * (het concept in het vakantiedatumveld): een render zou dat veld onder de
- * vingers van de typende gebruiker vervangen.
+ * (het concept in een datumveld van vakantie of afwezigheid): een render
+ * zou dat veld onder de vingers van de typende gebruiker vervangen.
  */
 
 let state = {
@@ -67,6 +74,8 @@ let state = {
   haOptions: null,
   vacationDraft: null,
   vacationBusy: false,
+  absenceDrafts: {},
+  absenceBusy: {},
 };
 
 const listeners = new Set();

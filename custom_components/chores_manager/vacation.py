@@ -5,9 +5,9 @@ zijn gedeeld door het panel (de WS-commando's hieronder), de services
 start_vacation en end_vacation (__init__.py) en de schakelaar
 switch.chores_vakantiemodus (switch.py), zodat ze precies hetzelfde doen.
 De WS-commando's chores_manager/vacation/start, /update en /end staan in
-VACATION_COMMANDS; websocket.py registreert ze samen met de andere twaalf
-(vijftien in totaal). Ze staan los van websocket.py om die onder de 600
-regels te houden.
+VACATION_COMMANDS; websocket.py registreert ze samen met de rest
+(achttien in totaal, sinds de afwezigheid van v2.7 in absence.py). Ze
+staan los van websocket.py om die onder de 600 regels te houden.
 
 Zelfde regels als in websocket.py: elke ingelogde gebruiker mag ze
 aanroepen, alle databasewerk via de executor, na elke wijziging

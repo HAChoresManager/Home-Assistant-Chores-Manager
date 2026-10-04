@@ -295,10 +295,12 @@ class TestNachtelijkeRolEnOverzicht:
         assert data["week_minutes_total"] == 20
         # in_leaderboard zit er sinds 3c bij (C3): de sensor toont iedereen,
         # filteren op de ranglijstvlag is aan de afnemer. De kleur sinds
-        # fase 5, zodat een Lovelace-kaart de naam kan kleuren.
+        # fase 5, zodat een Lovelace-kaart de naam kan kleuren; absent en
+        # absent_until sinds v2.7 (afwezigheid per persoon).
         assert data["persons"]["laura"] == {
             "name": "Laura", "minutes": 20, "tasks": 1, "streak": 1,
-            "in_leaderboard": True, "color": "#83c44a"}
+            "in_leaderboard": True, "color": "#83c44a",
+            "absent": False, "absent_until": None}
 
     def test_build_state_structuur(self, db):
         _gewone_taak(db, subtask_mode="checklist")

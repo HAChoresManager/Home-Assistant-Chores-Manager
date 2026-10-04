@@ -15,8 +15,9 @@
  * Foutteksten komen van de server (Nederlands, zie de HA-laag) en gaan
  * ongewijzigd de snackbar in — altijd via textContent, nooit als markup.
  *
- * De vakantie-acties onderaan zijn bewust níet optimistisch: de schakelaar
- * staat uit (vacationBusy) tot de server antwoordt en de verse staat er is.
+ * De vakantie- en afwezigheidsacties onderaan zijn bewust níet
+ * optimistisch: de schakelaar staat uit (vacationBusy, absenceBusy) tot de
+ * server antwoordt en de verse staat er is.
  */
 import { api } from './core/api.js';
 import { store } from './core/store.js';
@@ -272,5 +273,77 @@ export async function vacationEnd(ctx) {
     return changed > 0
       ? `Vakantiemodus uit · ${taskCount(changed)} verschoven`
       : 'Vakantiemodus uit · niets verschoven';
+  });
+}
+
+/** Weergavenaam van een persoon uit de staat (anders het id). */
+function personName(assigneeId) {
+  return store.get().data?.assignees
+    ?.find((p) => p.id === assigneeId)?.name || assigneeId;
+}
+
+/**
+ * Hetzelfde verloop als vacationCall, maar per persoon (v2.7): de bedoeling
+ * staat in absenceBusy[id], het concept in absenceDrafts[id]. Een aanroep
+ * voor Laura houdt de schakelaar van Martijn dus niet tegen.
+ */
+async function absenceCall(ctx, assigneeId, intent, call) {
+  if (store.get().absenceBusy[assigneeId]) return;
+  store.set({ absenceBusy: { ...store.get().absenceBusy, [assigneeId]: intent } });
+  let done = false;
+  try {
+    try {
+      const text = await call();
+      done = true;
+      ctx.showSnackbar(text);
+    } catch (err) {
+      ctx.showSnackbar(errorText(err), { error: true });
+    }
+    await ctx.refresh();
+  } finally {
+    const { absenceBusy, absenceDrafts } = store.get();
+    const busy = { ...absenceBusy };
+    delete busy[assigneeId];
+    const patch = { absenceBusy: busy };
+    if (done) {
+      const drafts = { ...absenceDrafts };
+      delete drafts[assigneeId];
+      patch.absenceDrafts = drafts;
+    }
+    store.set(patch);
+  }
+}
+
+/** Schakelaar "Afwezig" aan: tot en met de gekozen datum, of open. */
+export async function absenceStart(ctx, assigneeId) {
+  await absenceCall(ctx, assigneeId, 'start', async () => {
+    const { absenceDrafts, data } = store.get();
+    const until = absenceDrafts[assigneeId] || null;
+    await api.absenceStart(assigneeId, until);
+    const name = personName(assigneeId);
+    return until
+      ? `${name} is afwezig · tot en met ${dayMonth(until, data?.today)}`
+      : `${name} is afwezig`;
+  });
+}
+
+/** "Datum opslaan" bij een lopende afwezigheid: wijzigen of wissen. */
+export async function absenceSaveUntil(ctx, assigneeId) {
+  if (!(assigneeId in store.get().absenceDrafts)) return;
+  await absenceCall(ctx, assigneeId, 'update', async () => {
+    const until = store.get().absenceDrafts[assigneeId] || null;
+    await api.absenceUpdate(assigneeId, until);
+    const name = personName(assigneeId);
+    return until
+      ? `Opgeslagen: ${name} tot en met ${dayMonth(until, store.get().data?.today)}`
+      : `Opgeslagen: ${name} zonder einddatum`;
+  });
+}
+
+/** Schakelaar "Afwezig" uit: de persoon is vandaag terug. */
+export async function absenceEnd(ctx, assigneeId) {
+  await absenceCall(ctx, assigneeId, 'end', async () => {
+    await api.absenceEnd(assigneeId);
+    return `${personName(assigneeId)} is weer terug`;
   });
 }

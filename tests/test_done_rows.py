@@ -67,13 +67,15 @@ class TestDoneRijen:
         assert set(bad) == {
             "id", "name", "icon", "status",
             "assignee_id", "assignee_name", "assignee_color",
+            "covering_for", "covering_for_name",
             "completion_id", "completed_at", "done_by", "done_by_color"}
         # de gewone rijen houden hun compacte veldenset
         aanrecht = next(t for t in _stand(db, 30)["tasks_today"]
                         if t["id"] == "aanrecht")
         assert set(aanrecht) == {
             "id", "name", "icon", "status",
-            "assignee_id", "assignee_name", "assignee_color"}
+            "assignee_id", "assignee_name", "assignee_color",
+            "covering_for", "covering_for_name"}
 
     def test_na_het_venster_weg(self, db):
         complete_chore(db, "bad", "laura", VANDAAG, NU)

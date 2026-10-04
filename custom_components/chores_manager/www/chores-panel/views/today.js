@@ -13,11 +13,16 @@
  * en er staan geen taaksecties en geen "Alles gedaan" — er is niets gedaan
  * of overgeslagen, de taken staan stil. Bijdragebalk en "Laatste
  * activiteit" blijven: die gaan over wat er wél gebeurde.
+ *
+ * Afwezigheid (v2.7): onder de kop een kleine regel per afwezige ("Laura is
+ * weg t/m 12 okt"); de kaarten tonen bij overgenomen taken voor wie (zie
+ * task-card.js). Tijdens de vakantiemodus niet: de vakantie wint.
  */
 import { html } from '../core/html.js';
 import {
   dateLong,
   dayMonth,
+  dayMonthShort,
   feedWhen,
   formatDuration,
   taskCount,
@@ -64,6 +69,15 @@ function vacationBanner(vacation, todayIso) {
     </p>`;
 }
 
+/** "Laura is weg t/m 12 okt" / "Noud is weg", één regel per persoon. */
+function awayLines(absences, assigneesById, todayIso) {
+  return absences.map((absence) => {
+    const name = assigneesById[absence.assignee_id]?.name || absence.assignee_id;
+    return html`<p class="away-line">${name} is weg${absence.until
+      ? ` t/m ${dayMonthShort(absence.until, todayIso)}` : ''}</p>`;
+  });
+}
+
 export function renderToday(state) {
   if (state.loading) {
     return html`<div class="status">${state.connecting ? 'Verbinden…' : 'Taken laden…'}</div>`;
@@ -93,9 +107,11 @@ export function renderToday(state) {
   // A2 (fase 4): de kijker, voor de chip-default op 'anyone'-taken.
   const me = data.assignees.find(
     (p) => p.ha_user_id && p.ha_user_id === state.currentUserId);
+  const absences = data.absences || [];
   const ctx = {
     assigneesById,
     assignees: data.assignees,
+    absent: new Set(absences.map((a) => a.assignee_id)),
     chooser: state.chooser,
     credits: state.credits,
     defaultAssignee: me ? me.id : null,
@@ -123,6 +139,7 @@ export function renderToday(state) {
     <header class="page-header">
       <p class="page-date">${dateLong(data.today)}</p>
       <h1 class="page-count">${heading}</h1>
+      ${awayLines(absences, assigneesById, data.today)}
     </header>`;
 
   let empty = '';

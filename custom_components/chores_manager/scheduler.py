@@ -7,8 +7,10 @@ los hiervan in notify.py.
 Sinds v2.6 beëindigt de rol eerst een verlopen vakantie (until vóór
 vandaag; db.vacations.end_due_vacation), zodat hij op de dag na de vakantie
 gewoon weer draait. Tijdens een vakantie doet de rol zelf niets
-(roll_all_forward geeft dan []). Dezelfde controle draait bij het opstarten
-(__init__.py): HA kan op de bewuste nacht uit hebben gestaan.
+(roll_all_forward geeft dan []). Sinds v2.7 eindigen daarna, nog vóór de
+rol, ook de verlopen afwezigheden per persoon (db.absences.end_due_absences).
+Dezelfde controles draaien bij het opstarten (__init__.py): HA kan op de
+bewuste nacht uit hebben gestaan.
 """
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.util import dt as dt_util
 
+from .db.absences import end_due_absences
 from .db.chores import roll_all_forward
 from .db.vacations import end_due_vacation
 from .const import SIGNAL_UPDATED
@@ -52,16 +55,43 @@ async def async_check_vacation_end(hass: HomeAssistant, database_path: str) -> b
     return True
 
 
+async def async_check_absence_end(hass: HomeAssistant, database_path: str) -> list:
+    """Beëindig verlopen afwezigheden (ended_on = de dag na until). Geeft de
+    lijst met beëindigde afwezigheden terug ([] bij niets of een fout).
+
+    Gedeeld door de rol en het opstarten. Net als bij de vakantie wordt een
+    fout gelogd en nooit opgeworpen. Een afwezigheid verschuift geen taken,
+    dus na het einde hoeft de rol niet mee te draaien; wel een signaal, dan
+    volgen panel, sensor en schakelaars meteen.
+    """
+    try:
+        ended = await hass.async_add_executor_job(
+            end_due_absences, database_path, dt_util.now().date())
+    except Exception:  # noqa: BLE001 — zie docstring
+        _LOGGER.exception("Chores Manager: automatisch einde van een afwezigheid mislukt")
+        return []
+    for absence in ended:
+        _LOGGER.info("Chores Manager: afwezigheid van %s automatisch beëindigd "
+                     "(tot en met %s, %d dagen)", absence["assignee_id"],
+                     absence["until"], absence["days"])
+        async_dispatcher_send(hass, SIGNAL_UPDATED, {
+            "reason": "absence", "assignee_id": absence["assignee_id"],
+            "active": False})
+    return ended
+
+
 async def async_run_roll(hass: HomeAssistant, database_path: str) -> list:
     """Voer de rol nu uit; ook aangeroepen door de service roll_forward en,
     na een automatisch vakantie-einde, bij het opstarten.
 
-    Eerst een verlopen vakantie beëindigen (async_check_vacation_end, met
-    een eigen foutafhandeling), dan de rol. Mislukt de rol, dan staat de
-    traceback in de log en komt er een HomeAssistantError: de service toont
-    die als melding, de nachtjob slikt hem (al gelogd).
+    Eerst een verlopen vakantie beëindigen (async_check_vacation_end), dan
+    verlopen afwezigheden (async_check_absence_end), elk met een eigen
+    foutafhandeling, dan de rol. Mislukt de rol, dan staat de traceback in
+    de log en komt er een HomeAssistantError: de service toont die als
+    melding, de nachtjob slikt hem (al gelogd).
     """
     await async_check_vacation_end(hass, database_path)
+    await async_check_absence_end(hass, database_path)
     now = dt_util.now()
     try:
         changes = await hass.async_add_executor_job(

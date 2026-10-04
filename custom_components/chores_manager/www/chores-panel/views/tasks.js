@@ -43,6 +43,8 @@ export function renderTasks(state) {
   const ctx = {
     assigneesById,
     assignees: data.assignees,
+    // afwezigen (v2.7): iets gedimd in de rij "Wie heeft het gedaan?"
+    absent: new Set((data.absences || []).map((a) => a.assignee_id)),
     chooser: state.chooser,
     credits: state.credits,
     defaultAssignee: me ? me.id : null,

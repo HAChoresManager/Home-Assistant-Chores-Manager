@@ -7,9 +7,10 @@ praktische kaart: waar staat wat, hoe draai je de tests, hoe deploy je.
 ## Architectuur in één alinea
 
 Eén custom integration (`custom_components/chores_manager/`) met een eigen
-SQLite-database (`<config>/chores_v2.db`), vijftien WebSocket-commando's,
-twee entiteiten (de overzichtssensor en de schakelaar voor de
-vakantiemodus) en één frontend: het panel `<chores-panel>` op `/taken`,
+SQLite-database (`<config>/chores_v2.db`), achttien WebSocket-commando's,
+entiteiten (de overzichtssensor, de schakelaar voor de vakantiemodus en
+per actieve persoon een afwezigheidsschakelaar) en één frontend: het
+panel `<chores-panel>` op `/taken`,
 vanilla ES-modules zonder build-stap, geserveerd rechtstreeks uit
 `custom_components/`. Geen iframe, geen eigen auth, geen eigen themadata —
 alles loopt via `hass` en HA's CSS-variabelen.
@@ -20,8 +21,8 @@ alles loopt via `hass` en HA's CSS-variabelen.
 |---|---|---|
 | Pure planning | `scheduling/` | geen HA, geen sqlite; volledig door pytest gedekt |
 | Datalaag | `db/` | alle SQL, geparameteriseerd; DDL alleen in `db/schema.py`; geen HA-imports |
-| HA-koppeling | `websocket.py`, `vacation.py`, `sensor.py`, `switch.py`, `scheduler.py`, `__init__.py` | dun; roept db/-functies aan in een executor |
-| Frontend | `www/chores-panel/` | ES-modules; één toestandsobject in `core/store.js`; mutaties met hun terugkoppeling in `actions.js` |
+| HA-koppeling | `__init__.py`, `websocket.py`, `vacation.py`, `absence.py`, `sensor.py`, `switch.py`, `scheduler.py`, `notify.py`, `panel.py` | dun; roept db/-functies aan in een executor (`notify.py`: meldingen en de gedeelde afvinkstap `async_complete`; `panel.py`: registratie en serveren van het panel) |
+| Frontend | `www/chores-panel/` | ES-modules; één toestandsobject in `core/store.js`; mutaties met hun terugkoppeling in `actions.js`; schakelaars en datums in Beheer in `controls.js` |
 
 De datalaag en scheduling zijn bewust HA-vrij: `tests/conftest.py` plant een
 lege oudermodule zodat de tests zonder homeassistant-installatie draaien.
@@ -38,7 +39,16 @@ opslag, overzicht, weekhistorie, meldingsdata, overslaan en terugdraaien —
 `tests/test_skip.py`, `tests/test_skip_revert.py` — en de vakantiemodus:
 `tests/test_vacation.py`, `tests/test_vacation_shift.py` voor de
 verschuiving per type, `tests/test_vacation_views.py` voor sensor, state
-en neutrale streakweken). De frontend heeft geen testrunner; controleer
+en neutrale streakweken — en de afwezigheid per persoon:
+`tests/test_absence_assignee.py` voor de pure effectieve toewijzing,
+`tests/test_absence.py` voor de opslag (aan, einddatum, einde,
+automatisch einde, archiveren) en `tests/test_absence_views.py` voor
+sensor, state, meldingen, afvinken, streak en de samenloop met de
+vakantiemodus). De HA-laag zelf (services, WS, schakelaars) valt buiten
+deze tests; rooktest die in een eigen harnas (bijv.
+`pytest-homeassistant-custom-component`) met een **kopie** van de
+integratie — nooit via een symlink naar de repo. De frontend heeft geen
+testrunner; controleer
 syntax met `node --check` (kopieer het bestand naar `.mjs`, anders weigert
 node de ES-module).
 
@@ -64,8 +74,11 @@ node de ES-module).
   `vacation.async_start_vacation`/`async_end_vacation` als
   `vacation/start` en `vacation/end`, maar idempotent: al aan of al uit is
   geen fout; de schakelaar in `switch.py` gebruikt dezelfde idempotente
-  aanroep). Samen tien services; `SERVICES` in `__init__.py` is de lijst
-  die de unload opruimt.
+  aanroep). De afwezigheid van één persoon: `start_absence` en
+  `end_absence` (dezelfde `absence.async_start_absence`/`async_end_absence`
+  als `absence/start` en `absence/end`, idempotent; de schakelaars per
+  persoon idem). Samen twaalf services; `SERVICES` in `__init__.py` is de
+  lijst die de unload opruimt.
 
 ## Kaartgebruik (optioneel)
 

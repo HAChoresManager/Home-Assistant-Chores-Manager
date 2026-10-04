@@ -1,7 +1,9 @@
-"""De vijftien WS-commando's uit §2.3 (negen uit fase 2b, chore/restore uit
+"""De achttien WS-commando's uit §2.3 (negen uit fase 2b, chore/restore uit
 fase 5, chore/skip en skip/revert uit v2.5, vacation/start, /update en /end
-uit v2.6). De drie vakantiecommando's en hun kernen staan in vacation.py;
-COMMANDS hieronder neemt ze mee, zodat de registratie op één plek blijft.
+uit v2.6, absence/start, /update en /end uit v2.7). De drie
+vakantiecommando's en hun kernen staan in vacation.py, de drie
+afwezigheidscommando's in absence.py; COMMANDS hieronder neemt ze mee,
+zodat de registratie op één plek blijft.
 
 Authenticatie is de standaard van websocket_api: elke ingelogde gebruiker mag
 ze aanroepen, geen admin vereist — Laura en Noud moeten kunnen afvinken. Alle
@@ -25,7 +27,8 @@ de snackbar kan er niets mee.
 Een paar kernen zijn gedeeld met de services in __init__.py, zodat panel,
 Lovelace-kaart en automatisering precies hetzelfde doen: async_undo_last,
 async_skip, async_revert_skip en resolve_caller. De drie vakantiekernen
-(ook voor de schakelaar in switch.py) staan in vacation.py.
+(ook voor de schakelaar in switch.py) staan in vacation.py, de drie
+afwezigheidskernen (ook voor de schakelaars per persoon) in absence.py.
 """
 from __future__ import annotations
 
@@ -62,6 +65,7 @@ from .db.overview import build_state
 from .db.skips import revert_skip, skip_chore
 from .db.subtasks import set_subtasks
 from .db.vacations import VacationActiveError
+from .absence import ABSENCE_COMMANDS
 from .vacation import VACATION_COMMANDS
 
 _LOGGER = logging.getLogger(__name__)
@@ -92,7 +96,8 @@ def _error_code(err: Exception) -> str:
 @websocket_api.websocket_command({vol.Required("type"): "chores_manager/state"})
 @websocket_api.async_response
 async def ws_state(hass, connection, msg):
-    """Volledige begintoestand: taken, personen, ranglijst, feed."""
+    """Volledige begintoestand: taken, personen, ranglijst, feed, overslagen,
+    vakantie en (v2.7) de lopende afwezigheden."""
     today = dt_util.now().date()
     state = await hass.async_add_executor_job(build_state, _path(hass), today)
     connection.send_result(msg["id"], state)
@@ -419,10 +424,11 @@ async def ws_chore_restore(hass, connection, msg):
 })
 @websocket_api.async_response
 async def ws_assignee_save(hass, connection, msg):
-    """Persoon aanmaken of bijwerken."""
+    """Persoon aanmaken of bijwerken. Archiveren (active 0) beëindigt een
+    lopende afwezigheid, met vandaag als dag van terugkomst (v2.7)."""
     try:
         assignee = await hass.async_add_executor_job(
-            save_assignee, _path(hass), msg["assignee"])
+            save_assignee, _path(hass), msg["assignee"], dt_util.now().date())
     except ValueError as err:
         connection.send_error(msg["id"], "invalid_input", str(err))
         return
@@ -436,9 +442,14 @@ async def ws_assignee_save(hass, connection, msg):
 })
 @websocket_api.async_response
 async def ws_assignee_delete(hass, connection, msg):
-    """Persoon verwijderen; met historie of taken wordt hij gedeactiveerd."""
-    result = await hass.async_add_executor_job(
-        delete_assignee, _path(hass), msg["assignee_id"])
+    """Persoon verwijderen; met historie of taken wordt hij gedeactiveerd,
+    en dat beëindigt een lopende afwezigheid (v2.7)."""
+    try:
+        result = await hass.async_add_executor_job(
+            delete_assignee, _path(hass), msg["assignee_id"], dt_util.now().date())
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_input", str(err))
+        return
     _notify(hass, "assignee_delete", assignee_id=msg["assignee_id"])
     connection.send_result(msg["id"], {
         "assignee_id": msg["assignee_id"], "result": result})
@@ -464,6 +475,8 @@ COMMANDS = (
     ws_assignee_save, ws_assignee_delete, ws_subscribe,
     # vacation/start, /update en /end staan in vacation.py
     *VACATION_COMMANDS,
+    # absence/start, /update en /end staan in absence.py (v2.7)
+    *ABSENCE_COMMANDS,
 )
 
 

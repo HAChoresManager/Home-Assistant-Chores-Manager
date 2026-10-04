@@ -93,7 +93,7 @@ een container met 1 CPU. Push in plaats van poll haalt dat weg én maakt de
 
 | Commando | Doel |
 |---|---|
-| `chores_manager/state` | Volledige begintoestand: taken, personen, ranglijst, feed *(sinds v2.5 plus `skips` en `activity_since`, §5.4; sinds v2.6 plus `vacation`, §3.6)* |
+| `chores_manager/state` | Volledige begintoestand: taken, personen, ranglijst, feed *(sinds v2.5 plus `skips` en `activity_since`, §5.4; sinds v2.6 plus `vacation`, §3.6; sinds v2.7 plus `absences` en per taak `covering_for`, §3.7)* |
 | `chores_manager/complete` | Taak of deeltaak afvinken |
 | `chores_manager/undo` | Laatste voltooiing of overslag terugdraaien (binnen 5 min) |
 | `chores_manager/chore/save` | Taak aanmaken of bijwerken |
@@ -108,6 +108,9 @@ een container met 1 CPU. Push in plaats van poll haalt dat weg én maakt de
 | `chores_manager/vacation/start` | Vakantiemodus aan, optioneel met laatste dag *(v2.6, §3.6)* |
 | `chores_manager/vacation/update` | Laatste vakantiedag wijzigen of wissen *(v2.6, §3.6)* |
 | `chores_manager/vacation/end` | Vakantiemodus uit; taken schuiven op *(v2.6, §3.6)* |
+| `chores_manager/absence/start` | Eén persoon afwezig, optioneel met laatste dag *(v2.7, §3.7)* |
+| `chores_manager/absence/update` | Laatste dag van een afwezigheid wijzigen of wissen *(v2.7, §3.7)* |
+| `chores_manager/absence/end` | Afwezigheid van één persoon beëindigen *(v2.7, §3.7)* |
 
 De HA-services (`chores_manager.mark_done` etc.) blijven bestaan voor gebruik in
 automations en voor de actieknop in notificaties. *(Achterhaald in 3c/4: de
@@ -122,7 +125,9 @@ oude services zijn verdwenen; de actieknop vinkt af via een event-listener in
 laatste voltooiing óf overslag terug; sinds 04-10-2026 ook
 `start_vacation` en `end_vacation` (om dezelfde kernen als
 `vacation/start` en `vacation/end`, maar idempotent, voor
-automatiseringen, §3.6). Tijdens de vakantiemodus geven `complete`,
+automatiseringen, §3.6); sinds 04-10-2026 (v2.7) ook `start_absence` en
+`end_absence` (idem om `absence/start` en `absence/end`, §3.7). Tijdens de
+vakantiemodus geven `complete`,
 `chore/skip`, `skip/revert` en `chore/snooze` de foutcode
 `vacation_active`.)*
 
@@ -156,7 +161,11 @@ automatiseringen, §3.6). Tijdens de vakantiemodus geven `complete`,
   wat er gedaan is (`completed_today`, `persons`, `recent_completions`,
   `recent_skips`) blijft gewoon staan. Naast de sensor is er sindsdien
   een tweede entiteit: de schakelaar `switch.chores_vakantiemodus`,
-  attributen `start_date` en `until`.)*
+  attributen `start_date` en `until`. Sinds v2.7 (§3.7) ook `absences`
+  (de lopende afwezigheden), per persoon `absent` en `absent_until`, en in
+  `tasks_today` de effectieve toewijzing plus `covering_for` en
+  `covering_for_name`; daarnaast per actieve persoon de schakelaar
+  `switch.chores_afwezig_<id>`.)*
 
 Dezelfde semantiek geldt op het scherm Vandaag: de kop toont het totaal
 ("8 taken"), daaronder twee secties — wat vandaag gepland staat en wat
@@ -165,7 +174,12 @@ terwijl het één stapel werk is.
 
 Voor Lovelace komt er daarnaast één sensor per persoon
 (`sensor.chores_bijdrage_martijn`, state = minuten deze week) zodat je er
-gewone HA-kaarten en grafieken op kunt bouwen zonder templates.
+gewone HA-kaarten en grafieken op kunt bouwen zonder templates. *(Nooit
+gebouwd — gecorrigeerd 04-10-2026: er is geen sensor per persoon. Wat een
+kaart per persoon nodig heeft, staat in het attribuut `persons` van
+`sensor.chores_overview` (minuten, taken, streak, kleur, ranglijstvlag en
+sinds v2.7 `absent`/`absent_until`); per persoon bestaat alleen de
+afwezigheidsschakelaar van §3.7.)*
 
 ---
 
@@ -414,6 +428,46 @@ fout), services `chores_manager.start_vacation` (optioneel `until`) en
 Beide tabellen kwamen er, net als `skips`, via `CREATE TABLE IF NOT
 EXISTS` bij — geen migratiestap.
 
+### 3.7 `absences` *(sinds v2.7, 04-10-2026)*
+
+```sql
+CREATE TABLE absences (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    assignee_id TEXT NOT NULL REFERENCES assignees(id) ON DELETE CASCADE,
+    start_date  DATE NOT NULL,      -- dag waarop de afwezigheid begon
+    until       DATE,               -- geplande laatste dag (t/m); NULL = open einde
+    ended_on    DATE,               -- dag van terugkomst; NULL = loopt nog
+    created_at  TIMESTAMP NOT NULL
+);
+-- hooguit één lopende afwezigheid per persoon
+CREATE UNIQUE INDEX idx_absences_one_active
+    ON absences (assignee_id) WHERE ended_on IS NULL;
+```
+
+**Eén persoon is een tijd weg; het huishouden draait door.** Alleen diens
+aandeel gaat tijdelijk naar de anderen, en dat is puur een berekening
+(`scheduling.effective_assignee`): vaste taken van de afwezige worden "wie
+kan"; een rotatie neemt de eerste persoon vanaf `rotation_index` die niet
+weg is (iedereen weg → "wie kan"); "wie kan" blijft "wie kan".
+`rotation_index` verandert niet door de afwezigheid — geen inhaalslag; na
+terugkomst sluit de persoon aan op zijn plek, en doorschuiven na afvinken
+blijft `advance_rotation` vanaf de doener (§4.4). Afvinken blijft voor
+iedereen kunnen, ook voor de afwezige; ranglijst en minuten tellen wat er
+gedaan is. De afwezige krijgt geen meldingen (§6) en diens weken zijn voor
+de streak neutraal (§5.3). De vakantiemodus wint: staat die aan, dan doet
+een afwezigheid niets extra's; starten en eindigen mag wel.
+
+Zelfde opzet als §3.6: aan (start = vandaag, `until` optioneel), einddatum
+wijzigen, einde (`ended_on` = vandaag), automatisch einde (`until` vóór
+vandaag → `ended_on` = `until` + 1) om 03:00 vóór de rol en bij het
+opstarten. Archiveren van een persoon beëindigt een lopende afwezigheid;
+echt verwijderen neemt de rijen mee (CASCADE; een afwezigheid is geen
+historie). Bediening: WS `absence/start|update|end` (strikt), services
+`chores_manager.start_absence` (`assignee_id`, optioneel `until`) en
+`chores_manager.end_absence`, en per actieve persoon de schakelaar
+`switch.chores_afwezig_<id>` (idempotent; aan = zonder einddatum). De
+tabel kwam er via `CREATE TABLE IF NOT EXISTS` bij — geen migratiestap.
+
 ---
 
 ## 4. Planning en achterstand
@@ -612,6 +666,10 @@ vakantie beslaat `start_date` tot en met de dag vóór `ended_on`, een
 lopende tot en met vandaag (of `until`, als die eerder ligt); aan en uit op
 dezelfde dag maakt geen week neutraal.)*
 
+*(Aangevuld 04-10-2026, v2.7: per persoon geldt hetzelfde voor weken die
+(deels) in een eigen afwezigheid vielen (§3.7), met dezelfde bereikregel;
+voor de anderen telt zo'n week gewoon.)*
+
 ### 5.4 Activiteitenfeed
 
 Chronologisch: wie deed wat wanneer, met tijdsduur. Dit ontbreekt nu volledig in
@@ -642,9 +700,9 @@ persoon is er niets om naartoe te sturen.
 
 | Wanneer | Wat |
 |---|---|
-| 03:00 dagelijks | Vervaldata doorrollen (4.2) *(sinds v2.6: eerst een verlopen vakantie beëindigen, §3.6; tijdens de vakantiemodus verschuift de rol niets)* |
-| 08:00 dagelijks | Per persoon: wat er vandaag voor jou is. Alleen als er iets is. *(Tijdens de vakantiemodus niets.)* |
-| Zondag 20:00 | Weeksamenvatting met de uitslag en de streaks *(Tijdens de vakantiemodus niets.)* |
+| 03:00 dagelijks | Vervaldata doorrollen (4.2) *(sinds v2.6: eerst een verlopen vakantie beëindigen, §3.6; tijdens de vakantiemodus verschuift de rol niets; sinds v2.7 daarna, nog vóór de rol, verlopen afwezigheden beëindigen, §3.7)* |
+| 08:00 dagelijks | Per persoon: wat er vandaag voor jou is. Alleen als er iets is. *(Tijdens de vakantiemodus niets. Sinds v2.7 niet voor wie afwezig is; de overgenomen taken komen bij de anderen als "wie kan", §3.7.)* |
+| Zondag 20:00 | Weeksamenvatting met de uitslag en de streaks *(Tijdens de vakantiemodus niets. Sinds v2.7 niet naar wie afwezig is.)* |
 
 Notificaties zijn **actionable**: een knop "Klaar" in de melding vinkt de taak af
 via `mobile_app_notification_action`. Dat is wat "makkelijk te beheren" in de
@@ -675,16 +733,17 @@ Alles onder de 600 regels. Bij overschrijding: splitsen.
 
 ```
 custom_components/chores_manager/
-├── __init__.py           # setup, config entry, services (roll_forward, meldingen, mark_done, undo_last, revert_completion, skip, revert_skip, start_vacation, end_vacation)
+├── __init__.py           # setup, config entry, services (roll_forward, meldingen, mark_done, undo_last, revert_completion, skip, revert_skip, start_vacation, end_vacation, start_absence, end_absence)
 ├── manifest.json
 ├── const.py
 ├── config_flow.py        # één instantie, niets in te stellen
 ├── panel.py              # panel_custom, module_url, geen iframe; versie in pad
 ├── websocket.py          # WS-commando's (zie 2.3)
 ├── vacation.py           # vakantiekernen en WS vacation/* (§3.6); websocket.py registreert ze
+├── absence.py            # afwezigheidskernen en WS absence/* (§3.7); websocket.py registreert ze
 ├── sensor.py             # overzichtssensor (§2.4), push via dispatcher
-├── switch.py             # switch.chores_vakantiemodus (§3.6), push via dispatcher
-├── scheduler.py          # nachtelijke rol, vooraf een verlopen vakantie beëindigen (meldingen: notify.py)
+├── switch.py             # switch.chores_vakantiemodus (§3.6) en switch.chores_afwezig_<id> (§3.7), push via dispatcher
+├── scheduler.py          # nachtelijke rol, vooraf verlopen vakantie en afwezigheden beëindigen (meldingen: notify.py)
 ├── notify.py             # fase 4: actionable notificaties; async_complete (ook achter mark_done)
 ├── db/
 │   ├── __init__.py
@@ -696,12 +755,13 @@ custom_components/chores_manager/
 │   ├── completions.py    # voltooiingen, ranglijst, feed, streaks, instantiegrens
 │   ├── skips.py          # overslaan, terugdraaien, overslaglog (§3.5)
 │   ├── vacations.py      # vakantiemodus: aan, einddatum, einde met verschuiving, neutrale weken (§3.6)
+│   ├── absences.py       # afwezigheid per persoon: aan, einddatum, einde, automatisch einde (§3.7)
 │   ├── subtasks.py
 │   └── overview.py       # samengestelde leesweergaven voor sensor en WS
 └── scheduling/
     ├── __init__.py
     ├── types.py          # definities van de vijf planningstypen
-    └── calculator.py     # next_due, achterstand, urgentie, rotatie, verschuiving na een vakantie
+    └── calculator.py     # next_due, achterstand, urgentie, rotatie, effectieve toewijzing, verschuiving na een vakantie
 ```
 
 Geen `migrations.py` meer in de boom: v2 heeft een vers schema; migraties
@@ -728,7 +788,8 @@ overgenomen; alle imports en tests zijn omgelegd.
 ```
 www/chores-panel/
 ├── chores-panel.js       # entrypoint, definieert <chores-panel>, krijgt hass
-├── actions.js            # mutaties + terugkoppeling (afvinken, overslaan, terugdraaien, opslaan, verwijderen, vakantiemodus)
+├── actions.js            # mutaties + terugkoppeling (afvinken, overslaan, terugdraaien, opslaan, verwijderen, vakantiemodus, afwezigheid)
+├── controls.js           # schakelaars en datums in Beheer (vakantie, afwezigheid): concept stil in de store
 ├── core/
 │   ├── api.js            # dunne laag over hass.connection
 │   ├── store.js          # één toestandsobject + subscribe
@@ -739,7 +800,7 @@ www/chores-panel/
 │   ├── today.js          # bijdragebalk + wat er nu moet
 │   ├── tasks.js          # alle taken, gegroepeerd
 │   ├── activity.js       # feed (voltooiingen + overslagen) + weekhistorie
-│   └── manage.js         # taken en personen beheren + secties Vakantie en Weergave
+│   └── manage.js         # taken en personen (met "Afwezig") beheren + secties Vakantie en Weergave
 ├── components/
 │   ├── task-card.js      # incl. deeltaakweergave (subtask-tracker is nooit los geworden)
 │   ├── contribution-bar.js
@@ -762,6 +823,9 @@ de 600 regels liep: de mutaties met hun terugkoppeling staan daar en krijgen
 een klein context-object `{refresh, showSnackbar, hideSnackbar}`, niet het
 hele element. Het staat naast de entrypoint en niet in `core/`: `core/`
 blijft blad-modules, en `actions.js` gebruikt `components/` en `views/`.
+`controls.js` (sinds v2.7) is op dezelfde manier uit `chores-panel.js`
+gesplitst: de schakelaars en datumvelden in Beheer (vakantie en per
+persoon de afwezigheid) met hun stille concepten.
 
 ### Te verwijderen
 
@@ -1123,6 +1187,26 @@ de state, services `chores_manager.start_vacation` en
 tijdens de vakantie). In het panel een sectie "Vakantie" bovenaan Beheer,
 een banner op Vandaag en "Staat stil" op Alles.)*
 
+*(Aangevuld 04-10-2026, v2.7.0: **Afwezigheid per persoon** is gebouwd
+(§3.7) — een kleinere functie naast de vakantiemodus. Eén persoon is een
+tijd weg: diens vaste taken worden "wie kan", rotaties slaan hem of haar
+over zonder de beurt te verschuiven (geen inhaalslag), geen meldingen naar
+die persoon, en diens weken zijn voor de streak neutraal. Afvinken blijft
+voor iedereen kunnen; ranglijst en minuten ongewijzigd; de vakantiemodus
+wint. Automatisch einde op `until` om 03:00 en bij het opstarten;
+archiveren beëindigt een lopende afwezigheid. Nieuw: tabel `absences`, de
+pure functie `scheduling.effective_assignee` (overal waar `current_assignee`
+werd gebruikt), WS `absence/start|update|end` plus `absences` in de state,
+services `chores_manager.start_absence` en `chores_manager.end_absence`,
+per actieve persoon `switch.chores_afwezig_<id>`, en op de sensor
+`absences`, `persons.<id>.absent`/`absent_until` en in `tasks_today`
+`covering_for`/`covering_for_name`. In het panel per persoon een
+schakelaar "Afwezig" in Beheer, "· voor Laura" / "· Laura is weg" op de
+kaarten en een regel onder de kop van Vandaag. Meegenomen: drie
+documentatiefouten uit het 2.6.0-rapport (de planningstypen in
+`docs/technical-description.md`, de nooit gebouwde sensoren per persoon in
+§2.4, en `notify.py` in de lagentabel van `docs/developer-guide.md`).)*
+
 **Later, misschien** (bewust niet gedaan; geen van alle nodig voor dagelijks
 gebruik):
 
@@ -1164,8 +1248,9 @@ gebruik):
    beschrijft nu het volledige aanbod van drie — vier sinds `mark_done`
    op 20-09-2026, zes sinds `undo_last` en `revert_completion` op
    23-09-2026, acht sinds `skip` en `revert_skip` op 03-10-2026, tien
-   sinds `start_vacation` en `end_vacation` op 04-10-2026, zie §6, §3.5
-   en §3.6.)*
+   sinds `start_vacation` en `end_vacation` op 04-10-2026, twaalf sinds
+   `start_absence` en `end_absence` (v2.7) op dezelfde dag, zie §6, §3.5,
+   §3.6 en §3.7.)*
 7. **Twee services worden geregistreerd maar niet opgeruimd.**
    `async_unregister_services` (`services/__init__.py:107-122`) noemt twintig
    namen, maar `get_pending_notifications` (`services/notification_services.py:101`)
@@ -1175,5 +1260,6 @@ gebruik):
    *(Met de oude app verdwenen; de huidige unload ruimt alle
    services op — mark_done meegenomen op 20-09-2026, undo_last en
    revert_completion op 23-09-2026, skip en revert_skip op 03-10-2026,
-   start_vacation en end_vacation op 04-10-2026; de lijst staat nu als
-   SERVICES in `__init__.py`.)*
+   start_vacation en end_vacation op 04-10-2026, start_absence en
+   end_absence (v2.7) op dezelfde dag; de lijst staat nu als SERVICES in
+   `__init__.py`.)*

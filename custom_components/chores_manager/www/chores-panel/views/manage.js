@@ -9,12 +9,20 @@
  * Bovenaan staat de vakantiemodus: een schakelaar en een optionele "tot en
  * met". Het datumveld schrijft alleen een concept in de store
  * (vacationDraft, stil: zonder render) — de server hoort er pas van bij de
- * schakelaar of bij "Datum opslaan". De afhandeling zit in de
- * change-delegatie van het element en in actions.js.
+ * schakelaar of bij "Datum opslaan". De afhandeling zit in controls.js en
+ * actions.js.
+ *
+ * In de sectie Personen heeft sinds v2.7 iedereen een eigen schakelaar
+ * "Afwezig" met een optioneel "tot en met", met precies dezelfde
+ * discipline als de vakantie: concept stil in de store (absenceDrafts),
+ * geen render onder je vingers, en tijdens de aanroep de bedoeling
+ * (absenceBusy). Namen van de velden dragen het persoon-id, zodat de
+ * focus na een render terugkomt op het goede veld.
  */
 import { html } from '../core/html.js';
 import {
   dayCount,
+  dayMonth,
   daysBetween,
   scheduleLabel,
 } from '../core/format.js';
@@ -34,16 +42,72 @@ function choreRow(chore) {
     </li>`;
 }
 
-function assigneeRow(person) {
+/**
+ * Wat een afwezigheid doet, kort. Een datum vóór vandaag (getypt, of een
+ * concept dat over middernacht bleef staan) krijgt de vraag om een andere
+ * datum. Geëxporteerd: controls.js werkt deze tekst bij het typen bij.
+ */
+export function absenceExplain(name, untilValue, todayIso) {
+  if (untilValue && untilValue < todayIso) {
+    return 'Die datum ligt vóór vandaag; kies vandaag of later als laatste dag.';
+  }
+  return `Vaste taken van ${name} worden 'wie kan'; in rotaties wordt ${name}`
+    + ' overgeslagen. Meldingen en streak staan stil.';
+}
+
+/** Schakelaar "Afwezig" met datum, net als de vakantiesectie (v2.7). */
+function absenceBlock(person, state) {
+  const { data } = state;
+  const absence = (data.absences || []).find((a) => a.assignee_id === person.id) || null;
+  const busy = state.absenceBusy[person.id];
+  // Tijdens een aanroep toont de schakelaar de bedoeling, niet de oude
+  // serverstand — anders springt hij terug tot de refresh binnen is.
+  let on = Boolean(absence);
+  if (busy === 'start') on = true;
+  else if (busy === 'end') on = false;
+  // Het concept wint van de server; '' is "bewust leeggemaakt".
+  const untilValue = person.id in state.absenceDrafts
+    ? state.absenceDrafts[person.id] : (absence?.until ?? '');
+  const unsaved = Boolean(absence) && untilValue !== (absence.until ?? '');
+  // Schakelaar en datumveld in aparte labels: een tik op de datum mag de
+  // afwezigheid niet aan- of uitzetten.
   return html`
-    <li class="manage-row">
-      <span class="dot" style="--person-color: ${person.color}"></span>
-      <span class="manage-text">
-        <span class="manage-name">${person.name}</span>
-        ${person.include_in_leaderboard ? '' : html`<span class="manage-sub">buiten de ranglijst</span>`}
-      </span>
-      <button type="button" class="secondary" data-action="edit-assignee"
-        data-assignee="${person.id}">Bewerken</button>
+    <div class="absence" data-absence-block>
+      <label class="check standalone">
+        <input type="checkbox" role="switch" name="absence-toggle-${person.id}"
+          data-absence="${person.id}" aria-label="${person.name} afwezig"
+          ${on ? 'checked' : ''} ${busy ? 'disabled' : ''}>
+        Afwezig
+      </label>
+      <label class="field">Tot en met (optioneel)
+        <input type="date" name="absence-until-${person.id}" data-absence="${person.id}"
+          aria-label="${person.name} afwezig tot en met (optioneel)"
+          min="${data.today}" value="${untilValue}" ${busy ? 'disabled' : ''}>
+      </label>
+      <button type="button" class="secondary absence-save" data-action="absence-save-until"
+        data-assignee="${person.id}" ${unsaved ? '' : 'hidden'}
+        ${busy ? 'disabled' : ''}>Datum opslaan</button>
+      <p class="field-hint" data-absence-hint>${absenceExplain(person.name, untilValue, data.today)}</p>
+    </div>`;
+}
+
+function assigneeRow(person, state) {
+  const absence = (state.data.absences || []).find((a) => a.assignee_id === person.id);
+  const sub = [];
+  if (!person.include_in_leaderboard) sub.push('buiten de ranglijst');
+  if (absence) sub.push(`afwezig sinds ${dayMonth(absence.start_date, state.data.today)}`);
+  return html`
+    <li class="manage-person">
+      <div class="manage-row">
+        <span class="dot" style="--person-color: ${person.color}"></span>
+        <span class="manage-text">
+          <span class="manage-name">${person.name}</span>
+          ${sub.length ? html`<span class="manage-sub">${sub.join(' · ')}</span>` : ''}
+        </span>
+        <button type="button" class="secondary" data-action="edit-assignee"
+          data-assignee="${person.id}">Bewerken</button>
+      </div>
+      ${absenceBlock(person, state)}
     </li>`;
 }
 
@@ -241,7 +305,7 @@ export function renderManage(state) {
     </section>
     <section>
       <h2 class="section-title">Personen</h2>
-      <ul class="manage-rows">${data.assignees.map(assigneeRow)}</ul>
+      <ul class="manage-rows">${data.assignees.map((person) => assigneeRow(person, state))}</ul>
       <button type="button" class="secondary add" data-action="new-assignee">+ Nieuwe persoon</button>
     </section>
     ${archivedSection(data.archived_chores || [])}

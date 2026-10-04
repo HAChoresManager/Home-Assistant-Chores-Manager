@@ -9,13 +9,17 @@ attribuut `recent_skips`, en op 04-10-2026 (v2.6.0) voor de
 vakantiemodus: tabellen `vacations` en `vacation_frozen`, de schakelaar
 `switch.chores_vakantiemodus`, de services `start_vacation` en
 `end_vacation`, de WS-commando's `vacation/start|update|end` en het
-attribuut `vacation`. De oude app (1.x) is volledig verwijderd; dit
-document beschrijft alleen wat er draait. Ontwerpmotivatie:
-`REFACTOR_PLAN.md`.
+attribuut `vacation`, en op 04-10-2026 (v2.7.0) voor de afwezigheid per
+persoon: tabel `absences`, de schakelaars `switch.chores_afwezig_<id>`,
+de services `start_absence` en `end_absence`, de WS-commando's
+`absence/start|update|end`, `absences` in de state en op de sensor, en de
+velden `covering_for`/`covering_for_name` en `absent`/`absent_until`. De
+oude app (1.x) is volledig verwijderd; dit document beschrijft alleen wat
+er draait. Ontwerpmotivatie: `REFACTOR_PLAN.md`.
 
 ## Database
 
-`<config>/chores_v2.db` (SQLite; de naam stamt uit de migratieperiode). Zeven
+`<config>/chores_v2.db` (SQLite; de naam stamt uit de migratieperiode). Acht
 tabellen, DDL in `db/schema.py`:
 
 - `assignees` — id, naam, kleur, `include_in_leaderboard`, `active`,
@@ -41,27 +45,42 @@ tabellen, DDL in `db/schema.py`:
 - `vacation_frozen` (sinds v2.6) — momentopname van `next_due` per actieve
   taak bij het aanzetten (`vacation_id`, `chore_id`, `next_due`; beide
   verwijzingen `ON DELETE CASCADE`). Alleen nodig tot het einde van de
-  vakantie, dan opgeruimd.
+  vakantie, dan opgeruimd;
+- `absences` (sinds v2.7) — afwezigheid per persoon: `assignee_id`
+  (`ON DELETE CASCADE`), `start_date` (de dag waarop hij begon), `until`
+  (laatste dag, tot en met; `NULL` = open einde), `ended_on` (de dag van
+  terugkomst; `NULL` = loopt nog) en `created_at`. Een unieke
+  gedeeltelijke index (`idx_absences_one_active`, op `assignee_id` waar
+  `ended_on IS NULL`) laat hooguit één lopende afwezigheid per persoon
+  toe. De historie blijft staan: de streak heeft hem nodig.
 
 Verwijderen is eerlijk: met historie wordt een taak of persoon gedeactiveerd
 (`active = 0`, historie blijft), zonder historie echt verwijderd. Overslagen
 tellen daarbij niet als historie: een taak met alleen overslagen gaat echt
 weg en neemt zijn overslaglog mee (`skips.chore_id` is `ON DELETE CASCADE`);
 bij een persoon die echt weg mag, wordt `skips.assignee_id` `NULL`
-(`ON DELETE SET NULL`).
+(`ON DELETE SET NULL`). Een afwezigheid telt evenmin als historie: echt
+verwijderen neemt de afwezigheden mee (`ON DELETE CASCADE`), en archiveren
+beëindigt een lopende afwezigheid (zie Afwezigheid).
 Gearchiveerde taken staan in Beheer onder "Gearchiveerd" en zijn terug te
 zetten (`chore/restore`). Checkliststappen zijn ook mét historie te bewerken:
 `completions.subtask_id` heeft sinds fase 5 `ON DELETE SET NULL`, dus een
 geschrapte stap laat zijn voltooiingen (en minuten) staan. Kleine
 schemamigraties draaien idempotent bij het opstarten (`db/schema.py`); een
-nieuwe tabel zoals `skips`, `vacations` of `vacation_frozen` komt er via
+nieuwe tabel zoals `skips`, `vacations`, `vacation_frozen` of `absences`
+komt er via
 `CREATE TABLE IF NOT EXISTS` vanzelf bij op een bestaande database, zonder
 migratiestap.
 
 ## Planning (`scheduling/`)
 
-Vijf planningstypen: `interval`, `weekly` (weekdagen), `monthly_day`,
-`yearly`, `flexible`. Pure functies zonder HA of sqlite:
+Vijf planningstypen (`scheduling/types.py`, REFACTOR_PLAN §4.1), elk met
+precies één vorm van `schedule_config`: `daily` (`{"weekdays": [1..7]}`,
+één of meer weekdagen), `weekly` (`{"weekday": 3}`), `monthly`
+(`{"monthday": 15}`, afgekapt op het maandeinde), `interval`
+(`{"days": 180}`) en `yearly` (`{"month": 6, "day": 15}`). ISO-weekdagen:
+1 = maandag. *(Tot v2.7 noemde dit document hier ten onrechte `monthly_day`
+en `flexible`; die bestaan niet.)* Pure functies zonder HA of sqlite:
 
 - `initial_next_due` / `next_due_after_completion` — vooruit plannen gebeurt
   vanaf de *geplande* datum, niet vanaf het moment van afvinken;
@@ -76,7 +95,10 @@ Vijf planningstypen: `interval`, `weekly` (weekdagen), `monthly_day`,
   `cycle_fraction` (achterstand genormaliseerd op de cycluslengte, voor de
   sortering);
 - `current_assignee`, `advance_rotation` — de rotatie schuift vanaf wie de
-  taak *echt* deed; een buitenstaander laat de beurt staan.
+  taak *echt* deed; een buitenstaander laat de beurt staan;
+- `effective_assignee(chore, absent)` (sinds v2.7) — wie de taak nú op zijn
+  naam heeft, met de afwezigen meegerekend; geeft `(assignee_id of None,
+  covering_for of None)`. Zie Afwezigheid.
 
 ## Overslaan (`db/skips.py`, sinds v2.5)
 
@@ -203,15 +225,67 @@ met `until` als die eerder ligt; aan en uit op dezelfde dag maakt geen week
 neutraal).
 Ranglijst, weektotalen en weekhistorie blijven gewoon wat er gedaan is.
 
-## WebSocket-API (`websocket.py`, `vacation.py`)
+## Afwezigheid per persoon (`db/absences.py`, sinds v2.7)
 
-Vijftien commando's onder `chores_manager/*`, standaard-auth (geen admin):
+Eén persoon is een tijd weg; het huishouden draait door en alleen diens
+aandeel gaat tijdelijk naar de anderen. Puur een berekening: er wordt niets
+aan taken of beurten geschreven, dus bij het einde schuift er niets op en
+valt er niets in te halen.
+
+- **Effectieve toewijzing** (`scheduling.effective_assignee`, toegepast in
+  `db/overview.py`): een vaste taak van wie weg is, wordt "wie kan"
+  (geen toegewezene, iedereen mag); bij een rotatie is aan de beurt de
+  eerste persoon vanaf `rotation_index` die niet weg is, en is iedereen in
+  de rotatie weg, dan wordt de taak "wie kan". "Wie kan"-taken blijven
+  "wie kan". `covering_for` is wie eigenlijk aan de beurt was, en alleen
+  gezet als de afwezigheid de toewijzing veranderde. `rotation_index`
+  verandert niet: na terugkomst sluit iemand aan op zijn plek, en het
+  doorschuiven na afvinken blijft `advance_rotation` vanaf de doener.
+  Overgenomen taken lopen gewoon door in het rooster (vervallen,
+  achterstand, rol). Overal waar "wie is aan de beurt" telt — de taken in
+  de WS-state, `tasks_today`, de ochtendmelding en daarmee wat een
+  dashboard aan `mark_done` meegeeft — is dit het effectieve resultaat.
+- **Afvinken** blijft voor iedereen kunnen, ook voor wie weg is; het telt
+  gewoon mee. Ranglijst en minuten zijn ongewijzigd.
+- **Meldingen**: wie weg is, krijgt geen ochtendmelding en geen
+  weeksamenvatting. De anderen krijgen overgenomen taken in hun
+  ochtendmelding zoals elke "wie kan"-taak.
+- **Streak**: weken die (deels) in een afwezigheid vallen zijn voor die
+  persoon neutraal, precies zoals vakantieweken (zelfde bereikregel;
+  `vacations.vacation_weeks` met `assignee_id`). De anderen tellen
+  gewoon door.
+- **Vakantiemodus wint**: staat die aan, dan staat alles stil zoals altijd
+  en telt een afwezigheid niet mee in de toewijzing (de taken in de state
+  houden dan hun gewone toewijzing, zonder `covering_for`). Een
+  afwezigheid mag wel starten of eindigen tijdens een vakantie. De feiten
+  (`absences`, `absent` per persoon) blijven zichtbaar.
+- **Aanzetten** (`start_absence`): `start_date` = vandaag, `until`
+  optioneel (vandaag of later); de persoon moet bestaan en actief zijn.
+  Loopt er al een afwezigheid, dan `AlreadyAbsentError` ("Laura is al
+  afwezig.") — ook bij twee gelijktijdige aanroepen, dankzij de unieke
+  index. **Einddatum wijzigen** (`update_absence`): op of na vandaag en de
+  startdag, of wissen. **Einde** (`end_absence`): `ended_on` = vandaag;
+  bewaakte schrijfactie (`ended_on` alleen zetten als hij leeg is), een
+  tweede einde geeft `NotAbsentError`.
+- **Automatisch einde** (`end_due_absences`): `until` vóór vandaag →
+  `ended_on` = `until` + 1, om 03:00 (vóór de rol) en bij het opstarten.
+- **Archiveren** van een persoon (`delete_assignee` met historie, of
+  `save_assignee` met `active = 0`) beëindigt een lopende afwezigheid, in
+  dezelfde transactie, met vandaag als dag van terugkomst.
+
+Alle schrijfacties lezen en schrijven in één transactie (`BEGIN
+IMMEDIATE`).
+
+## WebSocket-API (`websocket.py`, `vacation.py`, `absence.py`)
+
+Achttien commando's onder `chores_manager/*`, standaard-auth (geen admin):
 `state`, `complete`, `undo`, `chore/save`, `chore/delete`, `chore/snooze`,
 `chore/restore` (gearchiveerde taak terug, met verse vervaldatum),
 `chore/skip`, `skip/revert`, `assignee/save`, `assignee/delete`,
-`vacation/start`, `vacation/update`, `vacation/end`, `subscribe`. De drie
-vakantiecommando's en hun kernen staan in `vacation.py`; `websocket.py`
-registreert ze mee.
+`vacation/start`, `vacation/update`, `vacation/end`, `absence/start`,
+`absence/update`, `absence/end`, `subscribe`. De drie vakantiecommando's
+en hun kernen staan in `vacation.py`, de drie afwezigheidscommando's in
+`absence.py`; `websocket.py` registreert ze mee.
 Mutaties sturen `SIGNAL_UPDATED` over de dispatcher; `subscribe`-abonnees
 krijgen een event met alleen de reden en halen zelf verse staat op via
 `state`.
@@ -224,7 +298,11 @@ krijgen een event met alleen de reden en halen zelf verse staat op via
   regels weg, zodat er geen gat in de menging zit. Sinds v2.6 ook
   `vacation`: `{active: true, start_date, until}` van de lopende vakantie,
   of `null`. De taken houden tijdens de vakantie hun echte velden (Alles
-  toont de huidige, nog niet verschoven datum).
+  toont de huidige, nog niet verschoven datum). Sinds v2.7 ook `absences`:
+  de lopende afwezigheden als lijst `{assignee_id, start_date, until}`;
+  per taak is `current_assignee` het effectieve resultaat (`null` = "wie
+  kan") en zegt `covering_for` voor wie hij is overgenomen (anders
+  `null`).
 - `chore/skip` — `chore_id`, optioneel `assignee_id`. Zonder `assignee_id`
   bepaalt de server wie oversloeg via de koppeling (`ha_user_id`) van de
   ingelogde gebruiker; is die aan niemand gekoppeld, dan blijft het
@@ -255,6 +333,18 @@ krijgen een event met alleen de reden en halen zelf verse staat op via
   Alle drie strikt (het panel wil de fout zien): al aan, al uit of een
   `until` in het verleden geeft `invalid_input`. Signaal met reason
   `vacation`.
+- `absence/start` — `assignee_id`, optioneel `until` (`JJJJ-MM-DD` of
+  `null`); resultaat `{absence}` (de vorm uit `state`).
+- `absence/update` — `assignee_id` en `until` (verplicht; `null` wist de
+  einddatum); resultaat `{absence}`.
+- `absence/end` — `assignee_id`; terugkomst is vandaag. Resultaat
+  `{assignee_id, ended_on, days}`.
+
+  Alle drie strikt: al afwezig, niet afwezig, een onbekende of
+  gearchiveerde persoon of een `until` in het verleden geeft
+  `invalid_input`. Signaal met reason `absence` en `assignee_id`.
+- `assignee/save` met `active: 0` en `assignee/delete` (bij archiveren)
+  beëindigen sinds v2.7 een lopende afwezigheid.
 
 Een weigering uit de datalaag komt als `invalid_input` met de Nederlandse
 reden terug, in een service als `ServiceValidationError` — nooit als kale
@@ -274,16 +364,22 @@ Attributen, gedocumenteerd voor Lovelace-gebruik:
 - `due_today`, `overdue`, `completed_today`, `week_minutes_total` — tellers
   (tijdens de vakantiemodus zijn `due_today` en `overdue` 0; wat er gedaan
   is, telt gewoon);
-- `persons` — dict per persoon-id: `name`, `minutes`, `tasks`, `streak`,
-  `in_leaderboard`, `color`. De sensor toont iedereen die iets deed;
-  filteren op de ranglijstvlag is aan de afnemer, de kleur is er om namen
-  in persoonskleur te tonen;
+- `persons` — dict per actieve persoon-id: `name`, `minutes`, `tasks`,
+  `streak`, `in_leaderboard`, `color`, en sinds v2.7 `absent` (bool) en
+  `absent_until` (laatste dag als `JJJJ-MM-DD`, of `null` bij een open
+  einde of als de persoon er is). De sensor toont iedereen; filteren op de
+  ranglijstvlag is aan de afnemer, de kleur is er om namen in
+  persoonskleur te tonen;
 - `tasks_today` — maximaal acht items, compact (geen beschrijvingen):
   `id`, `name`, `icon`, `status` (`today` | `overdue` | `done`),
-  `assignee_id`, `assignee_name` (bij 'anyone': "wie kan"),
-  `assignee_color` (bij 'anyone' zijn `assignee_id` en `assignee_color`
-  `null`). De ids zijn er zodat een kaart met één tik
-  `chores_manager.mark_done` kan aanroepen. Eerst vandaag (prioriteit, dan
+  `assignee_id`, `assignee_name`, `assignee_color`, `covering_for` en
+  `covering_for_name`. De toewijzing is het effectieve resultaat (zie
+  Afwezigheid): bij "wie kan" — een 'anyone'-taak, een vaste taak van wie
+  weg is, of een rotatie waarin iedereen weg is — zijn `assignee_id` en
+  `assignee_color` `null` en is `assignee_name` "wie kan". Bij een
+  overgenomen taak is `covering_for` het id en `covering_for_name` de naam
+  van wie eigenlijk aan de beurt was; anders beide `null`. De ids zijn er
+  zodat een kaart met één tik `chores_manager.mark_done` kan aanroepen. Eerst vandaag (prioriteit, dan
   naam), dan achterstand op cyclusfractie. Een taak met een volledige
   voltooiing van minder dan twee minuten oud (`RECENT_DONE_SECONDS` = 120 in
   `const.py`) die niet opnieuw openstaat, blijft staan met status `done` en
@@ -311,9 +407,13 @@ Attributen, gedocumenteerd voor Lovelace-gebruik:
   WS-state: `{active: true, start_date, until}` (`until` is `null` bij een
   open einde), of `null` als de vakantiemodus uitstaat. Tijdens de vakantie
   is `tasks_today` leeg; `persons`, `recent_completions` en `recent_skips`
-  blijven gewoon gevuld.
+  blijven gewoon gevuld;
+- `absences` (sinds v2.7) — de lopende afwezigheden, in dezelfde vorm als
+  in de WS-state: een lijst `{assignee_id, start_date, until}` (`until` is
+  `null` bij een open einde), in de volgorde van de personen; leeg als
+  niemand weg is.
 
-## Schakelaar (`switch.py`, sinds v2.6)
+## Schakelaars (`switch.py`, sinds v2.6)
 
 `switch.chores_vakantiemodus` (naam "Chores Vakantiemodus", icoon
 `mdi:palm-tree`) — aan = de vakantiemodus staat aan. Attributen
@@ -330,23 +430,40 @@ meteen zelf opnieuw, vóórdat `switch.turn_on`/`turn_off` terugkeert: een
 script dat direct daarna de stand controleert of togglet, ziet al de
 nieuwe stand.
 
+Sinds v2.7 daarnaast per actieve persoon `switch.chores_afwezig_<id>`
+(naam "Chores Afwezig <Naam>", icoon `mdi:account-off`/`mdi:account`,
+unique_id op het persoon-id, dus hernoemen laat de entiteit staan) — aan
+= die persoon is afwezig. Attributen `start_date` en `until` (beide `null`
+als de persoon er is). Aanzetten start een afwezigheid zonder einddatum,
+uitzetten beëindigt hem met vandaag als dag van terugkomst; idempotent,
+net als de services. Een kleine beheerder (`AbsenceSwitches`) leest na
+elk dispatchersignaal personen en afwezigheden één keer uit de database,
+werkt alle schakelaars bij, voegt er een toe voor een nieuwe persoon en
+ruimt die van een gearchiveerde of verwijderde persoon op, inclusief de
+regel in het entiteitenregister. Alle lezingen (ook die direct na
+`turn_on`/`turn_off`) lopen achter één lock, zodat een oudere lezing nooit
+over een nieuwere heen schrijft.
+
 ## Scheduler
 
-Dagelijks 03:00 lokale tijd, in twee stappen die elkaar niet tegenhouden
+Dagelijks 03:00 lokale tijd, in drie stappen die elkaar niet tegenhouden
 (elk met een eigen foutafhandeling):
 
 1. een verlopen vakantie beëindigen (`until` vóór vandaag; resume =
    `until` + 1, zie Vakantiemodus), met een eigen dispatchersignaal;
-2. `roll_forward` over alle taken, daarna een dispatchersignaal. Tijdens
+2. verlopen afwezigheden beëindigen (sinds v2.7; `ended_on` = `until` + 1,
+   zie Afwezigheid), met een signaal per persoon;
+3. `roll_forward` over alle taken, daarna een dispatchersignaal. Tijdens
    de vakantiemodus verschuift de rol niets.
 
 Hetzelfde einde wordt bij het opstarten van de integratie gecontroleerd
 (HA kan over de einddatum heen uit hebben gestaan); is er daarbij een
 vakantie beëindigd, dan draait meteen ook de rol, anders bleven
-kalendertaken tot 03:00 op een verouderde achterstand staan. Een fout
-daarbij wordt gelogd en houdt het opstarten niet tegen. Handmatig
-triggeren kan met de service `chores_manager.roll_forward` (dezelfde twee
-stappen).
+kalendertaken tot 03:00 op een verouderde achterstand staan. Verlopen
+afwezigheden worden bij het opstarten ook beëindigd (zonder rol: een
+afwezigheid verschuift niets). Een fout daarbij wordt gelogd en houdt het
+opstarten niet tegen. Handmatig triggeren kan met de service
+`chores_manager.roll_forward` (dezelfde drie stappen).
 
 ## Meldingen (`notify.py`, fase 4)
 
@@ -362,6 +479,11 @@ Alleen naar personen met een `notify_service` én `notifications_enabled`.
 - **"Klaar"** loopt via `mobile_app_notification_action`; de action-string is
   `chores_manager_complete:<chore_id>:<assignee_id>`. De listener vinkt af
   met dezelfde db-functie, undo-buffer en push als het panel.
+
+Wie afwezig is (sinds v2.7), krijgt geen ochtendmelding en geen
+weeksamenvatting; de anderen krijgen diens overgenomen taken in hun
+ochtendmelding zoals elke "wie kan"-taak. De weeksamenvatting noemt
+gewoon iedereen die iets deed.
 
 Tijdens de vakantiemodus gaat er niets uit: de ochtendmelding heeft niets
 te melden (de meldingsdata zijn dan leeg) en de weeksamenvatting slaat
@@ -390,9 +512,10 @@ Kernmechanieken:
 - Activiteit mengt voltooiingen en overslagen tot één tijdlijn; een
   overslag is een rustigere regel ("⏭ Laura sloeg Badkamer over") met
   "Toch niet overslaan" waar de server `can_revert` meegeeft;
-- de mutaties (afvinken, overslaan, terugdraaien, opslaan, verwijderen)
-  staan met hun terugkoppeling in `actions.js`; het element zelf houdt
-  lifecycle, routing, render, delegatie, thema's en de snackbar;
+- de mutaties (afvinken, overslaan, terugdraaien, opslaan, verwijderen,
+  vakantie en afwezigheid) staan met hun terugkoppeling in `actions.js`; het
+  element zelf houdt lifecycle, routing, render, delegatie, thema's en de
+  snackbar;
 - vakantiemodus (sinds v2.6): bovenaan Beheer een sectie "Vakantie" met een
   schakelaar "Vakantiemodus", een optioneel datumveld "Tot en met" (met
   "Datum opslaan" zolang een gekozen datum afwijkt van een lopende
@@ -403,6 +526,17 @@ Kernmechanieken:
   17 oktober") in plaats van taken; bijdragebalk en laatste activiteit
   blijven. Alles toont één sectie "Staat stil", op datum, met gedimde
   kaarten zonder afvinkknoppen en het label "staat stil";
+- afwezigheid (sinds v2.7): in Beheer heeft elke persoon onder Personen
+  een schakelaar "Afwezig" met een optioneel "Tot en met" (zelfde
+  discipline als de vakantie: het concept staat stil in de store als
+  `absenceDrafts`, de bedoeling tijdens de aanroep in `absenceBusy`) en een
+  korte uitleg. De afhandeling van die schakelaars en datums staat in
+  `controls.js`. Op Vandaag en Alles toont een overgenomen vaste taak het
+  chipje als bij een "wie kan"-taak (de kijker, of neutraal) met "· voor
+  Laura"; bij een rotatie staat de vervanger op het chipje met "· Laura is
+  weg". Onder de kop van Vandaag een regel per afwezige ("Laura is weg t/m
+  12 okt"; niet tijdens de vakantiemodus). In de rij "Wie heeft het
+  gedaan?" blijft de afwezige staan, iets gedimd;
 - bij smal scherm (`narrow` van HA) een hamburger die `hass-toggle-menu`
   dispatcht;
 - themakeuze per apparaat (`core/theme.js`): variabelen van een HA-thema als
@@ -481,6 +615,20 @@ Lovelace-resource-URL.
   Vakantiemodus). Zonder velden. Staat de modus al uit, dan gebeurt er
   niets (info-log). Dunne laag om `async_end_vacation`, de kern van
   `vacation/end`.
+- `chores_manager.start_absence` (sinds v2.7) — één persoon afwezig, met
+  vandaag als startdag. Velden: `assignee_id` (verplicht) en `until`
+  (optioneel, de laatste dag, vandaag of later; leeg of `null` = geen
+  einddatum). Idempotent voor automatiseringen: is de persoon al afwezig,
+  dan past een opgegeven `until` de einddatum aan en gebeurt er verder
+  niets (ook niet bij een lege `until`). Een onbekende of gearchiveerde
+  persoon of een `until` in het verleden geeft een
+  `ServiceValidationError`. Dunne laag om `async_start_absence` in
+  `absence.py`, de kern van `absence/start`; signaal met reason `absence`.
+- `chores_manager.end_absence` (sinds v2.7) — de afwezigheid van één
+  persoon beëindigen, met vandaag als dag van terugkomst. Veld:
+  `assignee_id` (verplicht). Niet afwezig: er gebeurt niets (info-log);
+  een onbekende persoon geeft een `ServiceValidationError`. Dunne laag om
+  `async_end_absence`, de kern van `absence/end`.
 
 Tijdens de vakantiemodus weigeren `mark_done`, `skip` en `revert_skip` met
 een `ServiceValidationError` ("Vakantiemodus staat aan; …"); `undo_last`
@@ -489,6 +637,7 @@ heeft dan niets terug te draaien, `revert_completion` werkt gewoon.
 Meer services zijn er niet; alle overige bediening loopt via de
 WebSocket-API — `mark_done`, `undo_last`, `revert_completion`, `skip` en
 `revert_skip` zijn de uitzonderingen, omdat Lovelace alleen services kan
-aanroepen, en `start_vacation` en `end_vacation`, voor automatiseringen
-(bijvoorbeeld bij vertrek en thuiskomst). De tijdelijke `seed` is in fase 5
+aanroepen, en `start_vacation`, `end_vacation`, `start_absence` en
+`end_absence`, voor automatiseringen (bijvoorbeeld bij vertrek en
+thuiskomst). De tijdelijke `seed` is in fase 5
 verwijderd, met `seed.py` erbij.
