@@ -265,6 +265,9 @@ class ChoresPanel extends HTMLElement {
   async _refresh() {
     try {
       const data = await api.state(() => this._showConnecting());
+      // null: er is al een nieuwer antwoord toegepast, en dit oudere zou die
+      // stand terugdraaien (antwoorden kunnen omdraaien, zie api.state)
+      if (data === null) return;
       const patch = {
         loading: false, connecting: false, error: null, data, pending: new Set(),
       };

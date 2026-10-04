@@ -20,6 +20,11 @@
  *   het abonnement door een vers exemplaar — mét dezelfde retry — en geeft
  *   de callback één event {reason: 'reconnect'} zodat het panel de
  *   volledige staat ophaalt en niets gemist blijft.
+ *
+ * VOLGORDE VAN ANTWOORDEN (v2.7.1): de server leest elke state-aanvraag in
+ * de executor, dus twee aanvragen vlak na elkaar kunnen in omgekeerde
+ * volgorde beantwoord worden — en dan draagt het late antwoord de oudere
+ * stand. Zie state(): een antwoord dat al ingehaald is, komt niet meer door.
  */
 
 const RETRY_DELAYS = [1000, 2000, 5000];
@@ -36,6 +41,10 @@ class ChoresApi {
     this._callback = null;
     this._onWaiting = null;
     this._readyHandler = null;
+    // volgnummers van state-aanvragen: de laatst verstuurde en de laatst
+    // doorgegeven (zie state())
+    this._stateRequested = 0;
+    this._stateDelivered = 0;
   }
 
   setHass(hass) {
@@ -78,11 +87,30 @@ class ChoresApi {
    * until}], v2.7).
    * onWaiting (optioneel) wordt aangeroepen zodra er gewacht moet worden op
    * een backend die nog niet klaar is — voor de "Verbinden…"-melding.
+   *
+   * Geeft null als er intussen al een antwoord op een nieuwere aanvraag is
+   * doorgegeven: dit oudere antwoord zou die nieuwere stand overschrijven,
+   * en het panel bleef dan tot het volgende event op een verouderde stand
+   * staan. Een fout van zo'n ingehaalde aanvraag wordt ook null in plaats
+   * van een foutscherm over een goede stand heen, en zo'n aanvraag meldt
+   * geen "Verbinden…" meer. Er is één api per pagina, net als één store:
+   * twee kaarten op hetzelfde dashboard volgen dus dezelfde nummering.
    */
   async state(onWaiting) {
-    const { value } = await this._withRetry(
-      () => this._send({ type: 'chores_manager/state' }), onWaiting);
-    return value;
+    this._stateRequested += 1;
+    const seq = this._stateRequested;
+    const overtaken = () => seq < this._stateDelivered;
+    try {
+      const { value } = await this._withRetry(
+        () => this._send({ type: 'chores_manager/state' }),
+        onWaiting && (() => { if (!overtaken()) onWaiting(); }));
+      if (overtaken()) return null;
+      this._stateDelivered = seq;
+      return value;
+    } catch (err) {
+      if (overtaken()) return null;
+      throw err;
+    }
   }
 
   /** Taak, deeltaak of counter-tik afvinken. */

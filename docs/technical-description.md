@@ -510,6 +510,12 @@ Kernmechanieken:
   DOM al toont (het concept in het vakantiedatumveld);
 - alle rendering via de escapende `html`-helper (`core/html.js`);
 - event delegation op de shadow root; opnieuw renderen sloopt geen listeners;
+- verversen: bij elk event haalt het panel de volledige stand op
+  (`chores_manager/state`). De server leest elke aanvraag in de executor,
+  dus antwoorden kunnen omdraaien; sinds v2.7.1 krijgt elke aanvraag in
+  `core/api.js` een volgnummer en valt een antwoord (of fout) weg dat al
+  door een nieuwer antwoord is ingehaald. Zo blijft het panel nooit op een
+  oudere stand hangen;
 - optimistisch afvinken met "Ongedaan maken"; credits los van toewijzing;
 - overslaan: de knop "Overslaan" staat uitsluitend achteraan in de rij "Wie
   heeft het gedaan?" op kaartniveau, alleen voor een taak die vandaag aan de
