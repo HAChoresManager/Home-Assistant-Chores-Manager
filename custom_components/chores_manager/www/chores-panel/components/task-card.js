@@ -19,6 +19,14 @@
  * losse deelstap, en nergens als losse knop op de kaart (besluit van de
  * gebruiker). Geen data-assignee: wie oversloeg bepaalt de server.
  *
+ * Afwezigheid (v2.7): chore.current_assignee is al het effectieve resultaat
+ * van de server. Een vaste taak van wie weg is, gedraagt zich als een
+ * "wie kan"-taak (chipje op de kijker of neutraal) met de rustige
+ * toevoeging "· voor Laura"; bij een rotatie staat de vervanger op het
+ * chipje met "· Laura is weg" (chore.covering_for). In de rij "Wie heeft
+ * het gedaan?" blijft de afwezige staan — afvinken mag — maar iets gedimd
+ * (ctx.absent).
+ *
  * Op het scherm Alles (ctx.view 'tasks') toont de kaart vervaldatum en
  * planningsetiket, en staat de checklist ingeklapt achter "0 / 4 stappen".
  *
@@ -51,12 +59,25 @@ export function isFinalAction(chore, subtaskId) {
   return true;
 }
 
-/** Wie krijgt de credits: het chipje als dat gezet is; bij 'anyone' de aan
- * de ingelogde gebruiker gekoppelde persoon (fase 4); anders de toewijzing. */
+/** Wie krijgt de credits: het chipje als dat gezet is; bij "wie kan" — een
+ * 'anyone'-taak, of (v2.7) een taak die door afwezigheid niemand op zijn
+ * naam heeft — de aan de ingelogde gebruiker gekoppelde persoon (fase 4);
+ * anders de (effectieve) toewijzing. */
 export function creditAssignee(chore, ctx) {
   if (ctx.credits && ctx.credits[chore.id]) return ctx.credits[chore.id];
-  if (chore.assignment_type === 'anyone') return ctx.defaultAssignee || null;
+  if (chore.assignment_type === 'anyone' || !chore.current_assignee) {
+    return ctx.defaultAssignee || null;
+  }
   return chore.current_assignee;
+}
+
+/** "· voor Laura" (overgenomen vaste taak) of "· Laura is weg" (rotatie
+ * met vervanger); leeg als er niets is overgenomen. */
+function coverNote(chore, ctx) {
+  if (!chore.covering_for) return '';
+  const name = ctx.assigneesById[chore.covering_for]?.name || chore.covering_for;
+  return html`<span class="cover-note">${chore.current_assignee
+    ? `· ${name} is weg` : `· voor ${name}`}</span>`;
 }
 
 function chip(chore, ctx) {
@@ -73,12 +94,17 @@ function chip(chore, ctx) {
 
 function personButtons(chore, ctx, subtaskId, action) {
   const label = action === 'set-credit' ? 'Wie krijgt de credits?' : 'Wie heeft het gedaan?';
-  const buttons = ctx.assignees.map((person) => html`
-    <button type="button" class="person" data-action="${action}" data-chore="${chore.id}"
-      data-assignee="${person.id}"
+  // Wie weg is blijft kiesbaar (afvinken mag altijd), maar staat gedimd.
+  const buttons = ctx.assignees.map((person) => {
+    const away = Boolean(ctx.absent && ctx.absent.has(person.id));
+    return html`
+    <button type="button" class="person ${away ? 'away' : ''}" data-action="${action}"
+      data-chore="${chore.id}" data-assignee="${person.id}"
+      ${away ? html`aria-label="${person.name}, is weg" title="${person.name} is weg"` : ''}
       ${subtaskId !== undefined ? html`data-subtask="${subtaskId}"` : ''}>
       <span class="dot" style="--person-color: ${person.color}"></span>${person.name}
-    </button>`);
+    </button>`;
+  });
   // Laatste keuze ná de personen, vóór "Toch niet" (dat is annuleren).
   const skip = action === 'pick' && subtaskId === undefined
     && chore.urgency !== 'upcoming'
@@ -248,6 +274,7 @@ export function renderTaskCard(chore, ctx) {
         <h3 class="card-name">${chore.name}</h3>
         <p class="card-meta">
           ${chip(chore, ctx)}
+          ${coverNote(chore, ctx)}
           <span class="meta-text">· ${formatDuration(chore.duration_minutes)}${planning}</span>
           ${badge}
         </p>

@@ -31,6 +31,12 @@ niets (notification_summary is dan leeg) en de weeksamenvatting slaat
 zichzelf over. Een "Klaar"-knop op een oudere melding die nog op de
 telefoon staat, weigert dan (VacationActiveError); dat is een infologregel,
 geen waarschuwing — er is niets mis.
+
+Afwezigheid per persoon (v2.7): wie weg is, krijgt geen ochtendmelding (die
+persoon staat niet in notification_summary) en geen weeksamenvatting. De
+anderen krijgen diens overgenomen taken in hun ochtendmelding zoals elke
+"wie kan"-taak. De weeksamenvatting zelf noemt gewoon iedereen die iets
+deed. Een "Klaar"-knop werkt ook voor wie weg is: afvinken mag altijd.
 """
 from __future__ import annotations
 
@@ -54,6 +60,7 @@ from .const import (
     WEEKLY_HOUR,
     WEEKLY_MINUTE,
 )
+from .db.absences import get_absent_ids
 from .db.assignees import list_assignees
 from .db.completions import assignee_streaks, complete_chore, leaderboard
 from .db.overview import notification_summary, pick_notify_action
@@ -173,7 +180,8 @@ async def async_send_daily(hass: HomeAssistant, database_path: str) -> int:
 
     Geeft het aantal verzonden meldingen terug (handig voor de logregel van
     de service send_daily_summary). Tijdens de vakantiemodus is
-    notification_summary leeg, dus gaat er niets uit.
+    notification_summary leeg, dus gaat er niets uit; wie afwezig is, staat
+    er niet in (v2.7).
     """
     today = dt_util.now().date()
     summary = await hass.async_add_executor_job(
@@ -196,7 +204,8 @@ async def async_send_daily(hass: HomeAssistant, database_path: str) -> int:
 async def async_send_weekly(hass: HomeAssistant, database_path: str) -> int:
     """Weeksamenvatting naar iedereen met een service; de feiten van de week.
 
-    Tijdens de vakantiemodus gaat er niets uit (0).
+    Tijdens de vakantiemodus gaat er niets uit (0). Wie afwezig is (v2.7),
+    krijgt hem niet; in de tekst staat iedereen die iets deed.
     """
     if await hass.async_add_executor_job(get_active_vacation, database_path):
         _LOGGER.debug("Chores Manager: vakantiemodus, geen weeksamenvatting")
@@ -206,9 +215,12 @@ async def async_send_weekly(hass: HomeAssistant, database_path: str) -> int:
     streaks = await hass.async_add_executor_job(
         assignee_streaks, database_path, today)
     assignees = await hass.async_add_executor_job(list_assignees, database_path)
+    absent = await hass.async_add_executor_job(get_absent_ids, database_path)
     message = _weekly_message(board, streaks)
     verzonden = 0
     for persoon in filter(_wil_meldingen, assignees):
+        if persoon["id"] in absent:
+            continue
         await _send(hass, persoon["notify_service"], {
             "title": "De week in het huishouden",
             "message": message,

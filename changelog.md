@@ -1,5 +1,57 @@
 # Changelog
 
+## v2.7.0 (2026-10-04)
+
+Afwezigheid per persoon — één iemand is een tijd weg, het huishouden draait
+door. De vakantiemodus blijft zoals hij was; dit is een kleinere functie
+ernaast.
+
+- Vaste taken van wie weg is, worden tijdens de afwezigheid "wie kan":
+  geen toegewezene, iedereen mag ze doen. Ze lopen gewoon door in het
+  rooster (vervallen, achterstand, rol).
+- Rotaties slaan de afwezige over: aan de beurt is de eerste persoon vanaf
+  de huidige beurt die er wél is; is iedereen in de rotatie weg, dan wordt
+  de taak "wie kan". Puur een berekening — de opgeslagen beurt verandert
+  niet, er is geen inhaalslag, en na terugkomst sluit de persoon weer aan
+  op zijn of haar plek. Doorschuiven na afvinken blijft vanaf de doener.
+- Afvinken blijft voor iedereen kunnen, ook voor wie weg is; ranglijst en
+  minuten tellen gewoon wat er gedaan is.
+- Geen ochtendmelding en geen weeksamenvatting voor wie weg is; de anderen
+  krijgen de overgenomen taken in hun ochtendmelding zoals elke "wie
+  kan"-taak.
+- Streak: weken die (deels) in iemands afwezigheid vallen, zijn voor die
+  persoon neutraal (zoals vakantieweken); de anderen tellen gewoon door.
+- De vakantiemodus wint: staat die aan, dan doet een afwezigheid niets
+  extra's. Starten en beëindigen mag wel tijdens een vakantie.
+- Automatisch einde: met een laatste dag (`until`) eindigt de afwezigheid
+  de dag erna om 03:00 (vóór de rol) en bij het opstarten. Een persoon
+  archiveren beëindigt een lopende afwezigheid.
+- Nieuwe tabel `absences` (hooguit één lopende per persoon); komt er bij
+  het opstarten vanzelf bij op een bestaande database.
+- Schakelaars `switch.chores_afwezig_<id>` per actieve persoon (naam
+  "Chores Afwezig <Naam>"): aan = afwezig zonder einddatum, uit = terug.
+  Attributen `start_date` en `until`; volgen live, staan meteen goed na
+  `turn_on`/`turn_off`, verschijnen bij een nieuwe persoon en verdwijnen
+  (ook uit het entiteitenregister) bij archiveren.
+- Services `chores_manager.start_absence` (`assignee_id`, optioneel
+  `until`) en `chores_manager.end_absence` (`assignee_id`), idempotent.
+- WebSocket: `absence/start`, `absence/update` en `absence/end`; `state`
+  levert `absences`, en per taak is `current_assignee` het effectieve
+  resultaat met `covering_for` erbij.
+- `sensor.chores_overview`: nieuw attribuut `absences`; per persoon
+  `absent` en `absent_until`; in `tasks_today` de effectieve toewijzing
+  plus `covering_for` en `covering_for_name`.
+- Panel: in Beheer per persoon een schakelaar "Afwezig" met een optioneel
+  "Tot en met" en een korte uitleg. Op Vandaag en Alles "· voor Laura" bij
+  een overgenomen vaste taak en "· Laura is weg" bij een rotatie; onder de
+  kop van Vandaag "Laura is weg t/m 12 okt". In "Wie heeft het gedaan?"
+  blijft de afwezige staan, iets gedimd.
+- Intern: `chores-panel.js` gesplitst (schakelaars en datums in Beheer naar
+  `controls.js`) om onder de 600 regels te blijven.
+- Documentatie: drie bekende fouten rechtgezet (de planningstypen in de
+  technische beschrijving, de nooit gebouwde sensoren per persoon in het
+  plan, `notify.py` in de lagentabel van de ontwikkelgids).
+
 ## v2.6.0 (2026-10-04)
 
 Vakantiemodus — alles staat stil, en bij terugkomst schuift het mee op.

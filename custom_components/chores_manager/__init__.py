@@ -3,22 +3,26 @@
 Sinds fase 3c is dit de enige app. De opzet is klein gehouden:
 
 - eigen SQLite-database (zie const.DB_FILENAME), alle toegang via db/;
-- vijftien WS-commando's (websocket.py, de drie vakantiecommando's in
-  vacation.py) met push via de dispatcher;
+- achttien WS-commando's (websocket.py, de drie vakantiecommando's in
+  vacation.py, de drie afwezigheidscommando's in absence.py) met push via
+  de dispatcher;
 - één overzichtssensor (sensor.py), zonder polling;
-- de vakantieschakelaar switch.chores_vakantiemodus (switch.py, v2.6);
+- de vakantieschakelaar switch.chores_vakantiemodus (switch.py, v2.6) en
+  per actieve persoon een schakelaar switch.chores_afwezig_<id> (v2.7);
 - nachtelijke rol om 03:00 (scheduler.py), die eerst een verlopen vakantie
-  beëindigt — dat gebeurt ook bij het opstarten, hieronder;
+  en verlopen afwezigheden beëindigt — dat gebeurt ook bij het opstarten,
+  hieronder;
 - meldingen om 08:00 en zondag 20:00 plus de "Klaar"-knop (notify.py, fase 4);
-- tien services: roll_forward en de twee meldingsservices als handmatige
+- twaalf services: roll_forward en de twee meldingsservices als handmatige
   trigger, mark_done, undo_last, revert_completion, skip en revert_skip
   als dunne laag voor Lovelace-kaarten (die kunnen alleen services
-  aanroepen), en start_vacation en end_vacation voor automatiseringen
-  (idempotent). Afvinken zelf loopt via notify.async_complete, overslaan via
-  websocket.async_skip en websocket.async_revert_skip, terugdraaien binnen
-  het venster via websocket.async_undo_last, de vakantie via
-  vacation.async_start_vacation en async_end_vacation — dezelfde kernen
-  als het panel;
+  aanroepen), en start_vacation, end_vacation, start_absence en
+  end_absence voor automatiseringen (idempotent). Afvinken zelf loopt via
+  notify.async_complete, overslaan via websocket.async_skip en
+  websocket.async_revert_skip, terugdraaien binnen het venster via
+  websocket.async_undo_last, de vakantie via vacation.async_start_vacation
+  en async_end_vacation, de afwezigheid via absence.async_start_absence en
+  async_end_absence — dezelfde kernen als het panel;
 - het panel op /taken (panel.py), rechtstreeks geserveerd uit deze map.
 
 De oude app (React-dashboard onder www/, eigen tokens, twintig services) is
@@ -57,8 +61,14 @@ from .notify import (
     async_send_weekly,
     async_setup_notifications,
 )
+from .absence import async_end_absence, async_start_absence
 from .panel import async_remove_panel, async_setup_panel
-from .scheduler import async_check_vacation_end, async_run_roll, async_setup_scheduler
+from .scheduler import (
+    async_check_absence_end,
+    async_check_vacation_end,
+    async_run_roll,
+    async_setup_scheduler,
+)
 from .vacation import async_end_vacation, async_start_vacation
 from .websocket import (
     async_register_websocket_commands,
@@ -109,9 +119,18 @@ START_VACATION_SCHEMA = vol.Schema({
     vol.Optional("until"): _optional_date,
 })
 
+START_ABSENCE_SCHEMA = vol.Schema({
+    vol.Required("assignee_id"): cv.string,
+    # laatste dag van de afwezigheid (t/m); weggelaten, leeg of null = open einde
+    vol.Optional("until"): _optional_date,
+})
+
+END_ABSENCE_SCHEMA = vol.Schema({vol.Required("assignee_id"): cv.string})
+
 SERVICES = ("roll_forward", "send_daily_summary", "send_weekly_summary",
             "mark_done", "undo_last", "revert_completion",
-            "skip", "revert_skip", "start_vacation", "end_vacation")
+            "skip", "revert_skip", "start_vacation", "end_vacation",
+            "start_absence", "end_absence")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -129,6 +148,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await async_run_roll(hass, database_path)
         except HomeAssistantError:
             pass  # al gelogd in async_run_roll; de nachtjob probeert het weer
+    else:
+        # Hetzelfde voor afwezigheden (v2.7; de rol hierboven doet dat al
+        # zelf). Die verschuiven geen taken, dus geen rol nodig.
+        await async_check_absence_end(hass, database_path)
 
     hass.data.setdefault(DOMAIN, {})
     domain_data = hass.data[DOMAIN]
@@ -293,6 +316,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except ValueError as err:
             raise ServiceValidationError(str(err)) from err
 
+    async def handle_start_absence(call: ServiceCall) -> None:
+        """Afwezigheid van één persoon aan vanaf vandaag, eventueel tot en
+        met until (v2.7).
+
+        Idempotent (strict=False), zoals start_vacation: is de persoon al
+        afwezig, dan wordt een meegegeven until de nieuwe laatste dag, en
+        zonder until gebeurt er niets. Een onbekende of gearchiveerde
+        persoon of een until vóór vandaag wordt een ServiceValidationError.
+        """
+        try:
+            await async_start_absence(
+                hass, call.data["assignee_id"].strip(), call.data.get("until"),
+                strict=False)
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+
+    async def handle_end_absence(call: ServiceCall) -> None:
+        """Afwezigheid van één persoon uit, met vandaag als dag van
+        terugkomst. Idempotent: niet afwezig, dan gebeurt er niets; een
+        onbekende persoon wordt een ServiceValidationError."""
+        try:
+            await async_end_absence(
+                hass, call.data["assignee_id"].strip(), strict=False)
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+
     hass.services.async_register(DOMAIN, "roll_forward", handle_roll)
     hass.services.async_register(DOMAIN, "send_daily_summary", handle_send_daily)
     hass.services.async_register(DOMAIN, "send_weekly_summary", handle_send_weekly)
@@ -309,6 +358,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         DOMAIN, "start_vacation", handle_start_vacation,
         schema=START_VACATION_SCHEMA)
     hass.services.async_register(DOMAIN, "end_vacation", handle_end_vacation)
+    hass.services.async_register(
+        DOMAIN, "start_absence", handle_start_absence, schema=START_ABSENCE_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, "end_absence", handle_end_absence, schema=END_ABSENCE_SCHEMA)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _LOGGER.info("Chores Manager: setup compleet")

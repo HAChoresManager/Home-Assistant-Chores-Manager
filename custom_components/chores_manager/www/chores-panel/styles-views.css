@@ -1,7 +1,8 @@
 /*
  * Stijlen voor de 3b-schermen: Activiteit en Beheer (formulieren), plus
- * de knoppen en feedregels van Overslaan en alles van de vakantiemodus
- * (banner op Vandaag, stilstaande kaarten op Alles, sectie in Beheer).
+ * de knoppen en feedregels van Overslaan, alles van de vakantiemodus
+ * (banner op Vandaag, stilstaande kaarten op Alles, sectie in Beheer) en
+ * van de afwezigheid per persoon (v2.7).
  * Apart bestand om styles.css onder de 600-regelgrens te houden; zelfde
  * regels: uitsluitend HA-variabelen, telefoon eerst, 44px-raakvlakken.
  */
@@ -82,6 +83,65 @@ button.vacation-save:disabled {
 
 .field input:disabled {
   opacity: 0.6;
+}
+
+/* --- Afwezigheid (v2.7) ------------------------------------------------ */
+
+/* Kleine regel onder de kop van Vandaag: "Laura is weg t/m 12 okt". */
+.away-line {
+  margin: 2px 0 0;
+  color: var(--secondary-text-color);
+  font-size: 0.85rem;
+}
+
+/* "· voor Laura" / "· Laura is weg" naast het chipje: rustig, geen accent. */
+.cover-note {
+  margin-left: 4px;
+  color: var(--secondary-text-color);
+  font-size: 0.85rem;
+  font-style: italic;
+  vertical-align: middle;
+}
+
+/* Wie weg is blijft kiesbaar, iets gedimd: met kleur, niet met opacity op
+   de tekst (contrast blijft leesbaar); alleen de stip mag vervagen. */
+button.person.away {
+  color: var(--secondary-text-color);
+  border-style: dashed;
+}
+
+button.person.away .dot {
+  opacity: 0.5;
+}
+
+/* Beheer, Personen: rij met daaronder de schakelaar "Afwezig" en datum. */
+.manage-person + .manage-person {
+  border-top: 1px solid var(--divider-color);
+}
+
+.absence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 16px;
+  padding: 0 0 12px 22px;
+}
+
+.absence .field {
+  flex: 1 1 180px;
+}
+
+.absence .field-hint {
+  flex: 1 1 100%;
+}
+
+button.absence-save[hidden] {
+  display: none;
+}
+
+button.absence-save:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* --- Overslaan: keuze in de personenrij --------------------------------- */

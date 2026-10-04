@@ -7,13 +7,26 @@ niets anders dan deze functies in een executor aanroepen.
 Tijdens de vakantiemodus (vacations.py) staat alles stil: de sensor telt
 niets open, tasks_today en de ochtendsamenvatting zijn leeg. De taken zelf
 houden hun echte velden — Alles toont de huidige, nog niet verschoven datum.
+
+Afwezigheid per persoon (v2.7, absences.py): current_assignee is overal het
+effectieve resultaat van scheduling.effective_assignee — een vaste taak van
+wie weg is wordt "wie kan" (None), een rotatie slaat de afwezige over — en
+covering_for zegt voor wie dat is. Wie weg is, staat niet in de
+ochtendsamenvatting. Tijdens de vakantiemodus wint de vakantie: dan telt
+een afwezigheid niet mee in de toewijzing (er is toch niets aan de beurt).
 """
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from ..scheduling.calculator import current_assignee, cycle_fraction, overdue_days, urgency
+from ..scheduling.calculator import (
+    cycle_fraction,
+    effective_assignee,
+    overdue_days,
+    urgency,
+)
+from .absences import list_absences
 from .assignees import assignee_in_use, list_assignees
 from .chores import list_chores
 from .completions import (
@@ -31,22 +44,23 @@ from .subtasks import list_subtasks
 from .vacations import get_active_vacation
 
 
-def enrich_chore(database_path: str, chore: dict, today: date) -> dict:
+def enrich_chore(database_path: str, chore: dict, today: date,
+                 absent=frozenset()) -> dict:
     """Berekende velden bij een taak: achterstand, urgentie, wie aan de beurt
-    is, en de voortgang van de lopende instantie."""
+    is, en de voortgang van de lopende instantie.
+
+    current_assignee is wie de taak nú op zijn naam heeft, met de
+    afwezigen (absent) meegerekend: None = "wie kan". covering_for is wie
+    eigenlijk aan de beurt was, als een afwezigheid dat veranderde, en
+    anders None (scheduling.effective_assignee)."""
     due = date.fromisoformat(chore["next_due"])
     enriched = dict(chore)
     enriched["overdue_days"] = overdue_days(due, today)
     enriched["urgency"] = urgency(due, chore["priority"], today)
     enriched["cycle_fraction"] = cycle_fraction(
         chore["schedule_type"], chore["schedule_config"], due, today)
-    if chore["assignment_type"] == "fixed":
-        enriched["current_assignee"] = chore["assigned_to"]
-    elif chore["assignment_type"] == "rotating":
-        enriched["current_assignee"] = current_assignee(
-            chore["rotation"], chore["rotation_index"])
-    else:
-        enriched["current_assignee"] = None
+    enriched["current_assignee"], enriched["covering_for"] = effective_assignee(
+        chore, absent)
     if chore["subtask_mode"] == "checklist":
         enriched["subtasks"] = list_subtasks(database_path, chore["id"])
         progress = instance_progress(database_path, chore["id"])
@@ -72,6 +86,12 @@ def _tasks_today(chores: list[dict], assignees_by_id: dict,
     afvinken zonder het panel te openen. Eerst vandaag (prioriteit, dan
     naam), dan achterstand op cyclusfractie; maximaal acht items.
 
+    assignee_id, assignee_name en assignee_color zijn het effectieve
+    resultaat (current_assignee); "wie kan" — ook een vaste taak van wie weg
+    is — is assignee_id en assignee_color None met als naam "wie kan".
+    covering_for en covering_for_name (sinds v2.7) zeggen voor wie de taak
+    is overgenomen, en zijn anders None.
+
     Net-afgevinkte taken blijven even staan als status "done" (recent_done,
     uit recent_full_completions; overview bepaalt het venster). Ze sorteren
     mee in de vandaag-groep, zodat een afgevinkte taak niet verspringt; een
@@ -80,8 +100,8 @@ def _tasks_today(chores: list[dict], assignees_by_id: dict,
     voltooiing. De limiet van acht geldt inclusief done-rijen.
     """
     def rij(chore: dict, status: str) -> dict:
-        assignee = (None if chore["assignment_type"] == "anyone"
-                    else assignees_by_id.get(chore["current_assignee"]))
+        assignee = assignees_by_id.get(chore["current_assignee"])
+        covering = chore.get("covering_for")
         row = {
             "id": chore["id"],
             "name": chore["name"],
@@ -90,6 +110,9 @@ def _tasks_today(chores: list[dict], assignees_by_id: dict,
             "assignee_id": assignee["id"] if assignee else None,
             "assignee_name": assignee["name"] if assignee else "wie kan",
             "assignee_color": assignee["color"] if assignee else None,
+            "covering_for": covering,
+            "covering_for_name": (assignees_by_id[covering]["name"]
+                                  if covering in assignees_by_id else None),
         }
         if status == "done":
             row.update(recent_done[chore["id"]])
@@ -173,13 +196,20 @@ def overview(database_path: str, today: date, now: Optional[datetime] = None,
     done-rijen — afvinken kan dan toch niet). "vacation" is de publieke vorm
     van get_active_vacation, of None. completed_today, persons en de recente
     lijsten blijven gewoon wat er gedaan is.
+
+    Sinds v2.7: "absences" zijn de lopende afwezigheden ({assignee_id,
+    start_date, until}), en per persoon zeggen absent en absent_until of en
+    tot wanneer iemand weg is — ook tijdens de vakantiemodus, het zijn
+    feiten. tasks_today rekent met de afwezigen (zie _tasks_today).
     """
     vacation = get_active_vacation(database_path)
+    absences = list_absences(database_path)
+    absent_until = {a["assignee_id"]: a["until"] for a in absences}
     if vacation:
         chores = []
         recent_done = {}
     else:
-        chores = [enrich_chore(database_path, chore, today)
+        chores = [enrich_chore(database_path, chore, today, set(absent_until))
                   for chore in list_chores(database_path)]
         recent_done = (
             recent_full_completions(
@@ -201,6 +231,8 @@ def overview(database_path: str, today: date, now: Optional[datetime] = None,
             "streak": streaks.get(p["id"], 0),
             "in_leaderboard": bool(p["include_in_leaderboard"]),
             "color": p.get("color"),
+            "absent": p["id"] in absent_until,
+            "absent_until": absent_until.get(p["id"]),
         }
         for p in board["persons"]
     }
@@ -215,6 +247,7 @@ def overview(database_path: str, today: date, now: Optional[datetime] = None,
         "recent_completions": _recent_completions(database_path),
         "recent_skips": _recent_skips(database_path),
         "vacation": vacation,
+        "absences": absences,
     }
 
 
@@ -224,23 +257,29 @@ _PRIORITY_RANK = {"critical": 0, "high": 1, "normal": 2, "low": 3}
 def notification_summary(database_path: str, today: date) -> dict:
     """Per actieve persoon wat er nú speelt, voor de ochtendmelding (§6).
 
-    'anyone'-taken tellen voor iedereen mee; 'fixed' en 'rotating' alleen
-    voor wie aan de beurt is. Alleen vandaag en achterstand — upcoming hoort
-    niet in een ochtendmelding. De lijsten zijn voorgesorteerd op
-    belangrijkheid (achterstand op cyclusfractie, vandaag op prioriteit en
-    dan duur), zodat pick_notify_action gewoon de kop pakt.
+    "Wie kan"-taken tellen voor iedereen mee; de rest alleen voor wie aan
+    de beurt is. Met afwezigheid (v2.7) meegerekend: een vaste taak van wie
+    weg is, is "wie kan" en telt dus voor de anderen, en een rotatie telt
+    voor wie de afwezige vervangt. Wie zelf weg is, staat er niet in en
+    krijgt dus geen ochtendmelding. Alleen vandaag en achterstand —
+    upcoming hoort niet in een ochtendmelding. De lijsten zijn
+    voorgesorteerd op belangrijkheid (achterstand op cyclusfractie, vandaag
+    op prioriteit en dan duur), zodat pick_notify_action gewoon de kop pakt.
 
     Tijdens de vakantiemodus een lege dict: er speelt niets, dus de
     ochtendmelding gaat naar niemand.
     """
     if get_active_vacation(database_path):
         return {}
-    chores = [enrich_chore(database_path, chore, today)
+    absent = {a["assignee_id"] for a in list_absences(database_path)}
+    chores = [enrich_chore(database_path, chore, today, absent)
               for chore in list_chores(database_path)]
     summary = {}
     for person in list_assignees(database_path):
+        if person["id"] in absent:
+            continue
         mine = [c for c in chores
-                if c["assignment_type"] == "anyone"
+                if c["current_assignee"] is None
                 or c["current_assignee"] == person["id"]]
         due = sorted(
             (c for c in mine if c["urgency"] == "due"),
@@ -319,7 +358,15 @@ def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
     Sinds v2.6: "vacation" is de actieve vakantie in publieke vorm
     ({active, start_date, until}) of None. De taken houden hun echte velden
     en urgentie; het panel toont ze tijdens de vakantie als stilstaand.
+
+    Sinds v2.7: "absences" zijn de lopende afwezigheden ({assignee_id,
+    start_date, until}); current_assignee per taak is het effectieve
+    resultaat en covering_for zegt voor wie hij is overgenomen. Tijdens de
+    vakantiemodus telt een afwezigheid niet mee in de toewijzing.
     """
+    vacation = get_active_vacation(database_path)
+    absences = list_absences(database_path)
+    absent = set() if vacation else {a["assignee_id"] for a in absences}
     counts = history_counts(database_path)
     chores = []
     archived = []
@@ -335,7 +382,7 @@ def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
                 "schedule_config": chore["schedule_config"],
             })
             continue
-        enriched = enrich_chore(database_path, chore, today)
+        enriched = enrich_chore(database_path, chore, today, absent)
         enriched["has_history"] = bool(counts.get(chore["id"]))
         chores.append(enriched)
     board = leaderboard(database_path, today)
@@ -361,5 +408,6 @@ def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
             completions, feed_limit, skips, _SKIP_FEED_LIMIT),
         "week_history": week_history(database_path, today),
         "completed_today": completed_today_count(database_path, today),
-        "vacation": get_active_vacation(database_path),
+        "vacation": vacation,
+        "absences": absences,
     }

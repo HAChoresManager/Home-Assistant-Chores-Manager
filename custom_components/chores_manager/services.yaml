@@ -5,8 +5,9 @@
 # (dezelfde kernen als het panel), omdat Lovelace alleen services kan
 # aanroepen en geen WS-commando's. start_vacation en end_vacation (v2.6)
 # zijn er voor automatiseringen en zijn idempotent; de schakelaar
-# switch.chores_vakantiemodus doet hetzelfde. Wat hier staat is het
-# volledige service-aanbod.
+# switch.chores_vakantiemodus doet hetzelfde. start_absence en end_absence
+# (v2.7) idem voor de afwezigheid van één persoon, naast de schakelaars
+# switch.chores_afwezig_<id>. Wat hier staat is het volledige service-aanbod.
 
 roll_forward:
   name: Achterstand doorrollen
@@ -163,3 +164,49 @@ end_vacation:
     dagen die tijdens de vakantie aan de beurt waren, gaan naar de
     eerstvolgende keer vanaf vandaag. Wie aan de beurt was, blijft aan de
     beurt. Staat de modus al uit, dan gebeurt er niets.
+
+start_absence:
+  name: Afwezigheid aanzetten
+  description: >-
+    Zet één persoon vanaf vandaag op afwezig; het huishouden draait door.
+    Vaste taken van die persoon worden "wie kan", in rotaties wordt hij of
+    zij overgeslagen (de beurt zelf verandert niet, na terugkomst sluit de
+    persoon gewoon weer aan). Geen ochtendmelding en geen weeksamenvatting
+    voor wie weg is, en de weken tellen voor diens reeks niet mee. Afvinken
+    blijft wel kunnen. Met een laatste dag eindigt de afwezigheid de dag
+    daarna vanzelf. Is de persoon al afwezig, dan wordt een meegegeven datum
+    de nieuwe laatste dag en gebeurt er zonder datum niets.
+  fields:
+    assignee_id:
+      name: Persoon
+      description: Persoon-id (bijv. laura); zie persons op sensor.chores_overview.
+      required: true
+      example: laura
+      selector:
+        text:
+    until:
+      name: Tot en met
+      description: >-
+        Laatste dag van de afwezigheid (vandaag of later). Leeg (ook een
+        lege tekst uit een template) = geen einddatum; beëindig de
+        afwezigheid dan zelf met end_absence of de schakelaar.
+      required: false
+      example: "2026-10-12"
+      selector:
+        date:
+
+end_absence:
+  name: Afwezigheid beëindigen
+  description: >-
+    Beëindigt de afwezigheid van één persoon, met vandaag als dag van
+    terugkomst. Er schuift niets op: de persoon sluit weer aan op zijn of
+    haar plek in de rotatie. Is de persoon niet afwezig, dan gebeurt er
+    niets.
+  fields:
+    assignee_id:
+      name: Persoon
+      description: Persoon-id (bijv. laura).
+      required: true
+      example: laura
+      selector:
+        text:

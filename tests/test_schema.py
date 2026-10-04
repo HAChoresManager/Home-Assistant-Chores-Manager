@@ -35,10 +35,11 @@ def _indexen(conn):
 
 def test_alle_tabellen_en_indexen_bestaan(conn):
     assert _tabellen(conn) == {"assignees", "chores", "subtasks", "completions", "skips",
-                               "vacations", "vacation_frozen"}
+                               "vacations", "vacation_frozen", "absences"}
     assert _indexen(conn) == {"idx_completions_completed_at", "idx_completions_assignee",
                               "idx_completions_chore", "idx_skips_chore",
-                              "idx_skips_skipped_at", "idx_vacations_one_active"}
+                              "idx_skips_skipped_at", "idx_vacations_one_active",
+                              "idx_absences_one_active"}
 
 
 def test_apply_schema_is_idempotent(conn):

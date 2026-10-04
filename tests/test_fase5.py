@@ -51,9 +51,10 @@ class TestTasksToday:
     def test_velden_compact_met_ids(self, db):
         _taak(db)
         (item,) = overview(db, VANDAAG)["tasks_today"]
+        # covering_for en covering_for_name sinds v2.7 (afwezigheid)
         assert set(item) == {
             "id", "name", "icon", "status", "assignee_id", "assignee_name",
-            "assignee_color"}
+            "assignee_color", "covering_for", "covering_for_name"}
         assert item["id"] == "was"
         assert item["assignee_id"] == "laura"
         assert item["name"] == "Was draaien"

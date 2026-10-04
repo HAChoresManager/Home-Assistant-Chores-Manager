@@ -8,8 +8,9 @@ zodat een typefout in aanroepende code niet stilletjes als data eindigt. NULL
 passeert een CHECK (SQL: unknown), dus het optionele subtask_mode blijft
 gewoon NULL-baar.
 
-Zeven tabellen: assignees, chores, subtasks, completions, (sinds v2.5) skips
-en (sinds v2.6) vacations met de momentopname vacation_frozen.
+Acht tabellen: assignees, chores, subtasks, completions, (sinds v2.5) skips,
+(sinds v2.6) vacations met de momentopname vacation_frozen, en (sinds v2.7)
+absences.
 Een nieuwe tabel komt er via CREATE TABLE IF NOT EXISTS vanzelf bij op een
 bestaande database — apply_schema draait bij elke start. Alleen een nieuwe
 kolom in een bestaande tabel heeft een stap in _migrate nodig.
@@ -139,6 +140,27 @@ CREATE TABLE IF NOT EXISTS vacation_frozen (
     next_due    DATE NOT NULL,
     PRIMARY KEY (vacation_id, chore_id)
 );
+
+-- Afwezigheid per persoon (v2.7): één persoon is een tijd weg, het
+-- huishouden draait door. Puur een berekening op de toewijzing
+-- (scheduling.effective_assignee); taken en beurten worden niet aangeraakt.
+-- De historie blijft bewaard: de streak van die persoon telt de weken als
+-- neutraal (vacations.vacation_weeks).
+CREATE TABLE IF NOT EXISTS absences (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- CASCADE: een persoon zonder historie mag echt weg (delete_assignee)
+    -- en neemt zijn afwezigheden mee; met historie wordt hij gearchiveerd
+    -- en eindigt een lopende afwezigheid
+    assignee_id TEXT NOT NULL REFERENCES assignees(id) ON DELETE CASCADE,
+    start_date  DATE NOT NULL,       -- dag waarop de afwezigheid begon
+    until       DATE,                -- geplande laatste dag (t/m); NULL = open einde
+    ended_on    DATE,                -- dag van terugkomst; NULL = loopt nog
+    created_at  TIMESTAMP NOT NULL   -- ISO-tijdstip van aanzetten
+);
+
+-- hooguit één lopende afwezigheid per persoon
+CREATE UNIQUE INDEX IF NOT EXISTS idx_absences_one_active
+    ON absences (assignee_id) WHERE ended_on IS NULL;
 """
 
 

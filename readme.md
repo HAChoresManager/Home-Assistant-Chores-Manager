@@ -3,8 +3,10 @@
 Huishoudelijke taken voor het hele gezin, als native Home Assistant-panel op
 `/taken`. Vier schermen — Vandaag, Alles, Activiteit, Beheer — met afvinken
 in één tik, een bijdragebalk per week, rotatie van beurten, een eerlijke
-achterstandslogica (achterstand loopt niet eindeloos op) en een
-vakantiemodus waarin alles stilstaat.
+achterstandslogica (achterstand loopt niet eindeloos op), een
+vakantiemodus waarin alles stilstaat, en afwezigheid per persoon: is één
+iemand een tijd weg, dan gaat alleen diens aandeel tijdelijk naar de
+anderen.
 
 Gebouwd zonder build-stap of externe dependencies: vanilla ES-modules, Web
 Components en HA's eigen CSS-variabelen, dus elk thema klopt vanzelf.
@@ -33,15 +35,18 @@ Het panel werkt ook als kaart in een bestaand dashboard:
    type: custom:chores-panel
    ```
 
-## Sensor, schakelaar en services
+## Sensor, schakelaars en services
 
 - `sensor.chores_overview` — openstaande taken vandaag, met attributen
   voor eigen Lovelace-kaarten: `tasks_today` (compacte lijst mét wie het
-  moet doen), `recent_completions` (de laatste acht voltooiingen),
-  `recent_skips` (de laatste acht overslagen), `persons` (weekstand per
-  persoon, met kleur en streak) en `vacation` (de lopende vakantie:
-  `active`, `start_date`, `until` — of `null`). Tijdens de vakantiemodus is
-  de state 0 en `tasks_today` leeg.
+  moet doen, en bij een overgenomen taak `covering_for` en
+  `covering_for_name`: voor wie), `recent_completions` (de laatste acht
+  voltooiingen), `recent_skips` (de laatste acht overslagen), `persons`
+  (weekstand per persoon, met kleur, streak en `absent`/`absent_until`),
+  `vacation` (de lopende vakantie: `active`, `start_date`, `until` — of
+  `null`) en `absences` (de lopende afwezigheden: `assignee_id`,
+  `start_date`, `until`). Tijdens de vakantiemodus is de state 0 en
+  `tasks_today` leeg.
   Zie `docs/technical-description.md` voor de velden.
 - `switch.chores_vakantiemodus` — de vakantiemodus. Aan = alle taken staan
   stil: niets is aan de beurt, niets loopt achter, er gaan geen meldingen
@@ -52,6 +57,17 @@ Het panel werkt ook als kaart in een bestaand dashboard:
   vakantiedag, of `null`). Aanzetten met de schakelaar geeft een vakantie
   zonder einddatum; de schakelaar volgt de stand ook als de vakantie in het
   panel of via een service wijzigt.
+- `switch.chores_afwezig_<id>` — per actieve persoon (naam "Chores Afwezig
+  Laura"), bijvoorbeeld `switch.chores_afwezig_laura`. Aan = die persoon
+  is weg: diens vaste taken worden "wie kan", rotaties slaan hem of haar
+  over (de beurt zelf blijft staan; na terugkomst sluit de persoon gewoon
+  weer aan), en er gaan geen ochtendmelding en weeksamenvatting naar die
+  persoon. Weken in de afwezigheid tellen voor diens streak niet mee
+  (verlengen niet, breken niet). Afvinken blijft voor iedereen kunnen.
+  Attributen `start_date` en `until`. Aanzetten met de schakelaar geeft
+  een afwezigheid zonder einddatum; een nieuwe persoon krijgt vanzelf een
+  schakelaar, een gearchiveerde verliest hem. Staat de vakantiemodus aan,
+  dan wint die en doet een afwezigheid niets extra's.
 - `chores_manager.mark_done` — vink een taak af vanaf een Lovelace-kaart
   (`chore_id` uit `tasks_today`; `assignee_id` optioneel, leeg = de
   aanroepende gebruiker via zijn koppeling).
@@ -80,6 +96,14 @@ Het panel werkt ook als kaart in een bestaand dashboard:
   veilig vanuit een automatisering.
 - `chores_manager.end_vacation` — zet de vakantiemodus uit, met vandaag als
   dag van terugkomst. Staat hij al uit, dan gebeurt er niets.
+- `chores_manager.start_absence` — zet één persoon op afwezig, vanaf
+  vandaag (`assignee_id` verplicht; `until` optioneel: de laatste dag,
+  vandaag of later; de dag erna eindigt de afwezigheid om 03:00 vanzelf).
+  Is de persoon al afwezig, dan past een opgegeven `until` de einddatum aan
+  en gebeurt er verder niets.
+- `chores_manager.end_absence` — beëindigt de afwezigheid van één persoon
+  (`assignee_id`), met vandaag als dag van terugkomst. Niet afwezig: er
+  gebeurt niets.
 - `chores_manager.roll_forward` — voer de nachtelijke doorrol (03:00) nu uit.
 - `chores_manager.send_daily_summary` / `send_weekly_summary` — verstuur de
   ochtendmelding of weeksamenvatting nu.

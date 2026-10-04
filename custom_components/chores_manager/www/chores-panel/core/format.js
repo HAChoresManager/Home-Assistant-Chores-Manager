@@ -82,6 +82,17 @@ export function dayMonth(isoDate, todayIso) {
   return base;
 }
 
+/** "12 okt" (+jaar als het een ander jaar is) — voor de korte regel
+ * "Laura is weg t/m 12 okt" op Vandaag. */
+export function dayMonthShort(isoDate, todayIso) {
+  const d = new Date(`${isoDate}T12:00:00`);
+  const base = `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+  if (todayIso && isoDate.slice(0, 4) !== todayIso.slice(0, 4)) {
+    return `${base} ${d.getFullYear()}`;
+  }
+  return base;
+}
+
 /**
  * Aantal kalenderdagen van de ene ISO-datum naar de andere (negatief als
  * de tweede eerder ligt). Gerekend in UTC: een zomertijdwissel ertussen

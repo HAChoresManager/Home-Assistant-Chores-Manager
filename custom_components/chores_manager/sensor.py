@@ -29,6 +29,15 @@ vacation is dan {active, start_date, until} — dezelfde vorm als in de
 WS-state — en anders None. completed_today, persons en de recente lijsten
 blijven gewoon wat er gedaan is.
 
+Afwezigheid per persoon (v2.7): in tasks_today zijn assignee_id,
+assignee_name en assignee_color het effectieve resultaat — een vaste taak
+van wie weg is wordt "wie kan", een rotatie slaat de afwezige over — en
+covering_for en covering_for_name zeggen voor wie de taak is overgenomen
+(anders None). Per persoon in persons staan absent (bool) en absent_until
+(laatste dag of None), en het attribuut absences is de lijst lopende
+afwezigheden {assignee_id, start_date, until}, dezelfde vorm als in de
+WS-state.
+
 Net-afgevinkte taken staan RECENT_DONE_SECONDS lang als "done" in
 tasks_today. Omdat er dan geen mutatie (en dus geen SIGNAL_UPDATED) volgt,
 plant de sensor na elke update zelf één verversing voor het moment dat de
@@ -144,6 +153,8 @@ class ChoresOverviewSensor(SensorEntity):
             "recent_skips": data["recent_skips"],
             # actieve vakantie {active, start_date, until} of None (v2.6)
             "vacation": data["vacation"],
+            # lopende afwezigheden [{assignee_id, start_date, until}] (v2.7)
+            "absences": data["absences"],
         }
         self._schedule_done_refresh(data["tasks_today"])
         if write:

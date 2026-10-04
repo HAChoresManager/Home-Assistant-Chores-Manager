@@ -19,6 +19,7 @@ from .calculator import (
     URGENT,
     advance_rotation,
     current_assignee,
+    effective_assignee,
     initial_next_due,
     next_due_after_completion,
     next_due_after_skip,
@@ -35,5 +36,5 @@ __all__ = [
     "initial_next_due", "next_due_after_completion", "next_due_after_skip",
     "roll_forward", "shift_after_vacation", "overdue_days", "cycle_fraction",
     "urgency",
-    "current_assignee", "advance_rotation",
+    "current_assignee", "effective_assignee", "advance_rotation",
 ]

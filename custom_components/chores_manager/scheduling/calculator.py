@@ -1,4 +1,5 @@
-"""Vervaldatums (§4.2), achterstand en urgentie (§4.3), rotatie (§4.4).
+"""Vervaldatums (§4.2), achterstand en urgentie (§4.3), rotatie (§4.4) en de
+effectieve toewijzing bij afwezigheid (v2.7).
 
 Alle functies zijn puur: "vandaag" komt altijd als parameter binnen en er wordt
 nergens naar de klok gekeken. De nachtelijke rol van 03:00 (scheduler.py, fase
@@ -268,6 +269,45 @@ def current_assignee(rotation: list, rotation_index: int):
     if not rotation:
         return None
     return rotation[rotation_index % len(rotation)]
+
+
+def effective_assignee(chore, absent=frozenset()) -> tuple:
+    """Afwezigheid per persoon (v2.7): wie een taak nú op zijn naam heeft.
+
+    chore is een taak-dict met assignment_type, assigned_to, rotation (als
+    lijst) en rotation_index; absent de ids van wie er afwezig is. Geeft
+    (assignee_id of None, covering_for of None) terug. None als assignee
+    betekent "wie kan": iedereen mag hem doen. covering_for is de persoon
+    die eigenlijk aan de beurt was, en alleen gezet als de afwezigheid de
+    toewijzing veranderde.
+
+    - anyone: (None, None) — "wie kan" blijft "wie kan".
+    - fixed: de vaste persoon, of (None, die persoon) als die weg is.
+    - rotating: de eerste persoon vanaf rotation_index in de rotatielijst
+      die niet weg is; is iedereen weg, dan "wie kan" met de persoon die aan
+      de beurt stond als covering_for.
+
+    Puur een berekening: rotation_index verandert hier niet. Na terugkomst
+    sluit iemand dus gewoon weer aan op zijn plek in de rotatie, en het
+    doorschuiven na afvinken blijft advance_rotation vanaf de doener.
+    """
+    if chore["assignment_type"] == "fixed":
+        owner = chore["assigned_to"]
+        if owner in absent:
+            return None, owner
+        return owner, None
+    if chore["assignment_type"] != "rotating":
+        return None, None
+    rotation = chore["rotation"]
+    scheduled = current_assignee(rotation, chore["rotation_index"])
+    if scheduled is None:
+        return None, None
+    start = chore["rotation_index"] % len(rotation)
+    for offset in range(len(rotation)):
+        candidate = rotation[(start + offset) % len(rotation)]
+        if candidate not in absent:
+            return candidate, (scheduled if candidate != scheduled else None)
+    return None, scheduled
 
 
 def advance_rotation(rotation: list, rotation_index: int, completed_by=None) -> int:

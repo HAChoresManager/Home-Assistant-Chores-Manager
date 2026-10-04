@@ -1,5 +1,5 @@
 /**
- * Dunne laag over hass.connection voor de vijftien WS-commando's (plan §2.3).
+ * Dunne laag over hass.connection voor de achttien WS-commando's (plan §2.3).
  *
  * Geen fetch, geen tokens, geen headers: alles loopt over de WebSocket die HA
  * zelf al open heeft. subscribeMessage van home-assistant-js-websocket
@@ -72,8 +72,10 @@ class ChoresApi {
   }
 
   /**
-   * Volledige begintoestand: taken, personen, ranglijst, feed, overslagen
-   * en de vakantiestand (data.vacation: {active, start_date, until} of null).
+   * Volledige begintoestand: taken, personen, ranglijst, feed, overslagen,
+   * de vakantiestand (data.vacation: {active, start_date, until} of null)
+   * en de lopende afwezigheden (data.absences: [{assignee_id, start_date,
+   * until}], v2.7).
    * onWaiting (optioneel) wordt aangeroepen zodra er gewacht moet worden op
    * een backend die nog niet klaar is — voor de "Verbinden…"-melding.
    */
@@ -134,6 +136,29 @@ class ChoresApi {
    */
   vacationEnd() {
     return this._send({ type: 'chores_manager/vacation/end' });
+  }
+
+  /**
+   * Afwezigheid van één persoon aanzetten (v2.7); until is de laatste dag
+   * (YYYY-MM-DD) of null voor een open einde. Is de persoon al afwezig,
+   * dan weigert de server.
+   */
+  absenceStart(assigneeId, until) {
+    return this._send({
+      type: 'chores_manager/absence/start', assignee_id: assigneeId, until: until || null,
+    });
+  }
+
+  /** De "tot en met" van een lopende afwezigheid wijzigen; null wist hem. */
+  absenceUpdate(assigneeId, until) {
+    return this._send({
+      type: 'chores_manager/absence/update', assignee_id: assigneeId, until: until || null,
+    });
+  }
+
+  /** Afwezigheid beëindigen, met vandaag als dag van terugkomst. */
+  absenceEnd(assigneeId) {
+    return this._send({ type: 'chores_manager/absence/end', assignee_id: assigneeId });
   }
 
   choreSave(chore) {

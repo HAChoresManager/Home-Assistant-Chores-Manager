@@ -15,8 +15,9 @@ is, een andere datum kreeg of uit het archief kwam, schuift niet dubbel
 (max(next_due, resume)). Na het einde is de momentopname weg.
 
 Puur sqlite plus scheduling; geen HA. Importeert binnen db/ alleen connection
-en errors — completions.py en skips.py importeren deze module, chores.py doet
-dat lokaal — dus taken worden hier met eigen SQL gelezen, niet via chores.py.
+en errors — completions.py, skips.py en absences.py importeren deze module,
+chores.py doet dat lokaal — dus taken (en voor de streak ook afwezigheden)
+worden hier met eigen SQL gelezen, niet via chores.py of absences.py.
 Datums zijn 'YYYY-MM-DD'-strings (date.isoformat()), tijdstippen ISO-strings
 met offset.
 
@@ -89,14 +90,15 @@ def get_active_vacation(database_path: str) -> Optional[dict]:
         return _public(row) if row else None
 
 
-def _parse_until(value: Any) -> Optional[date]:
+def parse_until(value: Any, invalid: str = INVALID_UNTIL) -> Optional[date]:
     """"Tot en met" uit elke aanroeper naar een date, of None (open einde).
 
     None en "" betekenen geen einddatum. Een date (ook een datetime: die
     telt als zijn dag) of een ISO-datumstring; Python 3.11+ accepteert ook
     de compacte vorm '20261010'. Opslaan gebeurt daarna altijd als
     date.isoformat(), zodat datums in de tabel als string vergelijkbaar
-    blijven.
+    blijven. Onleesbaar: een StoreError met de tekst `invalid` — ook
+    gebruikt door absences.py, met een eigen tekst.
     """
     if value is None:
         return None
@@ -112,8 +114,8 @@ def _parse_until(value: Any) -> Optional[date]:
         try:
             return date.fromisoformat(text)
         except ValueError as err:
-            raise StoreError(INVALID_UNTIL) from err
-    raise StoreError(INVALID_UNTIL)
+            raise StoreError(invalid) from err
+    raise StoreError(invalid)
 
 
 def start_vacation(database_path: str, today: date, until: Any,
@@ -127,7 +129,7 @@ def start_vacation(database_path: str, today: date, until: Any,
     komt de momentopname van next_due van alle actieve taken in
     vacation_frozen. Geeft de publieke vorm terug.
     """
-    until_date = _parse_until(until)
+    until_date = parse_until(until)
     if until_date is not None and until_date < today:
         raise StoreError(UNTIL_IN_PAST)
     with get_connection(database_path) as conn:
@@ -157,7 +159,7 @@ def update_vacation(database_path: str, until: Any, today: date) -> dict:
     of na de eerste vakantiedag liggen. Staat er geen vakantie aan, dan een
     StoreError. Geeft de publieke vorm terug.
     """
-    until_date = _parse_until(until)
+    until_date = parse_until(until)
     with get_connection(database_path) as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = _active_row(conn)
@@ -267,28 +269,50 @@ def _monday(day: date) -> date:
     return day - timedelta(days=day.isoweekday() - 1)
 
 
-def vacation_weeks(conn: sqlite3.Connection, today: date) -> set:
-    """Maandagen van de weken die (deels) in een vakantie vallen — de
-    neutrale weken van de streak (§5.3).
+def span_weeks(start_date: str, until: Optional[str], ended_on: Optional[str],
+               today: date) -> set:
+    """Maandagen van de weken die een vakantie of afwezigheid (deels) beslaat.
 
-    Een beëindigde vakantie beslaat [start_date, ended_on − 1]: de resume-dag
-    is weer een gewone dag. Een actieve beslaat [start_date, min(vandaag,
+    Een beëindigde beslaat [start_date, ended_on − 1]: de dag van terugkomst
+    is weer een gewone dag. Een lopende beslaat [start_date, min(vandaag,
     until)], zonder until tot en met vandaag. Een leeg bereik (aan en uit op
-    dezelfde dag) levert niets op: die vakantie zette niets stil.
+    dezelfde dag) levert niets op: die zette niets stil.
     """
+    first = date.fromisoformat(start_date)
+    if ended_on is not None:
+        last = date.fromisoformat(ended_on) - timedelta(days=1)
+    elif until is not None:
+        last = min(today, date.fromisoformat(until))
+    else:
+        last = today
     weeks = set()
-    for row in conn.execute("SELECT start_date, until, ended_on FROM vacations"):
-        first = date.fromisoformat(row["start_date"])
-        if row["ended_on"] is not None:
-            last = date.fromisoformat(row["ended_on"]) - timedelta(days=1)
-        elif row["until"] is not None:
-            last = min(today, date.fromisoformat(row["until"]))
-        else:
-            last = today
-        if last < first:
-            continue
-        cursor = _monday(first)
-        while cursor <= last:
-            weeks.add(cursor)
-            cursor += timedelta(days=7)
+    if last < first:
+        return weeks
+    cursor = _monday(first)
+    while cursor <= last:
+        weeks.add(cursor)
+        cursor += timedelta(days=7)
+    return weeks
+
+
+def vacation_weeks(conn: sqlite3.Connection, today: date,
+                   assignee_id: Optional[str] = None) -> set:
+    """Maandagen van de neutrale weken van de streak (§5.3): weken die
+    (deels) in een vakantie vallen, en met assignee_id ook de weken die
+    (deels) in een afwezigheid van die persoon vallen (tabel absences,
+    v2.7). Een vakantie geldt voor iedereen, een afwezigheid alleen voor
+    wie weg was. Het bereik per vakantie of afwezigheid: zie span_weeks.
+
+    De afwezigheden worden hier met eigen SQL gelezen, zoals de taken in
+    deze module: completions.py importeert deze module, en absences.py
+    importeert hem ook (parse_until) — andersom zou een kring worden.
+    """
+    rows = conn.execute("SELECT start_date, until, ended_on FROM vacations").fetchall()
+    if assignee_id is not None:
+        rows += conn.execute(
+            "SELECT start_date, until, ended_on FROM absences WHERE assignee_id = ?",
+            (assignee_id,)).fetchall()
+    weeks = set()
+    for row in rows:
+        weeks |= span_weeks(row["start_date"], row["until"], row["ended_on"], today)
     return weeks

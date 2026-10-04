@@ -19,7 +19,9 @@ houdt alleen de minuten van wat er tot de overslag gedaan was.
 
 Tijdens de vakantiemodus (vacations.py) weigert afvinken met
 VacationActiveError; weken die (deels) in een vakantie vallen, tellen voor
-de streak als neutraal.
+de streak als neutraal — en sinds v2.7 per persoon ook weken in een eigen
+afwezigheid (absences.py). Afvinken tijdens een afwezigheid kan gewoon, ook
+door wie weg is; de beurt schuift zoals altijd door vanaf de doener.
 """
 from __future__ import annotations
 
@@ -330,27 +332,32 @@ def assignee_streaks(database_path: str, today: date) -> dict:
     voltooiing, terugtellend vanaf de huidige week. Een nog lege lopende week
     breekt de streak niet — dan begint het tellen bij vorige week.
 
-    Weken die (deels) in een vakantie vallen (vacations.vacation_weeks) zijn
+    Weken die (deels) in een vakantie vallen, of (sinds v2.7) in een
+    afwezigheid van die persoon zelf (vacations.vacation_weeks), zijn
     neutraal: ze verlengen de streak niet en breken hem niet, ook niet als er
-    voltooiingen in staan. Terugtellend: neutraal → door; voltooiing → +1;
-    leeg → stop, behalve de huidige week (nog bezig)."""
+    voltooiingen in staan. Een afwezigheid geldt alleen voor wie weg was; de
+    streak van de anderen loopt gewoon door. Terugtellend: neutraal → door;
+    voltooiing → +1; leeg → stop, behalve de huidige week (nog bezig)."""
     with get_connection(database_path) as conn:
         rows = conn.execute(
             "SELECT DISTINCT assignee_id, substr(completed_at, 1, 10) AS day"
             " FROM completions").fetchall()
-        neutral = vacation_weeks(conn, today)
-    weeks_per_assignee: dict = {}
-    for row in rows:
-        weeks_per_assignee.setdefault(row["assignee_id"], set()).add(
-            week_start(date.fromisoformat(row["day"])))
+        weeks_per_assignee: dict = {}
+        for row in rows:
+            weeks_per_assignee.setdefault(row["assignee_id"], set()).add(
+                week_start(date.fromisoformat(row["day"])))
+        neutral_per_assignee = {
+            assignee_id: vacation_weeks(conn, today, assignee_id)
+            for assignee_id in weeks_per_assignee}
     current = week_start(today)
     week = timedelta(days=7)
     streaks = {}
     for assignee_id, weeks in weeks_per_assignee.items():
+        neutral = neutral_per_assignee[assignee_id]
         cursor = current
         streak = 0
         # eindig: elke stap gaat een week terug, en voorbij de oudste
-        # voltooiing en de oudste vakantie is elke week leeg
+        # voltooiing en de oudste vakantie of afwezigheid is elke week leeg
         while True:
             if cursor in neutral:
                 pass
