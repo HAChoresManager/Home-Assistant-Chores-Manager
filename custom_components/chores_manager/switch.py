@@ -16,7 +16,9 @@ Geen polling: de schakelaar leest de stand na ELK SIGNAL_UPDATED opnieuw
 uit de database (in de executor, net als sensor.py), en volgt zo ook een
 vakantie die via het panel, een service of het automatische einde om
 03:00 aan- of uitging. De attributen start_date en until zijn None als de
-modus uit staat.
+modus uit staat. Die lezingen lopen één tegelijk, achter een lock, zodat
+een oudere lezing nooit over een nieuwere heen schrijft (dezelfde race als
+in sensor.py).
 
 Afwezigheid (v2.7): per actieve persoon een schakelaar "Chores Afwezig
 <Naam>" met entity_id switch.chores_afwezig_<assignee_id> en een unique_id
@@ -119,6 +121,8 @@ class ChoresVacationSwitch(SwitchEntity):
         self._attr_unique_id = f"chores_manager_vacation_{entry_id}"
         self._attr_is_on = False
         self._attr_extra_state_attributes = {"start_date": None, "until": None}
+        # één lezing tegelijk, zie _refresh
+        self._refresh_lock = asyncio.Lock()
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(async_dispatcher_connect(
@@ -135,19 +139,24 @@ class ChoresVacationSwitch(SwitchEntity):
         await self._refresh(write=False)
 
     async def _refresh(self, write: bool) -> None:
-        try:
-            vacation = await self.hass.async_add_executor_job(
-                get_active_vacation, self._database_path)
-        except Exception as err:  # de dispatcherketen mag nooit breken
-            _LOGGER.error("Chores Manager: schakelaarupdate mislukt: %s", err)
-            return
-        self._attr_is_on = vacation is not None
-        self._attr_extra_state_attributes = {
-            "start_date": vacation["start_date"] if vacation else None,
-            "until": vacation["until"] if vacation else None,
-        }
-        if write:
-            self.async_write_ha_state()
+        """Stand lezen en wegschrijven, één verversing tegelijk. Zonder lock
+        kon een lezing die vóór een wijziging begon, ná een verse lezing
+        wegschrijven, en sprong de schakelaar terug naar de oude stand. Ook
+        de lezing direct na turn_on/turn_off wacht zo op zijn beurt."""
+        async with self._refresh_lock:
+            try:
+                vacation = await self.hass.async_add_executor_job(
+                    get_active_vacation, self._database_path)
+            except Exception as err:  # de dispatcherketen mag nooit breken
+                _LOGGER.error("Chores Manager: schakelaarupdate mislukt: %s", err)
+                return
+            self._attr_is_on = vacation is not None
+            self._attr_extra_state_attributes = {
+                "start_date": vacation["start_date"] if vacation else None,
+                "until": vacation["until"] if vacation else None,
+            }
+            if write:
+                self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs) -> None:
         """Vakantiemodus aan vanaf vandaag, zonder einddatum."""

@@ -105,3 +105,9 @@ breekt bij een versie-ophoging.
   losse bestand wordt stille dode code. Drie keer gebeurd in de oude app.
 - **Render tijdens typen**: een openstaand formulier wordt bij renders
   overgeslagen (`state.editing`-guard), anders wist een push-event je invoer.
+- **Verversen per signaal**: elk `SIGNAL_UPDATED` start een verversing die
+  in de executor leest. Twee vlak na elkaar kunnen daar in omgekeerde
+  volgorde klaar zijn; zonder serialisatie schrijft dan de oudste lezing als
+  laatste en blijft een entiteit op een verouderde stand hangen. Sensor en
+  schakelaars lezen daarom achter een lock (`sensor.py`, `switch.py`);
+  doe dat ook bij een nieuwe entiteit die op het signaal ververst.

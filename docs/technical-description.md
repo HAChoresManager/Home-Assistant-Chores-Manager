@@ -356,8 +356,12 @@ exceptie. De uitzondering: tijdens de vakantiemodus geven `complete`,
 
 `sensor.chores_overview` — state = openstaande taken vandaag (due +
 achterstallig); tijdens de vakantiemodus 0. Geen polling: updates via de
-dispatcher. Het unique_id is dat van de oude 1.x-sensor, zodat de entiteit
-dezelfde naam behield.
+dispatcher. Verversingen lopen één tegelijk (een lock): elke lezing begint
+pas als de vorige geschreven is, zodat de sensor bij snel opeenvolgende
+wijzigingen altijd op de nieuwste stand eindigt; een signaal terwijl er al
+een verversing klaarstaat die nog niet leest, gaat daarin op. Het
+unique_id is dat van de oude 1.x-sensor, zodat de entiteit dezelfde naam
+behield.
 
 Attributen, gedocumenteerd voor Lovelace-gebruik:
 
@@ -420,7 +424,9 @@ Attributen, gedocumenteerd voor Lovelace-gebruik:
 `start_date` en `until` (beide `null` als hij uitstaat). Geen polling: de
 schakelaar leest zijn stand bij elk dispatchersignaal opnieuw uit de
 database (in de executor), dus hij volgt ook een vakantie die via het
-panel, een service of het automatische einde wijzigt.
+panel, een service of het automatische einde wijzigt. Die lezingen lopen
+één tegelijk (een lock), zodat een oudere lezing nooit over een nieuwere
+heen schrijft.
 
 Aanzetten start een vakantie zonder einddatum, uitzetten beëindigt hem met
 vandaag als dag van terugkomst. Net als de services idempotent: aanzetten

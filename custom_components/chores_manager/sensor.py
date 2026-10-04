@@ -42,9 +42,17 @@ Net-afgevinkte taken staan RECENT_DONE_SECONDS lang als "done" in
 tasks_today. Omdat er dan geen mutatie (en dus geen SIGNAL_UPDATED) volgt,
 plant de sensor na elke update zelf één verversing voor het moment dat de
 oudste done-rij verloopt.
+
+Verversingen lopen één tegelijk, achter een lock: elke lezing begint pas
+als de vorige geschreven is. Zonder lock konden twee verversingen vlak na
+elkaar in de executor in omgekeerde volgorde klaar zijn, en bleef de sensor
+op de oudste lezing hangen tot de volgende wijziging. Een signaal terwijl
+er al een verversing klaarstaat die nog niet leest, voegt niets toe: die
+leest pas als hij aan de beurt is.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 
@@ -89,6 +97,10 @@ class ChoresOverviewSensor(SensorEntity):
         self._attr_unique_id = f"chores_manager_{entry_id}"
         # annuleerfunctie van de geplande verversing (done-rijen), of None
         self._unsub_done_refresh = None
+        # één verversing tegelijk (zie _refresh); _refresh_queued is True
+        # zolang er een verversing wacht die nog niet aan het lezen is
+        self._refresh_lock = asyncio.Lock()
+        self._refresh_queued = False
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(async_dispatcher_connect(
@@ -118,10 +130,16 @@ class ChoresOverviewSensor(SensorEntity):
     @callback
     def _handle_done_refresh(self, _now) -> None:
         self._unsub_done_refresh = None
-        self.hass.async_create_task(self._refresh(write=True))
+        self._handle_update()
 
     @callback
     def _handle_update(self, payload=None) -> None:
+        """Een verversing aanvragen. Wacht er al een die nog niet aan het
+        lezen is, dan is een tweede overbodig: die eerste leest pas als hij
+        aan de beurt is en ziet dus ook wat er vóór dit signaal gebeurde."""
+        if self._refresh_queued:
+            return
+        self._refresh_queued = True
         self.hass.async_create_task(self._refresh(write=True))
 
     async def async_update(self) -> None:
@@ -129,6 +147,18 @@ class ChoresOverviewSensor(SensorEntity):
         await self._refresh(write=False)
 
     async def _refresh(self, write: bool) -> None:
+        """Lezen en wegschrijven, één verversing tegelijk.
+
+        De lock zorgt dat elke lezing pas begint als de vorige geschreven is,
+        dus schrijft de laatste verversing altijd de nieuwste stand. Wie de
+        lock krijgt, haalt eerst de wachtvlag weg: een signaal dat vanaf nu
+        binnenkomt, kan een wijziging betekenen die deze lezing mist, en
+        krijgt dus een eigen verversing."""
+        async with self._refresh_lock:
+            self._refresh_queued = False
+            await self._read_and_write(write)
+
+    async def _read_and_write(self, write: bool) -> None:
         try:
             now = dt_util.now()
             data = await self.hass.async_add_executor_job(
