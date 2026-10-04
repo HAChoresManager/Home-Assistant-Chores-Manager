@@ -1,5 +1,20 @@
 # Changelog
 
+## v2.7.1 (2026-10-04)
+
+Nooit meer op een oude stand blijven hangen bij snel opeenvolgende
+wijzigingen.
+
+- `sensor.chores_overview` en `switch.chores_vakantiemodus` verversen één
+  tegelijk. Twee verversingen vlak na elkaar konden in omgekeerde volgorde
+  klaar zijn, waarna de oudste lezing als laatste schreef; dashboards
+  toonden dan een verouderde stand tot de volgende wijziging. Een salvo
+  signalen berekent het overzicht niet meer telkens opnieuw.
+- Het panel past een antwoord op `chores_manager/state` alleen nog toe als
+  het niet al door een nieuwer antwoord is ingehaald. Een laat oud antwoord
+  zette de vorige stand terug, en een late oude fout gaf een foutscherm
+  over een goede stand heen.
+
 ## v2.7.0 (2026-10-04)
 
 Afwezigheid per persoon — één iemand is een tijd weg, het huishouden draait

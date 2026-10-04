@@ -110,4 +110,7 @@ breekt bij een versie-ophoging.
   volgorde klaar zijn; zonder serialisatie schrijft dan de oudste lezing als
   laatste en blijft een entiteit op een verouderde stand hangen. Sensor en
   schakelaars lezen daarom achter een lock (`sensor.py`, `switch.py`);
-  doe dat ook bij een nieuwe entiteit die op het signaal ververst.
+  doe dat ook bij een nieuwe entiteit die op het signaal ververst. In het
+  panel speelt hetzelfde met de antwoorden op `chores_manager/state`: die
+  kunnen omdraaien, dus `api.state()` geeft een ingehaald antwoord niet
+  meer door (volgnummer, `core/api.js`).
