@@ -3,29 +3,34 @@
 # (websocket.py). De uitzonderingen zijn mark_done, undo_last,
 # revert_completion, skip en revert_skip: dunne lagen zonder eigen logica
 # (dezelfde kernen als het panel), omdat Lovelace alleen services kan
-# aanroepen en geen WS-commando's. Wat hier staat is het volledige
-# service-aanbod.
+# aanroepen en geen WS-commando's. start_vacation en end_vacation (v2.6)
+# zijn er voor automatiseringen en zijn idempotent; de schakelaar
+# switch.chores_vakantiemodus doet hetzelfde. Wat hier staat is het
+# volledige service-aanbod.
 
 roll_forward:
   name: Achterstand doorrollen
   description: >-
     Voert de nachtelijke rol van 03:00 nu meteen uit: taken waarvan de
     achterstand voorbij de grens van hun prioriteit is, schuiven door naar
-    hun eerstvolgende logische datum (REFACTOR_PLAN.md §4.2). Normaal
-    gesproken is deze service niet nodig.
+    hun eerstvolgende logische datum (REFACTOR_PLAN.md §4.2). Een verlopen
+    vakantie wordt eerst beëindigd. Doet verder niets tijdens de
+    vakantiemodus. Normaal gesproken is deze service niet nodig.
 
 send_daily_summary:
   name: Ochtendmelding nu versturen
   description: >-
     Verstuurt de ochtendmelding van 08:00 nu meteen. Alleen personen met een
     ingevulde meldingsservice, meldingen aan én iets te doen krijgen er één;
-    de knop in de melding draagt de naam van de belangrijkste taak.
+    de knop in de melding draagt de naam van de belangrijkste taak. Doet
+    niets tijdens de vakantiemodus.
 
 send_weekly_summary:
   name: Weeksamenvatting nu versturen
   description: >-
     Verstuurt de weeksamenvatting van zondag 20:00 nu meteen, naar iedereen
-    met een ingevulde meldingsservice en meldingen aan.
+    met een ingevulde meldingsservice en meldingen aan. Doet niets tijdens
+    de vakantiemodus.
 
 mark_done:
   name: Taak afvinken
@@ -128,3 +133,33 @@ revert_skip:
         number:
           min: 1
           mode: box
+
+start_vacation:
+  name: Vakantiemodus aanzetten
+  description: >-
+    Zet de vakantiemodus aan vanaf vandaag: alle taken staan stil, er is
+    niets aan de beurt, niets loopt achter en er gaan geen meldingen uit.
+    Afvinken en overslaan kunnen pas weer na de vakantie. Met een laatste
+    dag gaat de modus de dag daarna vanzelf uit. Staat hij al aan, dan wordt
+    een meegegeven datum de nieuwe laatste dag en gebeurt er zonder datum
+    niets.
+  fields:
+    until:
+      name: Tot en met
+      description: >-
+        Laatste vakantiedag (vandaag of later). Leeg (ook een lege tekst
+        uit een template) = geen einddatum; zet de modus dan zelf uit met
+        end_vacation of de schakelaar.
+      required: false
+      example: "2026-10-18"
+      selector:
+        date:
+
+end_vacation:
+  name: Vakantiemodus uitzetten
+  description: >-
+    Zet de vakantiemodus uit, met vandaag als dag van terugkomst. Taken met
+    een interval schuiven op met het aantal vakantiedagen; taken op vaste
+    dagen die tijdens de vakantie aan de beurt waren, gaan naar de
+    eerstvolgende keer vanaf vandaag. Wie aan de beurt was, blijft aan de
+    beurt. Staat de modus al uit, dan gebeurt er niets.

@@ -24,6 +24,7 @@ from .calculator import (
     next_due_after_skip,
     overdue_days,
     roll_forward,
+    shift_after_vacation,
     urgency,
 )
 
@@ -32,6 +33,7 @@ __all__ = [
     "ScheduleError", "parse_schedule_config", "validate_schedule",
     "UPCOMING", "DUE", "GRACE", "URGENT", "GRACE_DAYS",
     "initial_next_due", "next_due_after_completion", "next_due_after_skip",
-    "roll_forward", "overdue_days", "cycle_fraction", "urgency",
+    "roll_forward", "shift_after_vacation", "overdue_days", "cycle_fraction",
+    "urgency",
     "current_assignee", "advance_rotation",
 ]

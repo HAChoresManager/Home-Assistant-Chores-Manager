@@ -156,6 +156,41 @@ def next_due_after_skip(schedule_type: str, config: dict, next_due: date, today:
     return next_due_after_completion(schedule_type, config, max(today, next_due))
 
 
+def shift_after_vacation(schedule_type: str, config: dict, next_due: date,
+                         start: date, resume: date, frozen: bool = True) -> date:
+    """Vakantiemodus: next_due bij het einde van een vakantie.
+
+    start is de dag waarop de modus aanging, resume de dag waarop hij uitging
+    (handmatig: die dag zelf; automatisch: de dag na "tot en met").
+
+    - resume op of vóór start (aan en uit op dezelfde dag): ongewijzigd. Een
+      vakantie van nul dagen heeft niets stilgezet; per ongeluk aan-uit
+      tikken wist zo geen achterstand.
+    - Interval, frozen (next_due is nog wat hij bij het aanzetten was):
+      next_due schuift het aantal vakantiedagen op. De taak staat er bij
+      terugkomst precies zo voor als bij vertrek, ook een achterstand blijft
+      gelijk.
+    - Interval, niet frozen (tijdens de vakantie nieuw, gewijzigd of
+      teruggezet): de laatste van next_due en resume. Wat tijdens de
+      vakantie "nu" werd, is bij terugkomst aan de beurt; een bewust gekozen
+      latere datum blijft staan. Zo schuift niets dubbel op.
+    - Kalendertypen (frozen of niet): ligt next_due vóór resume, dan wordt
+      het de eerste geplande keer op of na resume (de semantiek van
+      initial_next_due); anders ongewijzigd. Een kalenderachterstand van
+      vóór de vakantie vervalt daarmee bewust.
+    """
+    cfg = validate_schedule(schedule_type, config)
+    if resume <= start:
+        return next_due
+    if schedule_type == INTERVAL:
+        if frozen:
+            return next_due + (resume - start)
+        return max(next_due, resume)
+    if next_due < resume:
+        return _next_occurrence(schedule_type, cfg, resume, strict=False)
+    return next_due
+
+
 def roll_forward(schedule_type: str, config: dict, next_due: date, today: date) -> date:
     """§4.2, de nachtelijke rol.
 

@@ -6,7 +6,8 @@ FREQ_TYPES, PRIORITY_TYPES enzovoort) zijn met die app verdwenen.
 from homeassistant.const import Platform
 
 DOMAIN = "chores_manager"
-PLATFORMS = [Platform.SENSOR]
+# sensor: de overzichtssensor; switch: de vakantieschakelaar (v2.6)
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
 
 # De bestandsnaam stamt uit fase 2b, toen v2 naast de oude app draaide.
 # Hernoemen zou de bestaande data wegzetten, dus hij blijft chores_v2.db.
@@ -27,7 +28,9 @@ UNDO_WINDOW_SECONDS = 300
 # Lezers: websocket.async_undo_last, websocket.async_revert_skip en
 # handle_revert_completion in __init__.py — die laatste twee legen hem
 # alleen als hij naar precies hun regel wijst. Een snooze 'skip' vult hem
-# niet: snooze bood nooit undo.
+# niet: snooze bood nooit undo. vacation.async_start_vacation leegt hem bij
+# het aanzetten van de vakantiemodus; daarna kan hij tot het einde niet
+# opnieuw vullen (afvinken en overslaan zijn dan geblokkeerd).
 UNDO_KIND_COMPLETION = "completion"
 UNDO_KIND_SKIP = "skip"
 

@@ -5,9 +5,19 @@
  * mét historie wordt gearchiveerd (de historie blijft zichtbaar bij
  * Activiteit), zonder historie gaat hij echt weg. Personen idem, inclusief
  * rotatielidmaatschap.
+ *
+ * Bovenaan staat de vakantiemodus: een schakelaar en een optionele "tot en
+ * met". Het datumveld schrijft alleen een concept in de store
+ * (vacationDraft, stil: zonder render) — de server hoort er pas van bij de
+ * schakelaar of bij "Datum opslaan". De afhandeling zit in de
+ * change-delegatie van het element en in actions.js.
  */
 import { html } from '../core/html.js';
-import { scheduleLabel } from '../core/format.js';
+import {
+  dayCount,
+  daysBetween,
+  scheduleLabel,
+} from '../core/format.js';
 import { FOLLOW_HA } from '../core/theme.js';
 import { renderChoreForm, slugify } from '../components/task-form.js';
 
@@ -35,6 +45,66 @@ function assigneeRow(person) {
       <button type="button" class="secondary" data-action="edit-assignee"
         data-assignee="${person.id}">Bewerken</button>
     </li>`;
+}
+
+/**
+ * Wat er bij terugkomst gebeurt, eerlijk en concreet. De verschuiving van
+ * intervaltaken is de vakantieduur: laatste dag + 1 − eerste dag. Die
+ * eerste dag is de start van een lopende vakantie, of vandaag als hij nog
+ * aan moet. Zonder einddatum staat er "net zoveel dagen", bij een lopende
+ * vakantie met de stand van nu erbij (uit op vandaag = zoveel dagen). Een
+ * datum vóór vandaag (getypt, of een concept dat over middernacht bleef
+ * staan) krijgt geen rekensom maar de vraag om een andere datum.
+ * Geëxporteerd: het element werkt deze tekst bij het typen in de DOM bij.
+ */
+export function vacationExplain(vacation, untilValue, todayIso) {
+  if (untilValue && untilValue < todayIso) {
+    return 'Die datum ligt vóór vandaag; kies vandaag of later als laatste vakantiedag.';
+  }
+  let shift;
+  if (untilValue) {
+    const first = vacation ? vacation.start_date : todayIso;
+    shift = `${dayCount(daysBetween(first, untilValue) + 1)} op`;
+  } else if (vacation) {
+    const sofar = dayCount(Math.max(0, daysBetween(vacation.start_date, todayIso)));
+    shift = `net zoveel dagen op als de vakantie duurt (nu ${sofar})`;
+  } else {
+    shift = 'net zoveel dagen op als de vakantie duurt';
+  }
+  return `Taken staan stil. Bij terugkomst schuiven intervaltaken ${shift}; `
+    + 'taken op vaste dagen gaan naar de eerstvolgende keer.';
+}
+
+function vacationSection(state) {
+  const data = state.data;
+  const vacation = data.vacation?.active ? data.vacation : null;
+  const busy = state.vacationBusy;
+  // Tijdens een aanroep toont de schakelaar de bedoeling, niet de oude
+  // serverstand — anders springt hij terug tot de refresh binnen is.
+  let on = Boolean(vacation);
+  if (busy === 'start') on = true;
+  else if (busy === 'end') on = false;
+  // Het concept wint van de server; '' is "bewust leeggemaakt".
+  const untilValue = state.vacationDraft ?? vacation?.until ?? '';
+  const unsaved = Boolean(vacation) && untilValue !== (vacation.until ?? '');
+  // Schakelaar en datumveld bewust in aparte labels: een tik op de datum
+  // mag de vakantie niet aan- of uitzetten.
+  return html`
+    <section class="vacation">
+      <h2 class="section-title">Vakantie</h2>
+      <label class="check standalone">
+        <input type="checkbox" role="switch" name="vacation-toggle"
+          ${on ? 'checked' : ''} ${busy ? 'disabled' : ''}>
+        Vakantiemodus
+      </label>
+      <label class="field">Tot en met (optioneel)
+        <input type="date" name="vacation-until" min="${data.today}"
+          value="${untilValue}" ${busy ? 'disabled' : ''}>
+      </label>
+      <button type="button" class="secondary vacation-save" data-action="vacation-save-until"
+        ${unsaved ? '' : 'hidden'} ${busy ? 'disabled' : ''}>Datum opslaan</button>
+      <p class="field-hint" data-vacation-hint>${vacationExplain(vacation, untilValue, data.today)}</p>
+    </section>`;
 }
 
 function themeSection(themes) {
@@ -163,6 +233,7 @@ export function renderManage(state) {
     <header class="page-header">
       <h1 class="page-count">Beheer</h1>
     </header>
+    ${vacationSection(state)}
     <section>
       <h2 class="section-title">Taken</h2>
       <ul class="manage-rows">${data.chores.map(choreRow)}</ul>

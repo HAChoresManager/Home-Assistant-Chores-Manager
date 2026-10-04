@@ -23,6 +23,12 @@ overslag is geen voltooiing (geen minuten, geen ranglijst). Per item exact
 skip_id, chore_id, name, icon, skipped_by (weergavenaam, of None als niet
 bekend is wie oversloeg) en skipped_at.
 
+Tijdens de vakantiemodus (v2.6) is de state 0 en tasks_today leeg: er is
+niets aan de beurt en niets loopt achter (db.overview). Het attribuut
+vacation is dan {active, start_date, until} — dezelfde vorm als in de
+WS-state — en anders None. completed_today, persons en de recente lijsten
+blijven gewoon wat er gedaan is.
+
 Net-afgevinkte taken staan RECENT_DONE_SECONDS lang als "done" in
 tasks_today. Omdat er dan geen mutatie (en dus geen SIGNAL_UPDATED) volgt,
 plant de sensor na elke update zelf één verversing voor het moment dat de
@@ -136,6 +142,8 @@ class ChoresOverviewSensor(SensorEntity):
             "recent_completions": data["recent_completions"],
             # laatste acht overslagen, voor revert_skip vanaf een kaart (v2.5)
             "recent_skips": data["recent_skips"],
+            # actieve vakantie {active, start_date, until} of None (v2.6)
+            "vacation": data["vacation"],
         }
         self._schedule_done_refresh(data["tasks_today"])
         if write:

@@ -1,5 +1,7 @@
-"""De twaalf WS-commando's uit §2.3 (negen uit fase 2b, chore/restore uit
-fase 5, chore/skip en skip/revert uit v2.5).
+"""De vijftien WS-commando's uit §2.3 (negen uit fase 2b, chore/restore uit
+fase 5, chore/skip en skip/revert uit v2.5, vacation/start, /update en /end
+uit v2.6). De drie vakantiecommando's en hun kernen staan in vacation.py;
+COMMANDS hieronder neemt ze mee, zodat de registratie op één plek blijft.
 
 Authenticatie is de standaard van websocket_api: elke ingelogde gebruiker mag
 ze aanroepen, geen admin vereist — Laura en Noud moeten kunnen afvinken. Alle
@@ -13,12 +15,17 @@ events dragen alleen de reden, geen payload.
 
 Foutregel voor de hele HA-laag: een ValueError (StoreError) uit de datalaag
 wordt hier "invalid_input" met de Nederlandse tekst, en in een service een
-ServiceValidationError. Een kale exceptie mag HA nooit bereiken — die wordt
-"Unknown error" met een traceback in de log, en de snackbar kan er niets mee.
+ServiceValidationError. Een VacationActiveError (afvinken, overslaan,
+snoozen of terugdraaien tijdens de vakantiemodus) krijgt de eigen code
+"vacation_active", zodat het panel hem kan herkennen; in een service blijft
+het een ServiceValidationError met dezelfde tekst. Een kale exceptie mag HA
+nooit bereiken — die wordt "Unknown error" met een traceback in de log, en
+de snackbar kan er niets mee.
 
-Een paar kernen zijn gedeeld met de services in __init__.py, zodat panel en
-Lovelace-kaart precies hetzelfde doen: async_undo_last, async_skip,
-async_revert_skip en resolve_caller.
+Een paar kernen zijn gedeeld met de services in __init__.py, zodat panel,
+Lovelace-kaart en automatisering precies hetzelfde doen: async_undo_last,
+async_skip, async_revert_skip en resolve_caller. De drie vakantiekernen
+(ook voor de schakelaar in switch.py) staan in vacation.py.
 """
 from __future__ import annotations
 
@@ -54,6 +61,8 @@ from .db.completions import complete_chore, undo_completion
 from .db.overview import build_state
 from .db.skips import revert_skip, skip_chore
 from .db.subtasks import set_subtasks
+from .db.vacations import VacationActiveError
+from .vacation import VACATION_COMMANDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +74,19 @@ def _path(hass: HomeAssistant) -> str:
 @callback
 def _notify(hass: HomeAssistant, reason: str, **extra) -> None:
     async_dispatcher_send(hass, SIGNAL_UPDATED, {"reason": reason, **extra})
+
+
+class VacationActiveServiceError(ServiceValidationError):
+    """Een VacationActiveError uit async_undo_last of async_revert_skip
+    (die altijd een ServiceValidationError opwerpen). Een service toont de
+    tekst; WS herkent de klasse en stuurt "vacation_active"."""
+
+
+def _error_code(err: Exception) -> str:
+    """De WS-foutcode bij een weigering, volgens de foutregel hierboven."""
+    if isinstance(err, (VacationActiveError, VacationActiveServiceError)):
+        return "vacation_active"
+    return "invalid_input"
 
 
 @websocket_api.websocket_command({vol.Required("type"): "chores_manager/state"})
@@ -92,7 +114,7 @@ async def ws_complete(hass, connection, msg):
             complete_chore, _path(hass), msg["chore_id"], msg["assignee_id"],
             now.date(), now.isoformat(), msg.get("subtask_id"), msg.get("note"))
     except ValueError as err:
-        connection.send_error(msg["id"], "invalid_input", str(err))
+        connection.send_error(msg["id"], _error_code(err), str(err))
         return
     hass.data[DOMAIN][DATA_UNDO] = {
         "kind": UNDO_KIND_COMPLETION, "undo": undo, "at": time.monotonic()}
@@ -125,7 +147,8 @@ async def async_undo_last(hass: HomeAssistant) -> str:
     bewakingen als "Toch niet overslaan": is er binnen het venster al aan de
     taak gewerkt of is zijn datum gewijzigd, dan weigert die. Ook
     undo_completion kan weigeren (de taak is daarna via snooze overgeslagen).
-    De reden komt dan als ServiceValidationError terug.
+    De reden komt dan als ServiceValidationError terug; tijdens de
+    vakantiemodus (buffer normaal al leeg) als VacationActiveServiceError.
 
     De buffer wordt vóór het wachten op de executor geleegd: deze undo heeft
     hem dan "in handen". Een actie die intussen (op een ander apparaat) een
@@ -148,6 +171,8 @@ async def async_undo_last(hass: HomeAssistant) -> str:
                 revert_skip, _path(hass), undo["skip_id"])
         else:
             await hass.async_add_executor_job(undo_completion, _path(hass), undo)
+    except VacationActiveError as err:
+        raise VacationActiveServiceError(str(err)) from err
     except ValueError as err:
         raise ServiceValidationError(str(err)) from err
     except Exception:
@@ -164,15 +189,17 @@ async def async_undo_last(hass: HomeAssistant) -> str:
 async def ws_undo(hass, connection, msg):
     """Laatste voltooiing of overslag terugdraaien; zie async_undo_last.
 
-    Twee foutcodes: "nothing_to_undo" als de buffer leeg of verlopen is,
-    "invalid_input" als het terugdraaien geweigerd wordt (een overslag
-    waaraan al gewerkt is, een voltooiing waarna overgeslagen is). De tekst
-    is in beide gevallen de Nederlandse reden.
+    Foutcodes: "nothing_to_undo" als de buffer leeg of verlopen is,
+    "vacation_active" tijdens de vakantiemodus, en "invalid_input" als het
+    terugdraaien geweigerd wordt (een overslag waaraan al gewerkt is, een
+    voltooiing waarna overgeslagen is). De tekst is steeds de Nederlandse
+    reden.
     """
     try:
         chore_id = await async_undo_last(hass)
     except ServiceValidationError as err:
-        code = "nothing_to_undo" if str(err) == NOTHING_TO_UNDO else "invalid_input"
+        code = ("nothing_to_undo" if str(err) == NOTHING_TO_UNDO
+                else _error_code(err))
         connection.send_error(msg["id"], code, str(err))
         return
     connection.send_result(msg["id"], {"chore_id": chore_id})
@@ -227,13 +254,17 @@ async def async_revert_skip(hass: HomeAssistant, skip_id: int) -> dict:
 
     Gedeeld door WS skip/revert en de service chores_manager.revert_skip.
     Een weigering (al aan gewerkt, opnieuw overgeslagen, datum gewijzigd,
-    onbekend id) wordt een ServiceValidationError met de reden. Wijst de
-    undo-buffer naar deze overslag, dan vervalt hij: anders zou undo_last
-    daarna een overslag terugdraaien die er niet meer is.
+    onbekend id) wordt een ServiceValidationError met de reden; tijdens de
+    vakantiemodus de subklasse VacationActiveServiceError, zodat WS er
+    "vacation_active" van kan maken. Wijst de undo-buffer naar deze
+    overslag, dan vervalt hij: anders zou undo_last daarna een overslag
+    terugdraaien die er niet meer is.
     """
     try:
         result = await hass.async_add_executor_job(
             revert_skip, _path(hass), skip_id, dt_util.now().isoformat())
+    except VacationActiveError as err:
+        raise VacationActiveServiceError(str(err)) from err
     except ValueError as err:
         raise ServiceValidationError(str(err)) from err
     domain_data = hass.data[DOMAIN]
@@ -265,7 +296,7 @@ async def ws_chore_skip(hass, connection, msg):
     try:
         result = await async_skip(hass, msg["chore_id"], assignee_id)
     except ValueError as err:
-        connection.send_error(msg["id"], "invalid_input", str(err))
+        connection.send_error(msg["id"], _error_code(err), str(err))
         return
     connection.send_result(msg["id"], {
         "chore_id": msg["chore_id"],
@@ -286,7 +317,7 @@ async def ws_skip_revert(hass, connection, msg):
     try:
         result = await async_revert_skip(hass, msg["skip_id"])
     except ServiceValidationError as err:
-        connection.send_error(msg["id"], "invalid_input", str(err))
+        connection.send_error(msg["id"], _error_code(err), str(err))
         return
     connection.send_result(msg["id"], {
         "chore_id": result["chore_id"], "next_due": result["next_due"]})
@@ -356,7 +387,7 @@ async def ws_chore_snooze(hass, connection, msg):
             snooze_chore, _path(hass), msg["chore_id"], msg["mode"],
             now.date(), now.isoformat())
     except ValueError as err:
-        connection.send_error(msg["id"], "invalid_input", str(err))
+        connection.send_error(msg["id"], _error_code(err), str(err))
         return
     _notify(hass, "snooze", chore_id=msg["chore_id"])
     connection.send_result(msg["id"], {
@@ -431,6 +462,8 @@ COMMANDS = (
     ws_chore_save, ws_chore_delete, ws_chore_snooze, ws_chore_restore,
     ws_chore_skip, ws_skip_revert,
     ws_assignee_save, ws_assignee_delete, ws_subscribe,
+    # vacation/start, /update en /end staan in vacation.py
+    *VACATION_COMMANDS,
 )
 
 

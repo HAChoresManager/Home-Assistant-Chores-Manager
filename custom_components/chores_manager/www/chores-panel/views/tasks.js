@@ -4,6 +4,11 @@
  * Dit is de plek waar je vooruitkijkt — wat op Vandaag bewust ontbreekt. Per
  * taak de volgende vervaldatum en het planningsetiket (via ctx.view 'tasks'
  * in de taakkaart); checklists staan hier ingeklapt achter "0 / 4 stappen".
+ *
+ * Tijdens de vakantiemodus loopt er niets achter en is er niets aan de
+ * beurt, dus geen indeling op urgentie: één sectie "Staat stil", op
+ * vervaldatum, met gedimde kaarten zonder actie (ctx.paused). De datum is
+ * de huidige; verschoven wordt er pas bij het einde van de vakantie.
  */
 import { html } from '../core/html.js';
 import { taskCount } from '../core/format.js';
@@ -44,9 +49,24 @@ export function renderTasks(state) {
     expanded: state.expanded,
     todayIso: data.today,
     view: 'tasks',
+    paused: Boolean(data.vacation?.active),
   };
 
   const chores = data.chores.filter((c) => !state.pending.has(c.id));
+  const empty = chores.length === 0
+    ? html`<section class="all-done"><p>Nog geen taken. Maak de eerste aan bij Beheer.</p></section>`
+    : '';
+  const header = html`
+    <header class="page-header">
+      <h1 class="page-count">${taskCount(chores.length)}</h1>
+    </header>`;
+
+  if (ctx.paused) {
+    const byDue = [...chores].sort((a, b) => (a.next_due || '').localeCompare(b.next_due || '')
+      || a.name.localeCompare(b.name));
+    return html`${header}${section('Staat stil', byDue, ctx)}${empty}`;
+  }
+
   const weekEnd = endOfWeekIso(data.today);
   const dueToday = chores.filter((c) => c.urgency === 'due');
   const late = chores.filter((c) => c.urgency === 'grace' || c.urgency === 'urgent')
@@ -56,14 +76,10 @@ export function renderTasks(state) {
   const later = upcoming.filter((c) => c.next_due > weekEnd);
 
   return html`
-    <header class="page-header">
-      <h1 class="page-count">${taskCount(chores.length)}</h1>
-    </header>
+    ${header}
     ${section('Vandaag', dueToday, ctx)}
     ${section('Deze week', thisWeek, ctx)}
     ${section('Later', later, ctx)}
     ${section('Achterstand', late, ctx)}
-    ${chores.length === 0
-      ? html`<section class="all-done"><p>Nog geen taken. Maak de eerste aan bij Beheer.</p></section>`
-      : ''}`;
+    ${empty}`;
 }

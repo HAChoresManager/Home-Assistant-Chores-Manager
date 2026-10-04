@@ -5,13 +5,17 @@ Stand: 29-07-2026, na fase 5 — de refactor is afgerond; bijgewerkt op
 `revert_completion` en het attribuut `recent_completions`, en op
 03-10-2026 (v2.5.0) voor overslaan: tabel `skips`, de services `skip` en
 `revert_skip`, de WS-commando's `chore/skip` en `skip/revert` en het
-attribuut `recent_skips`. De oude app (1.x) is volledig verwijderd; dit
+attribuut `recent_skips`, en op 04-10-2026 (v2.6.0) voor de
+vakantiemodus: tabellen `vacations` en `vacation_frozen`, de schakelaar
+`switch.chores_vakantiemodus`, de services `start_vacation` en
+`end_vacation`, de WS-commando's `vacation/start|update|end` en het
+attribuut `vacation`. De oude app (1.x) is volledig verwijderd; dit
 document beschrijft alleen wat er draait. Ontwerpmotivatie:
 `REFACTOR_PLAN.md`.
 
 ## Database
 
-`<config>/chores_v2.db` (SQLite; de naam stamt uit de migratieperiode). Vijf
+`<config>/chores_v2.db` (SQLite; de naam stamt uit de migratieperiode). Zeven
 tabellen, DDL in `db/schema.py`:
 
 - `assignees` — id, naam, kleur, `include_in_leaderboard`, `active`,
@@ -27,7 +31,17 @@ tabellen, DDL in `db/schema.py`:
 - `skips` (sinds v2.5) — overslaglog: `chore_id`, `assignee_id` (wie
   oversloeg; `NULL` = onbekend), `skipped_at` (ISO met offset),
   `previous_next_due` en `new_next_due`. Geen voltooiing: telt niet mee voor
-  minuten, ranglijst, streak of weekhistorie.
+  minuten, ranglijst, streak of weekhistorie;
+- `vacations` (sinds v2.6) — vakantiehistorie: `start_date` (de dag waarop
+  de modus aanging), `until` (geplande laatste dag, tot en met; `NULL` =
+  open einde), `ended_on` (de dag van terugkomst; `NULL` = loopt nog) en
+  `created_at` (ISO-tijdstip van aanzetten). Een unieke gedeeltelijke
+  index (`idx_vacations_one_active`) laat hooguit één actieve rij toe. De
+  historie blijft staan: de streak heeft hem nodig;
+- `vacation_frozen` (sinds v2.6) — momentopname van `next_due` per actieve
+  taak bij het aanzetten (`vacation_id`, `chore_id`, `next_due`; beide
+  verwijzingen `ON DELETE CASCADE`). Alleen nodig tot het einde van de
+  vakantie, dan opgeruimd.
 
 Verwijderen is eerlijk: met historie wordt een taak of persoon gedeactiveerd
 (`active = 0`, historie blijft), zonder historie echt verwijderd. Overslagen
@@ -40,8 +54,9 @@ zetten (`chore/restore`). Checkliststappen zijn ook mét historie te bewerken:
 `completions.subtask_id` heeft sinds fase 5 `ON DELETE SET NULL`, dus een
 geschrapte stap laat zijn voltooiingen (en minuten) staan. Kleine
 schemamigraties draaien idempotent bij het opstarten (`db/schema.py`); een
-nieuwe tabel zoals `skips` komt er via `CREATE TABLE IF NOT EXISTS` vanzelf
-bij op een bestaande database, zonder migratiestap.
+nieuwe tabel zoals `skips`, `vacations` of `vacation_frozen` komt er via
+`CREATE TABLE IF NOT EXISTS` vanzelf bij op een bestaande database, zonder
+migratiestap.
 
 ## Planning (`scheduling/`)
 
@@ -53,6 +68,8 @@ Vijf planningstypen: `interval`, `weekly` (weekdagen), `monthly_day`,
 - `next_due_after_skip` — overslaan: de eerstvolgende geplande keer, gerekend
   vanaf de laatste van `next_due` en vandaag, alsof de taak op die dag gedaan
   was (een achterstand slaat zo in één keer door tot na vandaag);
+- `shift_after_vacation` — de nieuwe `next_due` bij het einde van een
+  vakantie (zie Vakantiemodus);
 - `roll_forward` — achterstand loopt niet op (§4.2): voorbij de
   prioriteitsgrens schuift een taak naar zijn eerstvolgende logische datum;
 - `overdue_days`, `urgency` (due/grace/urgent per prioriteit),
@@ -88,8 +105,9 @@ taak, er is geen voltooiingsregel (ook geen losse deelstap of tik) vanaf
 `skipped_at`, `next_due` staat nog op `new_next_due` en de taak is
 sindsdien niet gewijzigd (`updated_at` niet later dan `skipped_at`: geen
 bewerking, snooze of terugzetten uit het archief, ook niet als die
-toevallig op dezelfde datum uitkwam). Anders een Nederlandse foutmelding
-met de reden. Dezelfde voorwaarden bepalen `can_revert` in `skip_feed`, dus
+toevallig op dezelfde datum uitkwam). Sinds v2.6 ook: er staat geen
+vakantie aan en er is sinds het overslaan geen aangezet (zie
+Vakantiemodus). Anders een Nederlandse foutmelding met de reden. Dezelfde voorwaarden bepalen `can_revert` in `skip_feed`, dus
 hooguit de nieuwste overslag per taak kan terug; na het terugdraaien krijgt
 `updated_at` het tijdstip van de vorige overslag, zodat die op zijn beurt
 ook terug kan.
@@ -110,22 +128,103 @@ komende keer (en sluit dan ook de ronde van een komende checklist af),
 weigert nu een gearchiveerde taak, en vult de undo-buffer niet — snooze bood
 nooit undo; terugdraaien kan via `skip/revert`.
 
-## WebSocket-API (`websocket.py`)
+## Vakantiemodus (`db/vacations.py`, sinds v2.6)
 
-Twaalf commando's onder `chores_manager/*`, standaard-auth (geen admin):
+Aan = alle taken staan stil: er is niets aan de beurt, niets loopt achter en
+er gaan geen meldingen uit. De taken houden intussen hun echte `next_due`;
+pas bij het einde schuiven ze op.
+
+- **Aanzetten** (`start_vacation`): `start_date` = vandaag, `until`
+  optioneel (vandaag of later; `None` of `""` = open einde, elke ISO-datum
+  wordt als `JJJJ-MM-DD` opgeslagen). Staat er al een vakantie aan, dan een
+  fout ("Vakantiemodus staat al aan.") — ook bij twee gelijktijdige
+  aanroepen, dankzij de unieke index. Bij het aanzetten komt de
+  momentopname van alle actieve taken in `vacation_frozen`.
+- **Einddatum wijzigen** (`update_vacation`): `until` wijzigen (op of na
+  vandaag én de startdag) of wissen.
+- **Einde** (`end_vacation`): resume = de dag van terugkomst (handmatig:
+  vandaag); dagen = resume − `start_date`. De eerste schrijfactie is de
+  bewaking (`ended_on` alleen zetten als hij nog leeg is), zodat een
+  tweede einde — dubbele tik, schakelaar en panel tegelijk, de nachtjob
+  ernaast — een fout geeft en niets nog eens opschuift. Per actieve taak
+  (`scheduling.shift_after_vacation`):
+  - een vakantie van nul dagen (aan en uit op dezelfde dag) verschuift
+    niets; per ongeluk aan-uit tikken wist zo geen achterstand;
+  - `interval`, met `next_due` nog gelijk aan de momentopname:
+    `next_due` + dagen — de taak staat er bij terugkomst precies zo voor als
+    bij vertrek, ook een achterstand blijft even groot;
+  - `interval`, tijdens de vakantie nieuw, bewerkt naar een andere datum,
+    teruggezet uit het archief of teruggedraaid: de laatste van `next_due`
+    en resume — wat tijdens de vakantie "nu" werd, is bij terugkomst aan de
+    beurt, een bewust gekozen latere datum blijft;
+  - kalendertypen (`daily`, `weekly`, `monthly`, `yearly`): ligt `next_due`
+    vóór resume, dan de eerste geplande keer op of na resume (dezelfde
+    semantiek als bij een nieuwe taak); anders ongewijzigd. Een
+    kalenderachterstand van vóór de vakantie vervalt bewust.
+
+  De beurt (`rotation_index`) blijft staan; gearchiveerde taken schuiven
+  niet. De momentopname gaat daarna weg.
+- **Automatisch einde** (`end_due_vacation`): een vakantie met een `until`
+  die vóór vandaag ligt, eindigt met resume = `until` + 1 — ook als HA
+  dagen uit stond; de dagen daarna waren gewone tijd, en de rol die erop
+  volgt haalt ze in. Om 03:00 vóór de rol en bij het opstarten (zie
+  Scheduler).
+
+Tijdens de vakantie weigert de datalaag zelf, binnen de
+schrijftransactie, met `VacationActiveError` ("Vakantiemodus staat aan;
+afvinken en overslaan kan weer na de vakantie."): afvinken (ook een
+deelstap of tik), overslaan, snoozen (beide modi), een overslag
+terugdraaien en een voltooiing ongedaan maken (undo). Zo krijgt elk pad —
+WS, service, "Klaar"-knop — hetzelfde gedrag. Een overslag van vóór een
+vakantie kan ook ná de vakantie niet meer terug (anders kwam een bewust
+vervallen kalenderachterstand terug); `can_revert` volgt. Een vakantie van
+nul dagen telt daarbij niet: die heeft niets stilgezet. De nachtelijke rol
+(`roll_all_forward`) doet niets; de vakantiecheck en de rol staan in één
+schrijftransactie, zodat een vakantie die precies tijdens de rol aangaat er
+helemaal vóór of helemaal ná valt. Niet geblokkeerd: `revert_completion` en
+beheer (taken en personen opslaan, verwijderen, terugzetten) — datums die
+daardoor tijdens de vakantie ontstaan, vangt de momentopname op (terugzetten
+uit het archief haalt de taak uit de momentopname: de verse datum is een
+nieuwe start). De undo-buffer wordt bij het aanzetten geleegd en kan
+tijdens de vakantie niet opnieuw vullen.
+
+Aanzetten, wijzigen en beëindigen lezen en schrijven in één
+schrijftransactie (`BEGIN IMMEDIATE`), net als afvinken en overslaan: een
+afvinktik van een ander apparaat valt helemaal vóór of helemaal ná het
+aanzetten. Of een vakantie ná een overslag is aangezet, wordt op tijdstip
+vergeleken (`julianday()` op `created_at` en `skipped_at`), niet als
+string.
+
+Streaks: een week die (deels) in een vakantie viel, is neutraal — hij
+verlengt de streak niet en breekt hem niet, ook niet als er voltooiingen in
+staan (`vacation_weeks`; een beëindigde vakantie beslaat `start_date` tot
+en met de dag vóór `ended_on`, een actieve tot en met vandaag, of tot en
+met `until` als die eerder ligt; aan en uit op dezelfde dag maakt geen week
+neutraal).
+Ranglijst, weektotalen en weekhistorie blijven gewoon wat er gedaan is.
+
+## WebSocket-API (`websocket.py`, `vacation.py`)
+
+Vijftien commando's onder `chores_manager/*`, standaard-auth (geen admin):
 `state`, `complete`, `undo`, `chore/save`, `chore/delete`, `chore/snooze`,
 `chore/restore` (gearchiveerde taak terug, met verse vervaldatum),
 `chore/skip`, `skip/revert`, `assignee/save`, `assignee/delete`,
-`subscribe`. Mutaties sturen `SIGNAL_UPDATED` over de dispatcher;
-`subscribe`-abonnees krijgen een event met alleen de reden en halen zelf
-verse staat op via `state`.
+`vacation/start`, `vacation/update`, `vacation/end`, `subscribe`. De drie
+vakantiecommando's en hun kernen staan in `vacation.py`; `websocket.py`
+registreert ze mee.
+Mutaties sturen `SIGNAL_UPDATED` over de dispatcher; `subscribe`-abonnees
+krijgen een event met alleen de reden en halen zelf verse staat op via
+`state`.
 
 - `state` geeft naast taken, personen, ranglijst en `feed` (alleen
   voltooiingen; Vandaag gebruikt hem zo) sinds v2.5 ook `skips` (het
   overslaglog, nieuwste eerst, maximaal honderd, met `can_revert` per regel)
   en `activity_since`: het tijdstip vanaf waar de gemengde tijdlijn van
   voltooiingen en overslagen compleet is, of `null`. Activiteit laat oudere
-  regels weg, zodat er geen gat in de menging zit.
+  regels weg, zodat er geen gat in de menging zit. Sinds v2.6 ook
+  `vacation`: `{active: true, start_date, until}` van de lopende vakantie,
+  of `null`. De taken houden tijdens de vakantie hun echte velden (Alles
+  toont de huidige, nog niet verschoven datum).
 - `chore/skip` — `chore_id`, optioneel `assignee_id`. Zonder `assignee_id`
   bepaalt de server wie oversloeg via de koppeling (`ha_user_id`) van de
   ingelogde gebruiker; is die aan niemand gekoppeld, dan blijft het
@@ -139,23 +238,42 @@ verse staat op via `state`.
   `const.py`). Een voltooiing gaat terug via de momentopname van vóór het
   afvinken, een overslag via `revert_skip` met dezelfde bewakingen. De kern
   (`async_undo_last`) deelt `undo` met de service `undo_last`. Foutcodes:
-  `nothing_to_undo` (buffer leeg of verlopen) en `invalid_input` (een
+  `nothing_to_undo` (buffer leeg of verlopen), `invalid_input` (een
   overslag die niet meer terug kan, of een voltooiing waarna de taak via
-  `chore/snooze` 'skip' is overgeslagen; de buffer vervalt dan).
+  `chore/snooze` 'skip' is overgeslagen; de buffer vervalt dan) en
+  `vacation_active`. Die laatste komt in de praktijk alleen voor bij een
+  undo die al liep op het moment dat de vakantie aanging: het aanzetten
+  leegt de buffer, en de datalaag weigert het terugzetten tijdens de
+  vakantie ook zelf.
+- `vacation/start` — optioneel `until` (`JJJJ-MM-DD` of `null`);
+  resultaat `{vacation}` (de vorm uit `state`). Leegt de undo-buffer.
+- `vacation/update` — `until` (verplicht; `null` wist de einddatum);
+  resultaat `{vacation}`.
+- `vacation/end` — zonder velden; resume is vandaag. Resultaat
+  `{ended_on, days, changed}`.
+
+  Alle drie strikt (het panel wil de fout zien): al aan, al uit of een
+  `until` in het verleden geeft `invalid_input`. Signaal met reason
+  `vacation`.
 
 Een weigering uit de datalaag komt als `invalid_input` met de Nederlandse
 reden terug, in een service als `ServiceValidationError` — nooit als kale
-exceptie.
+exceptie. De uitzondering: tijdens de vakantiemodus geven `complete`,
+`chore/skip`, `skip/revert` en `chore/snooze` de eigen foutcode
+`vacation_active`.
 
 ## Sensor (`sensor.py`)
 
 `sensor.chores_overview` — state = openstaande taken vandaag (due +
-achterstallig). Geen polling: updates via de dispatcher. Het unique_id is
-dat van de oude 1.x-sensor, zodat de entiteit dezelfde naam behield.
+achterstallig); tijdens de vakantiemodus 0. Geen polling: updates via de
+dispatcher. Het unique_id is dat van de oude 1.x-sensor, zodat de entiteit
+dezelfde naam behield.
 
 Attributen, gedocumenteerd voor Lovelace-gebruik:
 
-- `due_today`, `overdue`, `completed_today`, `week_minutes_total` — tellers;
+- `due_today`, `overdue`, `completed_today`, `week_minutes_total` — tellers
+  (tijdens de vakantiemodus zijn `due_today` en `overdue` 0; wat er gedaan
+  is, telt gewoon);
 - `persons` — dict per persoon-id: `name`, `minutes`, `tasks`, `streak`,
   `in_leaderboard`, `color`. De sensor toont iedereen die iets deed;
   filteren op de ranglijstvlag is aan de afnemer, de kleur is er om namen
@@ -188,13 +306,47 @@ Attributen, gedocumenteerd voor Lovelace-gebruik:
   Per item precies: `skip_id`, `chore_id`, `name`, `icon`, `skipped_by`
   (weergavenaam, of `null` als niet bekend is wie oversloeg) en
   `skipped_at` (ISO, lokale tijd met offset). Met `skip_id` roept een kaart
-  `chores_manager.revert_skip` aan.
+  `chores_manager.revert_skip` aan;
+- `vacation` (sinds v2.6) — de lopende vakantie in dezelfde vorm als in de
+  WS-state: `{active: true, start_date, until}` (`until` is `null` bij een
+  open einde), of `null` als de vakantiemodus uitstaat. Tijdens de vakantie
+  is `tasks_today` leeg; `persons`, `recent_completions` en `recent_skips`
+  blijven gewoon gevuld.
+
+## Schakelaar (`switch.py`, sinds v2.6)
+
+`switch.chores_vakantiemodus` (naam "Chores Vakantiemodus", icoon
+`mdi:palm-tree`) — aan = de vakantiemodus staat aan. Attributen
+`start_date` en `until` (beide `null` als hij uitstaat). Geen polling: de
+schakelaar leest zijn stand bij elk dispatchersignaal opnieuw uit de
+database (in de executor), dus hij volgt ook een vakantie die via het
+panel, een service of het automatische einde wijzigt.
+
+Aanzetten start een vakantie zonder einddatum, uitzetten beëindigt hem met
+vandaag als dag van terugkomst. Net als de services idempotent: aanzetten
+terwijl hij al aanstaat of uitzetten terwijl hij al uitstaat doet niets.
+Na het schakelen (ook na een weigering) leest de schakelaar zijn stand
+meteen zelf opnieuw, vóórdat `switch.turn_on`/`turn_off` terugkeert: een
+script dat direct daarna de stand controleert of togglet, ziet al de
+nieuwe stand.
 
 ## Scheduler
 
-Dagelijks 03:00 lokale tijd: `roll_forward` over alle taken, daarna een
-dispatchersignaal. Handmatig triggeren kan met de service
-`chores_manager.roll_forward`.
+Dagelijks 03:00 lokale tijd, in twee stappen die elkaar niet tegenhouden
+(elk met een eigen foutafhandeling):
+
+1. een verlopen vakantie beëindigen (`until` vóór vandaag; resume =
+   `until` + 1, zie Vakantiemodus), met een eigen dispatchersignaal;
+2. `roll_forward` over alle taken, daarna een dispatchersignaal. Tijdens
+   de vakantiemodus verschuift de rol niets.
+
+Hetzelfde einde wordt bij het opstarten van de integratie gecontroleerd
+(HA kan over de einddatum heen uit hebben gestaan); is er daarbij een
+vakantie beëindigd, dan draait meteen ook de rol, anders bleven
+kalendertaken tot 03:00 op een verouderde achterstand staan. Een fout
+daarbij wordt gelogd en houdt het opstarten niet tegen. Handmatig
+triggeren kan met de service `chores_manager.roll_forward` (dezelfde twee
+stappen).
 
 ## Meldingen (`notify.py`, fase 4)
 
@@ -211,6 +363,11 @@ Alleen naar personen met een `notify_service` én `notifications_enabled`.
   `chores_manager_complete:<chore_id>:<assignee_id>`. De listener vinkt af
   met dezelfde db-functie, undo-buffer en push als het panel.
 
+Tijdens de vakantiemodus gaat er niets uit: de ochtendmelding heeft niets
+te melden (de meldingsdata zijn dan leeg) en de weeksamenvatting slaat
+over. Een tik op "Klaar" in een oudere melding vinkt niets af en wordt
+alleen op info-niveau gelogd; die melding zelf blijft op de telefoon staan.
+
 Tijden staan als constanten in `const.py` (fase 5 kan ze instelbaar maken).
 
 ## Frontend (`www/chores-panel/`)
@@ -220,7 +377,9 @@ Lovelace-kaart. Vier weergaven achter tabs, actieve weergave in de URL-hash.
 Kernmechanieken:
 
 - één toestandsobject (`core/store.js`) met subscribe; elke set() is één
-  render, behalve als er een formulier openstaat;
+  render, behalve als er een formulier openstaat, of bij een stille set
+  (`{quiet: true}`): die werkt alleen de toestand bij, voor invoer die de
+  DOM al toont (het concept in het vakantiedatumveld);
 - alle rendering via de escapende `html`-helper (`core/html.js`);
 - event delegation op de shadow root; opnieuw renderen sloopt geen listeners;
 - optimistisch afvinken met "Ongedaan maken"; credits los van toewijzing;
@@ -234,6 +393,16 @@ Kernmechanieken:
 - de mutaties (afvinken, overslaan, terugdraaien, opslaan, verwijderen)
   staan met hun terugkoppeling in `actions.js`; het element zelf houdt
   lifecycle, routing, render, delegatie, thema's en de snackbar;
+- vakantiemodus (sinds v2.6): bovenaan Beheer een sectie "Vakantie" met een
+  schakelaar "Vakantiemodus", een optioneel datumveld "Tot en met" (met
+  "Datum opslaan" zolang een gekozen datum afwijkt van een lopende
+  vakantie) en een uitleg wat er bij terugkomst gebeurt. Een gekozen datum
+  die nog niet bij de server ligt, staat in de store als `vacationDraft`.
+  Uitzetten meldt hoeveel taken er verschoven. Vandaag toont tijdens de
+  vakantie een rustige banner ("Vakantiemodus sinds 3 oktober — tot en met
+  17 oktober") in plaats van taken; bijdragebalk en laatste activiteit
+  blijven. Alles toont één sectie "Staat stil", op datum, met gedimde
+  kaarten zonder afvinkknoppen en het label "staat stil";
 - bij smal scherm (`narrow` van HA) een hamburger die `hass-toggle-menu`
   dispatcht;
 - themakeuze per apparaat (`core/theme.js`): variabelen van een HA-thema als
@@ -247,9 +416,12 @@ Lovelace-resource-URL.
 
 ## Services
 
-- `chores_manager.roll_forward` — de nachtelijke rol nu.
+- `chores_manager.roll_forward` — de nachtelijke rol nu (eerst een
+  verlopen vakantie beëindigen, dan de rol; zie Scheduler). Tijdens de
+  vakantiemodus verschuift er niets.
 - `chores_manager.send_daily_summary` — de ochtendmelding nu.
-- `chores_manager.send_weekly_summary` — de weeksamenvatting nu.
+- `chores_manager.send_weekly_summary` — de weeksamenvatting nu. Beide
+  meldingsservices versturen tijdens de vakantiemodus niets.
 - `chores_manager.mark_done` — taak afvinken vanaf een Lovelace-dashboard,
   zonder het panel te openen. Velden: `chore_id` (verplicht, uit
   `tasks_today`) en `assignee_id` (optioneel; leeg of `null` = de
@@ -296,9 +468,27 @@ Lovelace-resource-URL.
   `recent_skips`). Dunne laag om `async_revert_skip`, de kern van
   `skip/revert`; weigert met een `ServiceValidationError` als terugdraaien
   niet (meer) kan (zie Overslaan).
+- `chores_manager.start_vacation` (sinds v2.6) — vakantiemodus aan, met
+  vandaag als startdag. Veld: `until` (optioneel, een datum: de laatste
+  vakantiedag, vandaag of later; leeg of `null` = geen einddatum, handig
+  voor een getemplatete automatisering). Idempotent voor automatiseringen: staat
+  de modus al aan, dan past een opgegeven `until` de einddatum aan en
+  gebeurt er verder niets. Aanzetten leegt de undo-buffer. Dunne laag om
+  `async_start_vacation` in `vacation.py`, de kern van `vacation/start`;
+  signaal met reason `vacation`.
+- `chores_manager.end_vacation` (sinds v2.6) — vakantiemodus uit, met
+  vandaag als dag van terugkomst; de taken schuiven op (zie
+  Vakantiemodus). Zonder velden. Staat de modus al uit, dan gebeurt er
+  niets (info-log). Dunne laag om `async_end_vacation`, de kern van
+  `vacation/end`.
+
+Tijdens de vakantiemodus weigeren `mark_done`, `skip` en `revert_skip` met
+een `ServiceValidationError` ("Vakantiemodus staat aan; …"); `undo_last`
+heeft dan niets terug te draaien, `revert_completion` werkt gewoon.
 
 Meer services zijn er niet; alle overige bediening loopt via de
 WebSocket-API — `mark_done`, `undo_last`, `revert_completion`, `skip` en
 `revert_skip` zijn de uitzonderingen, omdat Lovelace alleen services kan
-aanroepen. De tijdelijke `seed` is in fase 5 verwijderd, met
-`seed.py` erbij.
+aanroepen, en `start_vacation` en `end_vacation`, voor automatiseringen
+(bijvoorbeeld bij vertrek en thuiskomst). De tijdelijke `seed` is in fase 5
+verwijderd, met `seed.py` erbij.

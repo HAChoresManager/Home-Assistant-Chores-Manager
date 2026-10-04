@@ -33,6 +33,20 @@
  *                  'anyone'-taken via de ha_user_id-koppeling (fase 4)
  *   haOptions {users, services} voor het personenformulier, vers gezet
  *             bij het openen ervan; null tot die tijd
+ *   vacationDraft  gekozen "tot en met" in Beheer die nog niet bij de server
+ *                  ligt: 'YYYY-MM-DD', '' (bewust leeggemaakt) of null (toon
+ *                  de serverwaarde). Hier en niet in de DOM, zodat een
+ *                  binnenkomende refresh de keuze niet wist
+ *   vacationBusy   false, of de bedoeling van de vakantie-aanroep die nu
+ *                  loopt: 'start' | 'end' | 'update'. Schakelaar, datumveld
+ *                  en "Datum opslaan" staan dan uit, en de schakelaar toont
+ *                  de bedoeling (niet de oude serverstand) tot de nieuwe
+ *                  staat binnen is
+ *
+ * set(patch, { quiet: true }) werkt de toestand bij zonder de luisteraars
+ * te wekken — dus zonder render. Alleen voor invoer die de DOM al toont
+ * (het concept in het vakantiedatumveld): een render zou dat veld onder de
+ * vingers van de typende gebruiker vervangen.
  */
 
 let state = {
@@ -51,6 +65,8 @@ let state = {
   themes: null,
   currentUserId: null,
   haOptions: null,
+  vacationDraft: null,
+  vacationBusy: false,
 };
 
 const listeners = new Set();
@@ -60,8 +76,9 @@ export const store = {
     return state;
   },
 
-  set(patch) {
+  set(patch, { quiet = false } = {}) {
     state = { ...state, ...patch };
+    if (quiet) return;
     for (const listener of listeners) listener(state);
   },
 

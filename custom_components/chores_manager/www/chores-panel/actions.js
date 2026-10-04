@@ -14,9 +14,13 @@
  *
  * Foutteksten komen van de server (Nederlands, zie de HA-laag) en gaan
  * ongewijzigd de snackbar in — altijd via textContent, nooit als markup.
+ *
+ * De vakantie-acties onderaan zijn bewust níet optimistisch: de schakelaar
+ * staat uit (vacationBusy) tot de server antwoordt en de verse staat er is.
  */
 import { api } from './core/api.js';
 import { store } from './core/store.js';
+import { dayMonth, taskCount } from './core/format.js';
 import { isFinalAction } from './components/task-card.js';
 import { collectChoreForm } from './components/task-form.js';
 import { collectAssigneeForm } from './views/manage.js';
@@ -199,4 +203,74 @@ export async function submitForm(ctx, form) {
   } catch (err) {
     showFormError(ctx, form, errorText(err));
   }
+}
+
+/**
+ * Gemeenschappelijk verloop van de drie vakantie-aanroepen. Zolang de
+ * aanroep loopt staat in vacationBusy de bedoeling ('start', 'end' of
+ * 'update'): schakelaar en datumveld staan uit, zodat een snelle tweede
+ * tik geen "uit" verstuurt terwijl "aan" nog loopt, en de schakelaar toont
+ * die bedoeling in plaats van terug te springen naar de oude serverstand.
+ * De refresh draait in beide gevallen en nog binnen de busy-periode; pas
+ * daarna gaan busy en (na succes) het concept in één store-wijziging weg,
+ * zodat datum en uitleg niet even terugvallen. Bij een fout blijft het
+ * concept staan en toont de schakelaar na de refresh de serverstand.
+ */
+async function vacationCall(ctx, intent, call) {
+  if (store.get().vacationBusy) return;
+  store.set({ vacationBusy: intent });
+  let done = false;
+  try {
+    try {
+      const text = await call();
+      done = true;
+      ctx.showSnackbar(text);
+    } catch (err) {
+      ctx.showSnackbar(errorText(err), { error: true });
+    }
+    await ctx.refresh();
+  } finally {
+    store.set(done
+      ? { vacationBusy: false, vacationDraft: null }
+      : { vacationBusy: false });
+  }
+}
+
+/** Schakelaar aan: vakantie starten, tot en met de gekozen datum of open. */
+export async function vacationStart(ctx) {
+  await vacationCall(ctx, 'start', async () => {
+    const { vacationDraft, data } = store.get();
+    const until = vacationDraft || null;
+    await api.vacationStart(until);
+    return until
+      ? `Vakantiemodus aan · tot en met ${dayMonth(until, data?.today)}`
+      : 'Vakantiemodus aan';
+  });
+}
+
+/** "Datum opslaan": de "tot en met" van de lopende vakantie wijzigen of
+ * wissen (een leeggemaakt veld betekent: geen einddatum meer). */
+export async function vacationSaveUntil(ctx) {
+  const { vacationDraft } = store.get();
+  if (vacationDraft === null) return;
+  await vacationCall(ctx, 'update', async () => {
+    const until = vacationDraft || null;
+    await api.vacationUpdate(until);
+    return until
+      ? `Opgeslagen: tot en met ${dayMonth(until, store.get().data?.today)}`
+      : 'Opgeslagen: geen einddatum';
+  });
+}
+
+/** Schakelaar uit: vakantie beëindigen; de server verschuift de taken en
+ * de snackbar zegt hoeveel (enkelvoud/meervoud, "niets" bij nul). */
+export async function vacationEnd(ctx) {
+  await vacationCall(ctx, 'end', async () => {
+    const result = await api.vacationEnd();
+    const changed = Array.isArray(result?.changed)
+      ? result.changed.length : Number(result?.changed) || 0;
+    return changed > 0
+      ? `Vakantiemodus uit · ${taskCount(changed)} verschoven`
+      : 'Vakantiemodus uit · niets verschoven';
+  });
 }

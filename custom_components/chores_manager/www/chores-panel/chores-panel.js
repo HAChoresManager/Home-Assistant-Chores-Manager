@@ -43,11 +43,15 @@
  * formulier openstaat wordt een render overgeslagen, anders wist een
  * binnenkomend event je getypte werk. Veldwissels (planningstype, toewijzing,
  * deeltaken) togglen dan ook in de DOM via data-switch, zonder render.
+ * Losse bedieningselementen buiten een formulier (thema, vakantieschakelaar
+ * en -datum) houden hun waarde in de store en hun focus via _render: die
+ * onthoudt de name van het veld met focus en zet hem na het tekenen terug.
  *
- * Mutaties (afvinken, overslaan, terugdraaien, opslaan, verwijderen) staan
- * met hun terugkoppeling in actions.js; dit element houdt lifecycle,
- * routing, render, delegatie, thema's en de snackbar. De acties krijgen een
- * klein context-object (this._actions), niet het element zelf.
+ * Mutaties (afvinken, overslaan, terugdraaien, opslaan, verwijderen,
+ * vakantie aan/uit) staan met hun terugkoppeling in actions.js; dit element
+ * houdt lifecycle, routing, render, delegatie, thema's en de snackbar. De
+ * acties krijgen een klein context-object (this._actions), niet het element
+ * zelf.
  *
  * Versiediscipline (sinds 3c): de versie zit in het statische pad
  * (/chores_manager-panel-<versie>/), dus relatieve imports erven hem vanzelf
@@ -61,7 +65,7 @@ import { FOLLOW_HA, applyTheme, storedThemeName, storeThemeName } from './core/t
 import { renderToday } from './views/today.js';
 import { renderTasks } from './views/tasks.js';
 import { renderActivity } from './views/activity.js';
-import { renderManage } from './views/manage.js';
+import { renderManage, vacationExplain } from './views/manage.js';
 import * as actions from './actions.js';
 
 const TABS = [
@@ -136,6 +140,7 @@ class ChoresPanel extends HTMLElement {
     this._unsubStore = null;
     this._snackbarTimer = 0;
     this._renderedEditing = null;
+    this._focusPending = null;
     this._onClick = this._onClick.bind(this);
     this._onSubmit = this._onSubmit.bind(this);
     this._onChange = this._onChange.bind(this);
@@ -256,9 +261,13 @@ class ChoresPanel extends HTMLElement {
   async _refresh() {
     try {
       const data = await api.state(() => this._showConnecting());
-      store.set({
+      const patch = {
         loading: false, connecting: false, error: null, data, pending: new Set(),
-      });
+      };
+      // Tijdens de vakantie kan er niets gekozen of afgevinkt worden; een
+      // keuzerij die nog openstond toen hij begon, gaat dicht.
+      if (data?.vacation?.active) patch.chooser = null;
+      store.set(patch);
     } catch (err) {
       store.set({
         loading: false, connecting: false, error: err?.message || String(err),
@@ -285,8 +294,40 @@ class ChoresPanel extends HTMLElement {
     // bestaande inhoud blijft gewoon staan (geen foutscherm, herstelt zelf).
     const verbinden = state.connecting && state.data
       ? html`<p class="reconnect" role="status">Verbinden…</p>` : '';
+    const focusName = this._focusedName() || this._focusPending;
     setContent(this._app,
       html`${renderNav(state.view, state.narrow, this._cardMode)}${verbinden}${body}`);
+    this._restoreFocus(focusName);
+  }
+
+  /**
+   * De name van het veld met focus binnen de weergave, of null. innerHTML
+   * vervangt alle elementen, dus zonder dit verliest bv. de
+   * vakantieschakelaar zijn toetsenbordfocus bij elke push-render.
+   */
+  _focusedName() {
+    const active = this.shadowRoot?.activeElement;
+    if (!active || !this._app.contains(active)) return null;
+    return active.getAttribute('name') || null;
+  }
+
+  /**
+   * Focus terug op het nieuwe element met dezelfde name. Staat dat
+   * (tijdelijk) uit — de schakelaar tijdens een vakantie-aanroep — dan kan
+   * het geen focus krijgen; onthoud de name dan voor de render die het
+   * weer aanzet. Verdwijnt het element, dan vervalt de wens.
+   */
+  _restoreFocus(name) {
+    this._focusPending = null;
+    if (!name) return;
+    const target = [...this._app.querySelectorAll('[name]')]
+      .find((el) => el.getAttribute('name') === name);
+    if (!target) return;
+    if (target.disabled) {
+      this._focusPending = name;
+      return;
+    }
+    target.focus({ preventScroll: true });
   }
 
   /**
@@ -388,6 +429,8 @@ class ChoresPanel extends HTMLElement {
       await actions.undo(this._actions);
     } else if (action === 'revert-skip') {
       await actions.revertSkip(this._actions, Number(button.dataset.skip));
+    } else if (action === 'vacation-save-until') {
+      await actions.vacationSaveUntil(this._actions);
     } else if (action === 'retry') {
       store.set({ loading: true, error: null });
       await this._refresh();
@@ -434,11 +477,26 @@ class ChoresPanel extends HTMLElement {
     }
   }
 
-  /** Veldwissels in formulieren: tonen/verbergen zonder render (data-switch). */
-  _onChange(event) {
+  /**
+   * Wijzigingen in velden: de themakeuze, de vakantieschakelaar en
+   * -datum (Beheer), en veldwissels in formulieren — die laatste tonen en
+   * verbergen zonder render (data-switch).
+   */
+  async _onChange(event) {
     const select = event.target;
     if (select instanceof HTMLSelectElement && select.name === 'panel-theme') {
       this._setTheme(select.value);
+      return;
+    }
+    if (select instanceof HTMLInputElement && select.name === 'vacation-toggle') {
+      // De browser heeft het vinkje al omgezet; de actie zet het na de
+      // refresh weer op de stand van de server, ook bij een fout.
+      if (select.checked) await actions.vacationStart(this._actions);
+      else await actions.vacationEnd(this._actions);
+      return;
+    }
+    if (select instanceof HTMLInputElement && select.name === 'vacation-until') {
+      this._setVacationDraft(select);
       return;
     }
     if (!(select instanceof HTMLElement) || !select.dataset.switch) return;
@@ -447,6 +505,37 @@ class ChoresPanel extends HTMLElement {
       .forEach((group) => {
         group.hidden = group.dataset.switchValue !== select.value;
       });
+  }
+
+  /**
+   * Gekozen "tot en met" als concept in de store; de server hoort het pas
+   * bij de schakelaar of "Datum opslaan". Stil opgeslagen (geen render):
+   * Chromium vuurt change al bij elke geldige tussenstand tijdens het typen
+   * (de "2" van "24"), en een render zou het veld dan onder de vingers
+   * vervangen. Uitleg en "Datum opslaan" worden hier rechtstreeks in de DOM
+   * bijgewerkt (zoals data-switch); een latere render toont het concept uit
+   * de store. Alleen een half getypt jaar (0002, 0020, 0202) telt nog niet;
+   * een complete datum vóór vandaag wél — de uitleg zegt dan dat hij niet
+   * kan, en de server weigert hem met een duidelijke melding. Gelijk aan de
+   * serverwaarde → geen concept meer (dan ook geen "Datum opslaan").
+   */
+  _setVacationDraft(input) {
+    const value = input.value;
+    // Half ingevuld of half gewist (één segment leeg: value '' maar
+    // badInput) is nog geen keuze: het laatste complete concept blijft.
+    // Alleen een helemaal leeg veld betekent "geen einddatum".
+    if (input.validity?.badInput) return;
+    if (value && value.slice(0, 4) < '1000') return;
+    const { data } = store.get();
+    const vacation = data?.vacation?.active ? data.vacation : null;
+    const serverValue = vacation?.until ?? '';
+    const vacationDraft = value === serverValue ? null : value;
+    store.set({ vacationDraft }, { quiet: true });
+    const section = input.closest('section');
+    const hint = section?.querySelector('[data-vacation-hint]');
+    if (hint) hint.textContent = vacationExplain(vacation, value, data?.today);
+    const save = section?.querySelector('[data-action="vacation-save-until"]');
+    if (save) save.hidden = !(vacation && vacationDraft !== null);
   }
 
   /** Formulier verzenden: de opslaglogica zelf staat in actions.js. */

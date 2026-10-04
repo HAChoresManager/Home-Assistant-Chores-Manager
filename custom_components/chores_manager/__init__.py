@@ -3,16 +3,22 @@
 Sinds fase 3c is dit de enige app. De opzet is klein gehouden:
 
 - eigen SQLite-database (zie const.DB_FILENAME), alle toegang via db/;
-- twaalf WS-commando's (websocket.py) met push via de dispatcher;
+- vijftien WS-commando's (websocket.py, de drie vakantiecommando's in
+  vacation.py) met push via de dispatcher;
 - één overzichtssensor (sensor.py), zonder polling;
-- nachtelijke rol om 03:00 (scheduler.py);
+- de vakantieschakelaar switch.chores_vakantiemodus (switch.py, v2.6);
+- nachtelijke rol om 03:00 (scheduler.py), die eerst een verlopen vakantie
+  beëindigt — dat gebeurt ook bij het opstarten, hieronder;
 - meldingen om 08:00 en zondag 20:00 plus de "Klaar"-knop (notify.py, fase 4);
-- acht services: roll_forward en de twee meldingsservices als handmatige
-  trigger, en mark_done, undo_last, revert_completion, skip en revert_skip
+- tien services: roll_forward en de twee meldingsservices als handmatige
+  trigger, mark_done, undo_last, revert_completion, skip en revert_skip
   als dunne laag voor Lovelace-kaarten (die kunnen alleen services
-  aanroepen); afvinken zelf loopt via notify.async_complete, overslaan via
+  aanroepen), en start_vacation en end_vacation voor automatiseringen
+  (idempotent). Afvinken zelf loopt via notify.async_complete, overslaan via
   websocket.async_skip en websocket.async_revert_skip, terugdraaien binnen
-  het venster via websocket.async_undo_last — dezelfde kernen als het panel;
+  het venster via websocket.async_undo_last, de vakantie via
+  vacation.async_start_vacation en async_end_vacation — dezelfde kernen
+  als het panel;
 - het panel op /taken (panel.py), rechtstreeks geserveerd uit deze map.
 
 De oude app (React-dashboard onder www/, eigen tokens, twintig services) is
@@ -26,7 +32,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
@@ -52,7 +58,8 @@ from .notify import (
     async_setup_notifications,
 )
 from .panel import async_remove_panel, async_setup_panel
-from .scheduler import async_run_roll, async_setup_scheduler
+from .scheduler import async_check_vacation_end, async_run_roll, async_setup_scheduler
+from .vacation import async_end_vacation, async_start_vacation
 from .websocket import (
     async_register_websocket_commands,
     async_revert_skip,
@@ -88,9 +95,23 @@ REVERT_SKIP_SCHEMA = vol.Schema({
         vol.Coerce(int), vol.Range(min=1, max=2**63 - 1)),
 })
 
+def _optional_date(value):
+    """Leeg, alleen spaties of null = geen datum (open einde), anders een
+    datum. Een getemplatete automatisering levert voor "geen einddatum" vaak
+    een lege string; die mag niet als schemafout de hele run afbreken."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    return cv.date(value)
+
+
+START_VACATION_SCHEMA = vol.Schema({
+    # laatste vakantiedag (t/m); weggelaten, leeg of null = open einde
+    vol.Optional("until"): _optional_date,
+})
+
 SERVICES = ("roll_forward", "send_daily_summary", "send_weekly_summary",
             "mark_done", "undo_last", "revert_completion",
-            "skip", "revert_skip")
+            "skip", "revert_skip", "start_vacation", "end_vacation")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -98,6 +119,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     database_path = hass.config.path(DB_FILENAME)
     await hass.async_add_executor_job(create_database, database_path)
     _LOGGER.info("Chores Manager: database klaar op %s", database_path)
+
+    # HA kan uit hebben gestaan op de nacht dat de vakantie afliep. Een
+    # mislukt einde wordt gelogd en houdt de setup niet tegen. Is er een
+    # vakantie beëindigd, dan meteen de rol: anders staan kalendertaken tot
+    # 03:00 op een achterstand die bij het einde al had moeten vervallen.
+    if await async_check_vacation_end(hass, database_path):
+        try:
+            await async_run_roll(hass, database_path)
+        except HomeAssistantError:
+            pass  # al gelogd in async_run_roll; de nachtjob probeert het weer
 
     hass.data.setdefault(DOMAIN, {})
     domain_data = hass.data[DOMAIN]
@@ -121,7 +152,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_setup_panel(hass)
 
     async def handle_roll(call: ServiceCall) -> None:
-        """De nachtelijke rol nu draaien, zonder op 03:00 te wachten."""
+        """De nachtelijke rol nu draaien, zonder op 03:00 te wachten: eerst
+        een verlopen vakantie beëindigen, dan doorrollen (tijdens de
+        vakantie doet die niets)."""
         await async_run_roll(hass, database_path)
 
     async def handle_send_daily(call: ServiceCall) -> None:
@@ -239,6 +272,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.info("Chores Manager: overslag %d (%s) teruggedraaid via "
                      "revert_skip", skip_id, result["chore_id"])
 
+    async def handle_start_vacation(call: ServiceCall) -> None:
+        """Vakantiemodus aan vanaf vandaag, eventueel tot en met until.
+
+        Idempotent (strict=False), voor automatiseringen: staat hij al aan,
+        dan wordt een meegegeven until de nieuwe laatste dag, en zonder until
+        gebeurt er niets. Een until vóór vandaag wordt een
+        ServiceValidationError.
+        """
+        try:
+            await async_start_vacation(hass, call.data.get("until"), strict=False)
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+
+    async def handle_end_vacation(call: ServiceCall) -> None:
+        """Vakantiemodus uit, met vandaag als dag van terugkomst; de taken
+        schuiven op. Idempotent: staat hij al uit, dan gebeurt er niets."""
+        try:
+            await async_end_vacation(hass, strict=False)
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+
     hass.services.async_register(DOMAIN, "roll_forward", handle_roll)
     hass.services.async_register(DOMAIN, "send_daily_summary", handle_send_daily)
     hass.services.async_register(DOMAIN, "send_weekly_summary", handle_send_weekly)
@@ -251,6 +305,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "skip", handle_skip, schema=SKIP_SCHEMA)
     hass.services.async_register(
         DOMAIN, "revert_skip", handle_revert_skip, schema=REVERT_SKIP_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, "start_vacation", handle_start_vacation,
+        schema=START_VACATION_SCHEMA)
+    hass.services.async_register(DOMAIN, "end_vacation", handle_end_vacation)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _LOGGER.info("Chores Manager: setup compleet")

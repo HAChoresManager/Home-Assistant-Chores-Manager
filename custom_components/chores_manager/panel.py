@@ -28,7 +28,7 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-PANEL_VERSION = "2.5.0-20261003-overslaan"
+PANEL_VERSION = "2.6.0-20261004-vakantie"
 FRONTEND_URL_PATH = "taken"
 STATIC_URL = "/chores_manager-panel"
 _DATA_STATIC_REGISTERED = "panel_static_registered"

@@ -16,6 +16,10 @@ minutes een geheel getal is en het plan met gladde delingen rekent
 (duration / 4), krijgen tussenstappen duration // n minuten en de afrondende
 regel de rest. Een overgeslagen ronde (skips.py) wordt niet afgerond: die
 houdt alleen de minuten van wat er tot de overslag gedaan was.
+
+Tijdens de vakantiemodus (vacations.py) weigert afvinken met
+VacationActiveError; weken die (deels) in een vakantie vallen, tellen voor
+de streak als neutraal.
 """
 from __future__ import annotations
 
@@ -27,6 +31,7 @@ from typing import Optional
 from ..scheduling.calculator import advance_rotation, next_due_after_completion
 from .connection import get_connection
 from .errors import StoreError
+from .vacations import raise_if_vacation, vacation_weeks
 
 
 def week_start(day: date) -> date:
@@ -109,6 +114,10 @@ def complete_chore(
     instantie wordt gelezen en aangevuld zonder dat een overslag of het
     terugdraaien daarvan (skips.py, net zo vergrendeld) er tussendoor de
     grens verlegt — anders kon een stap dubbel in een ronde belanden.
+
+    Tijdens de vakantiemodus: VacationActiveError, gecontroleerd binnen
+    dezelfde transactie (een vakantie die net aangaat, valt dus helemaal
+    vóór of helemaal ná deze voltooiing).
     """
     with get_connection(database_path) as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -121,6 +130,7 @@ def complete_chore(
             "SELECT id FROM assignees WHERE id = ? AND active = 1", (assignee_id,)).fetchone()
         if assignee is None:
             raise StoreError(f"onbekende of inactieve persoon {assignee_id!r}")
+        raise_if_vacation(conn)
 
         duration = row["duration_minutes"]
         mode = row["subtask_mode"]
@@ -201,9 +211,15 @@ def undo_completion(database_path: str, undo: dict) -> None:
     dit met een StoreError: de momentopname zou de datum van die overslag
     overschrijven en een overslagregel achterlaten die de herstelde ronde
     leegmaakt. De HA-laag maakt er een nette foutmelding van.
+
+    Tijdens de vakantiemodus: VacationActiveError. De HA-laag leegt de
+    undo-buffer bij het aanzetten, maar een undo die op dat moment al liep,
+    zou anders midden in de vakantie een datum terugzetten die bij het
+    einde dan niet als stilgezet herkend wordt.
     """
     with get_connection(database_path) as conn:
         conn.execute("BEGIN IMMEDIATE")
+        raise_if_vacation(conn)
         if undo["was_full"] and conn.execute(
                 "SELECT 1 FROM skips WHERE chore_id = ?"
                 " AND julianday(skipped_at) >= julianday(?) LIMIT 1",
@@ -312,23 +328,37 @@ def leaderboard(database_path: str, today: date) -> dict:
 def assignee_streaks(database_path: str, today: date) -> dict:
     """Streak per persoon (§5.3): aaneengesloten weken met minstens één
     voltooiing, terugtellend vanaf de huidige week. Een nog lege lopende week
-    breekt de streak niet — dan begint het tellen bij vorige week."""
+    breekt de streak niet — dan begint het tellen bij vorige week.
+
+    Weken die (deels) in een vakantie vallen (vacations.vacation_weeks) zijn
+    neutraal: ze verlengen de streak niet en breken hem niet, ook niet als er
+    voltooiingen in staan. Terugtellend: neutraal → door; voltooiing → +1;
+    leeg → stop, behalve de huidige week (nog bezig)."""
     with get_connection(database_path) as conn:
         rows = conn.execute(
             "SELECT DISTINCT assignee_id, substr(completed_at, 1, 10) AS day"
             " FROM completions").fetchall()
+        neutral = vacation_weeks(conn, today)
     weeks_per_assignee: dict = {}
     for row in rows:
         weeks_per_assignee.setdefault(row["assignee_id"], set()).add(
             week_start(date.fromisoformat(row["day"])))
     current = week_start(today)
+    week = timedelta(days=7)
     streaks = {}
     for assignee_id, weeks in weeks_per_assignee.items():
-        cursor = current if current in weeks else current - timedelta(days=7)
+        cursor = current
         streak = 0
-        while cursor in weeks:
-            streak += 1
-            cursor -= timedelta(days=7)
+        # eindig: elke stap gaat een week terug, en voorbij de oudste
+        # voltooiing en de oudste vakantie is elke week leeg
+        while True:
+            if cursor in neutral:
+                pass
+            elif cursor in weeks:
+                streak += 1
+            elif cursor != current:
+                break
+            cursor -= week
         streaks[assignee_id] = streak
     return streaks
 

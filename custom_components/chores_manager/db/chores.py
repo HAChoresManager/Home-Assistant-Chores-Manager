@@ -164,7 +164,12 @@ def restore_chore(database_path: str, chore_id: str, today: date, now_iso: str) 
     binnen-cyclus-achterstand staan (een intervaltaak van 180 dagen zou tot
     een volle cyclus achterstand terugkrijgen). Terugzetten is een nieuwe
     start: interval begint vandaag, kalendertypen op de eerstvolgende
-    geplande keer op of na vandaag."""
+    geplande keer op of na vandaag.
+
+    Tijdens de vakantiemodus vervalt een eventuele momentopname van de taak
+    (vacation_frozen): de verse datum is een nieuwe start en geen
+    stilgezette datum, ook niet als hij toevallig gelijk is aan de oude
+    momentopname — anders schuift hij bij het einde dubbel op."""
     chore = get_chore(database_path, chore_id)
     if chore is None:
         raise StoreError(f"onbekende taak {chore_id!r}")
@@ -174,6 +179,7 @@ def restore_chore(database_path: str, chore_id: str, today: date, now_iso: str) 
         conn.execute(
             "UPDATE chores SET active = 1, next_due = ?, updated_at = ? WHERE id = ?",
             (new_due.isoformat(), now_iso, chore_id))
+        conn.execute("DELETE FROM vacation_frozen WHERE chore_id = ?", (chore_id,))
     return get_chore(database_path, chore_id)
 
 
@@ -194,36 +200,66 @@ def snooze_chore(database_path: str, chore_id: str, mode: str, today: date, now_
     altijd ook een komende keer, en dat blijft zo. Gevolg daarvan: een
     snooze-skip op een nog komende checklist sluit ook die ronde af. Een
     gearchiveerde taak weigert nu, net als bij afvinken.
+
+    Tijdens de vakantiemodus weigeren beide modi met VacationActiveError
+    (sinds v2.6): er staat niets op het spel, en een datum die tijdens de
+    vakantie verschuift, schuift bij het einde niet mee op. 'skip' krijgt die
+    weigering van skip_chore; 'tomorrow' controleert binnen zijn eigen
+    schrijftransactie.
     """
+    # lokaal: skips.py en vacations.py horen niet op moduleniveau van
+    # chores.py af te hangen of andersom (precedent: roll_all_forward)
+    from .skips import skip_chore
+    from .vacations import raise_if_vacation
+
     chore = get_chore(database_path, chore_id)
     if chore is None:
         raise StoreError(f"onbekende taak {chore_id!r}")
-    if mode == "tomorrow":
-        new_due = today + timedelta(days=1)
-    elif mode == "skip":
-        # lokaal: skips.py hoort niet van chores.py af te hangen of andersom
-        # op moduleniveau (precedent: roll_all_forward)
-        from .skips import skip_chore
-
+    if mode == "skip":
         logged = skip_chore(database_path, chore_id, None, today, now_iso,
                             allow_upcoming=True)
         return date.fromisoformat(logged["new_next_due"])
-    else:
+    if mode != "tomorrow":
         raise StoreError(f"onbekende snooze-modus {mode!r}")
-    set_next_due(database_path, chore_id, new_due, now_iso)
+    new_due = today + timedelta(days=1)
+    with get_connection(database_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        raise_if_vacation(conn)
+        conn.execute(
+            "UPDATE chores SET next_due = ?, updated_at = ? WHERE id = ?",
+            (new_due.isoformat(), now_iso, chore_id))
     return new_due
 
 
 def roll_all_forward(database_path: str, today: date, now_iso: str) -> list[tuple]:
     """De nachtelijke rol (§4.2) over alle actieve taken. Geeft per gewijzigde
-    taak (id, oude next_due, nieuwe next_due) terug."""
+    taak (id, oude next_due, nieuwe next_due) terug.
+
+    Tijdens de vakantiemodus doet de rol niets en geeft hij [] terug: de
+    taken staan stil, en het einde van de vakantie (vacations.end_vacation)
+    zet ze in één keer goed. De scheduler beëindigt een verlopen vakantie
+    vóór de rol, zodat die op de dag na de vakantie gewoon weer draait.
+
+    De vakantiecheck en de rol staan in één schrijftransactie (BEGIN
+    IMMEDIATE): een vakantie die precies tijdens de rol aangaat, komt er
+    helemaal vóór (dan doet de rol niets) of helemaal ná (dan bevat de
+    momentopname al de gerolde datums) — nooit half."""
     from ..scheduling.calculator import roll_forward
+    from .vacations import is_vacation_active
 
     changes = []
-    for chore in list_chores(database_path):
-        old = date.fromisoformat(chore["next_due"])
-        new = roll_forward(chore["schedule_type"], chore["schedule_config"], old, today)
-        if new != old:
-            set_next_due(database_path, chore["id"], new, now_iso)
-            changes.append((chore["id"], old.isoformat(), new.isoformat()))
+    with get_connection(database_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if is_vacation_active(conn):
+            return []
+        for chore in [row_to_chore(r) for r in conn.execute(
+                "SELECT * FROM chores WHERE active = 1 ORDER BY next_due, name")]:
+            old = date.fromisoformat(chore["next_due"])
+            new = roll_forward(
+                chore["schedule_type"], chore["schedule_config"], old, today)
+            if new != old:
+                conn.execute(
+                    "UPDATE chores SET next_due = ?, updated_at = ? WHERE id = ?",
+                    (new.isoformat(), now_iso, chore["id"]))
+                changes.append((chore["id"], old.isoformat(), new.isoformat()))
     return changes

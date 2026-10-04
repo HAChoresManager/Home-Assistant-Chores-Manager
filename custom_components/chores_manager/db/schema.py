@@ -8,7 +8,8 @@ zodat een typefout in aanroepende code niet stilletjes als data eindigt. NULL
 passeert een CHECK (SQL: unknown), dus het optionele subtask_mode blijft
 gewoon NULL-baar.
 
-Vijf tabellen: assignees, chores, subtasks, completions en (sinds v2.5) skips.
+Zeven tabellen: assignees, chores, subtasks, completions, (sinds v2.5) skips
+en (sinds v2.6) vacations met de momentopname vacation_frozen.
 Een nieuwe tabel komt er via CREATE TABLE IF NOT EXISTS vanzelf bij op een
 bestaande database — apply_schema draait bij elke start. Alleen een nieuwe
 kolom in een bestaande tabel heeft een stap in _migrate nodig.
@@ -112,6 +113,32 @@ CREATE INDEX IF NOT EXISTS idx_skips_chore
     ON skips (chore_id, skipped_at);
 CREATE INDEX IF NOT EXISTS idx_skips_skipped_at
     ON skips (skipped_at);
+
+-- Vakantiemodus (v2.6): zolang een vakantie aanstaat, staan alle taken stil.
+-- De historie blijft bewaard: de streakberekening telt vakantieweken als
+-- neutraal (completions.assignee_streaks, vacations.vacation_weeks).
+CREATE TABLE IF NOT EXISTS vacations (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_date  DATE NOT NULL,       -- dag waarop de modus aanging
+    until       DATE,                -- geplande laatste dag (t/m); NULL = open einde
+    ended_on    DATE,                -- resume-dag (dag waarop hij uitging); NULL = actief
+    created_at  TIMESTAMP NOT NULL   -- ISO-tijdstip van aanzetten
+);
+
+-- hooguit één actieve vakantie: alle actieve rijen hebben dezelfde
+-- indexwaarde (1), dus een tweede botst op de unieke index
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vacations_one_active
+    ON vacations ((ended_on IS NULL)) WHERE ended_on IS NULL;
+
+-- Momentopname van next_due per actieve taak bij het aanzetten; alleen nodig
+-- tot het einde (dan opgeruimd). Zo schuift een intervaltaak die tijdens de
+-- vakantie nieuw is of een andere datum kreeg niet dubbel op.
+CREATE TABLE IF NOT EXISTS vacation_frozen (
+    vacation_id INTEGER NOT NULL REFERENCES vacations(id) ON DELETE CASCADE,
+    chore_id    TEXT NOT NULL REFERENCES chores(id) ON DELETE CASCADE,
+    next_due    DATE NOT NULL,
+    PRIMARY KEY (vacation_id, chore_id)
+);
 """
 
 

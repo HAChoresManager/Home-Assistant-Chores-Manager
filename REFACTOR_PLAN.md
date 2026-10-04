@@ -93,7 +93,7 @@ een container met 1 CPU. Push in plaats van poll haalt dat weg én maakt de
 
 | Commando | Doel |
 |---|---|
-| `chores_manager/state` | Volledige begintoestand: taken, personen, ranglijst, feed *(sinds v2.5 plus `skips` en `activity_since`, §5.4)* |
+| `chores_manager/state` | Volledige begintoestand: taken, personen, ranglijst, feed *(sinds v2.5 plus `skips` en `activity_since`, §5.4; sinds v2.6 plus `vacation`, §3.6)* |
 | `chores_manager/complete` | Taak of deeltaak afvinken |
 | `chores_manager/undo` | Laatste voltooiing of overslag terugdraaien (binnen 5 min) |
 | `chores_manager/chore/save` | Taak aanmaken of bijwerken |
@@ -105,6 +105,9 @@ een container met 1 CPU. Push in plaats van poll haalt dat weg én maakt de
 | `chores_manager/chore/restore` | Gearchiveerde taak terugzetten, verse vervaldatum *(fase 5)* |
 | `chores_manager/chore/skip` | Taak deze keer overslaan *(v2.5, §3.5)* |
 | `chores_manager/skip/revert` | Overslag terugdraaien ("Toch niet overslaan") *(v2.5, §3.5)* |
+| `chores_manager/vacation/start` | Vakantiemodus aan, optioneel met laatste dag *(v2.6, §3.6)* |
+| `chores_manager/vacation/update` | Laatste vakantiedag wijzigen of wissen *(v2.6, §3.6)* |
+| `chores_manager/vacation/end` | Vakantiemodus uit; taken schuiven op *(v2.6, §3.6)* |
 
 De HA-services (`chores_manager.mark_done` etc.) blijven bestaan voor gebruik in
 automations en voor de actieknop in notificaties. *(Achterhaald in 3c/4: de
@@ -116,7 +119,12 @@ oude services zijn verdwenen; de actieknop vinkt af via een event-listener in
 `revert_completion` (voltooiing buiten het undo-venster weghalen); sinds
 03-10-2026 ook `skip` en `revert_skip` (om dezelfde kernen als
 `chore/skip` en `skip/revert`, §3.5), en `undo_last` draait sindsdien de
-laatste voltooiing óf overslag terug.)*
+laatste voltooiing óf overslag terug; sinds 04-10-2026 ook
+`start_vacation` en `end_vacation` (om dezelfde kernen als
+`vacation/start` en `vacation/end`, maar idempotent, voor
+automatiseringen, §3.6). Tijdens de vakantiemodus geven `complete`,
+`chore/skip`, `skip/revert` en `chore/snooze` de foutcode
+`vacation_active`.)*
 
 ### 2.4 Sensor
 
@@ -141,7 +149,14 @@ laatste voltooiing óf overslag terug.)*
   `done` en `completion_id`; die telt niet mee in de tellers. Sinds
   03-10-2026 ook `recent_skips`: de laatste acht overslagen (§3.5) mét
   `skip_id`, voor `chores_manager.revert_skip`; `recent_completions`
-  krijgt bewust geen overslagen.)*
+  krijgt bewust geen overslagen. Sinds 04-10-2026 (v2.6) ook `vacation`:
+  de lopende vakantie (§3.6) als `{active, start_date, until}`, of
+  `null`. Tijdens de vakantiemodus is de state 0, zijn `due_today` en
+  `overdue` 0 en is `tasks_today` leeg — er is dan niets aan de beurt;
+  wat er gedaan is (`completed_today`, `persons`, `recent_completions`,
+  `recent_skips`) blijft gewoon staan. Naast de sensor is er sindsdien
+  een tweede entiteit: de schakelaar `switch.chores_vakantiemodus`,
+  attributen `start_date` en `until`.)*
 
 Dezelfde semantiek geldt op het scherm Vandaag: de kop toont het totaal
 ("8 taken"), daaronder twee secties — wat vandaag gepland staat en wat
@@ -315,9 +330,10 @@ hoort al bij de nieuwe ronde, en samenvoegen zou de minuteninvariant van
 §3.4 breken), `next_due` staat nog op `new_next_due`, en de taak is sindsdien
 niet gewijzigd (`updated_at` niet later dan `skipped_at` — ook een bewerking
 of terugzetten uit het archief dat toevallig op dezelfde datum uitkomt,
-blokkeert). Eén functie bepaalt die voorwaarden, voor de weigering én voor
-`can_revert` in de feed; daardoor kan hooguit de nieuwste overslag per taak
-terug, en na het terugdraaien daarvan de vorige.
+blokkeert; sinds v2.6 ook: er staat geen vakantie aan en er is er sinds de
+overslag geen aangezet, §3.6). Eén functie bepaalt die voorwaarden, voor de
+weigering én voor `can_revert` in de feed; daardoor kan hooguit de nieuwste
+overslag per taak terug, en na het terugdraaien daarvan de vorige.
 
 Afvinken, overslaan en terugdraaien lezen en schrijven in één
 schrijftransactie (`BEGIN IMMEDIATE`), zodat twee apparaten elkaar niet
@@ -327,6 +343,76 @@ vergeleken (`julianday()`), niet op string, vanwege de wintertijdwissel.
 De tabel kwam er op een bestaande database bij via `CREATE TABLE IF NOT
 EXISTS` in het schema dat bij elke start draait — geen migratiestap nodig.
 Indexen op `(chore_id, skipped_at)` en `(skipped_at)`.
+
+### 3.6 `vacations` en `vacation_frozen` *(sinds v2.6, 04-10-2026)*
+
+```sql
+CREATE TABLE vacations (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_date  DATE NOT NULL,      -- dag waarop de modus aanging
+    until       DATE,               -- geplande laatste dag (t/m); NULL = open einde
+    ended_on    DATE,               -- dag van terugkomst (resume); NULL = actief
+    created_at  TIMESTAMP NOT NULL  -- ISO-tijdstip van aanzetten
+);
+-- hooguit één actieve vakantie
+CREATE UNIQUE INDEX idx_vacations_one_active
+    ON vacations ((ended_on IS NULL)) WHERE ended_on IS NULL;
+
+CREATE TABLE vacation_frozen (
+    vacation_id INTEGER NOT NULL REFERENCES vacations(id) ON DELETE CASCADE,
+    chore_id    TEXT NOT NULL REFERENCES chores(id) ON DELETE CASCADE,
+    next_due    DATE NOT NULL,
+    PRIMARY KEY (vacation_id, chore_id)
+);
+```
+
+**Vakantiemodus aan = alle taken staan stil.** Niets is aan de beurt, niets
+loopt achter, er gaan geen meldingen uit (§6). De taken houden hun echte
+`next_due`; pas bij het einde schuiven ze op. Afvinken, overslaan,
+snoozen en een overslag terugdraaien weigeren met `VacationActiveError` —
+in de datalaag zelf, binnen de schrijftransactie, zodat elk pad (panel,
+service, "Klaar"-knop) hetzelfde doet; de nachtelijke rol doet niets.
+Beheer en `revert_completion` blijven werken. De undo-buffer wordt bij het
+aanzetten geleegd en kan tijdens de vakantie niet opnieuw vullen.
+
+**Bij het einde** is resume de dag van terugkomst (handmatig: vandaag;
+automatisch: de dag na `until`) en duurt de vakantie resume − `start_date`
+dagen. Per actieve taak:
+
+| Type | Nieuwe `next_due` |
+|---|---|
+| `interval`, datum gelijk aan de momentopname | `next_due` + dagen (ook een achterstand blijft even groot) |
+| `interval`, tijdens de vakantie nieuw, gewijzigd, teruggezet of teruggedraaid | de laatste van `next_due` en resume |
+| `daily`, `weekly`, `monthly`, `yearly` | ligt `next_due` vóór resume: de eerste geplande keer op of na resume; anders ongewijzigd |
+| alle typen, aan en uit op dezelfde dag | ongewijzigd |
+
+Een kalenderachterstand van vóór de vakantie vervalt dus bewust; de beurt
+(`rotation_index`) blijft staan. **`vacation_frozen` is een toevoeging aan
+de oorspronkelijke wens**: zonder momentopname zou een intervaltaak die
+tijdens de vakantie nieuw werd (en dus op "vandaag" begon) bij terugkomst
+nog eens het hele aantal dagen opschuiven. De momentopname leeft alleen
+tijdens de vakantie en gaat bij het einde weg.
+
+**Automatisch einde:** met een `until` die vóór vandaag ligt, eindigt de
+vakantie met resume = `until` + 1 — om 03:00 vóór de rol en bij het
+opstarten van de integratie (HA kan over de datum heen uit hebben gestaan;
+de rol draait dan meteen mee). Het einde begint met een bewaakte
+schrijfactie (`ended_on` alleen zetten als hij nog leeg is): een tweede
+einde geeft een fout en schuift niets dubbel op.
+
+De historie blijft staan: de streak (§5.3) heeft hem nodig. Aanzetten,
+wijzigen en beëindigen lopen in één schrijftransactie (`BEGIN IMMEDIATE`),
+net als afvinken en overslaan. Een overslag van vóór een vakantie kan
+daarna niet meer terug (§3.5): anders kwam een vervallen
+kalenderachterstand terug. "Vóór" wordt op tijdstip vergeleken
+(`julianday()`), niet als string.
+
+Bediening: WS `vacation/start|update|end` (strikt: al aan of al uit is een
+fout), services `chores_manager.start_vacation` (optioneel `until`) en
+`chores_manager.end_vacation` en de schakelaar `switch.chores_vakantiemodus`
+(idempotent, voor automatiseringen; de schakelaar start zonder einddatum).
+Beide tabellen kwamen er, net als `skips`, via `CREATE TABLE IF NOT
+EXISTS` bij — geen migratiestap.
 
 ---
 
@@ -518,6 +604,14 @@ mee. Is de huidige week nog leeg, dan begint het tellen bij vorige week — een
 week die nog bezig is kan de streak niet breken; hij breekt pas als een week
 écht leeg is afgesloten.
 
+*(Aangevuld 04-10-2026, v2.6: een week die (deels) in een vakantie viel
+(§3.6), is neutraal — hij verlengt de streak niet en breekt hem niet, ook
+niet als er voltooiingen in staan. Terugtellen: neutraal → door,
+voltooiing → +1, leeg → stop (behalve de lopende week). Een beëindigde
+vakantie beslaat `start_date` tot en met de dag vóór `ended_on`, een
+lopende tot en met vandaag (of `until`, als die eerder ligt); aan en uit op
+dezelfde dag maakt geen week neutraal.)*
+
 ### 5.4 Activiteitenfeed
 
 Chronologisch: wie deed wat wanneer, met tijdsduur. Dit ontbreekt nu volledig in
@@ -548,9 +642,9 @@ persoon is er niets om naartoe te sturen.
 
 | Wanneer | Wat |
 |---|---|
-| 03:00 dagelijks | Vervaldata doorrollen (4.2) |
-| 08:00 dagelijks | Per persoon: wat er vandaag voor jou is. Alleen als er iets is. |
-| Zondag 20:00 | Weeksamenvatting met de uitslag en de streaks |
+| 03:00 dagelijks | Vervaldata doorrollen (4.2) *(sinds v2.6: eerst een verlopen vakantie beëindigen, §3.6; tijdens de vakantiemodus verschuift de rol niets)* |
+| 08:00 dagelijks | Per persoon: wat er vandaag voor jou is. Alleen als er iets is. *(Tijdens de vakantiemodus niets.)* |
+| Zondag 20:00 | Weeksamenvatting met de uitslag en de streaks *(Tijdens de vakantiemodus niets.)* |
 
 Notificaties zijn **actionable**: een knop "Klaar" in de melding vinkt de taak af
 via `mobile_app_notification_action`. Dat is wat "makkelijk te beheren" in de
@@ -581,14 +675,16 @@ Alles onder de 600 regels. Bij overschrijding: splitsen.
 
 ```
 custom_components/chores_manager/
-├── __init__.py           # setup, config entry, services (roll_forward, meldingen, mark_done, undo_last, revert_completion, skip, revert_skip)
+├── __init__.py           # setup, config entry, services (roll_forward, meldingen, mark_done, undo_last, revert_completion, skip, revert_skip, start_vacation, end_vacation)
 ├── manifest.json
 ├── const.py
 ├── config_flow.py        # één instantie, niets in te stellen
 ├── panel.py              # panel_custom, module_url, geen iframe; versie in pad
 ├── websocket.py          # WS-commando's (zie 2.3)
+├── vacation.py           # vakantiekernen en WS vacation/* (§3.6); websocket.py registreert ze
 ├── sensor.py             # overzichtssensor (§2.4), push via dispatcher
-├── scheduler.py          # nachtelijke rol; meldingen (§6) komen in fase 4
+├── switch.py             # switch.chores_vakantiemodus (§3.6), push via dispatcher
+├── scheduler.py          # nachtelijke rol, vooraf een verlopen vakantie beëindigen (meldingen: notify.py)
 ├── notify.py             # fase 4: actionable notificaties; async_complete (ook achter mark_done)
 ├── db/
 │   ├── __init__.py
@@ -599,24 +695,28 @@ custom_components/chores_manager/
 │   ├── assignees.py
 │   ├── completions.py    # voltooiingen, ranglijst, feed, streaks, instantiegrens
 │   ├── skips.py          # overslaan, terugdraaien, overslaglog (§3.5)
+│   ├── vacations.py      # vakantiemodus: aan, einddatum, einde met verschuiving, neutrale weken (§3.6)
 │   ├── subtasks.py
 │   └── overview.py       # samengestelde leesweergaven voor sensor en WS
 └── scheduling/
     ├── __init__.py
     ├── types.py          # definities van de vijf planningstypen
-    └── calculator.py     # next_due, achterstand, urgentie, rotatie
+    └── calculator.py     # next_due, achterstand, urgentie, rotatie, verschuiving na een vakantie
 ```
 
 Geen `migrations.py` meer in de boom: v2 heeft een vers schema; migraties
 komen pas terug zodra dat schema ná ingebruikname wijzigt. Geen los
 `services.py`: de overgebleven services (roll_forward, de twee
 meldingsservices, sinds 20-09-2026 mark_done, sinds 23-09-2026
-undo_last en revert_completion en sinds 03-10-2026 skip en revert_skip)
-zijn klein genoeg voor `__init__.py` — skip en revert_skip zijn dunne
-lagen om `async_skip`/`async_revert_skip` in `websocket.py`, dezelfde
-kernen als de WS-commando's; `notify.py` (fase 4) bevat de meldingen én
-`async_complete`, de gedeelde afvinkstap achter de "Klaar"-knop en
-mark_done. `seed.py` was tijdelijk en is in fase 5 verwijderd.
+undo_last en revert_completion, sinds 03-10-2026 skip en revert_skip en
+sinds 04-10-2026 start_vacation en end_vacation) zijn klein genoeg voor
+`__init__.py` — skip en revert_skip zijn dunne lagen om
+`async_skip`/`async_revert_skip` in `websocket.py`, dezelfde kernen als de
+WS-commando's, en start_vacation/end_vacation net zo om
+`async_start_vacation`/`async_end_vacation` in `vacation.py` (idempotent; de schakelaar in
+`switch.py` gebruikt dezelfde aanroep); `notify.py` (fase 4) bevat de
+meldingen én `async_complete`, de gedeelde afvinkstap achter de
+"Klaar"-knop en mark_done. `seed.py` was tijdelijk en is in fase 5 verwijderd.
 
 **Tussentoestand (2b–3b): de v2-datalaag heette `store/`** omdat de oude app
 het oude `db/`-pakket nog bezette. **Uitgevoerd in 3c (28-07-2026):** het oude
@@ -628,7 +728,7 @@ overgenomen; alle imports en tests zijn omgelegd.
 ```
 www/chores-panel/
 ├── chores-panel.js       # entrypoint, definieert <chores-panel>, krijgt hass
-├── actions.js            # mutaties + terugkoppeling (afvinken, overslaan, terugdraaien, opslaan, verwijderen)
+├── actions.js            # mutaties + terugkoppeling (afvinken, overslaan, terugdraaien, opslaan, verwijderen, vakantiemodus)
 ├── core/
 │   ├── api.js            # dunne laag over hass.connection
 │   ├── store.js          # één toestandsobject + subscribe
@@ -639,7 +739,7 @@ www/chores-panel/
 │   ├── today.js          # bijdragebalk + wat er nu moet
 │   ├── tasks.js          # alle taken, gegroepeerd
 │   ├── activity.js       # feed (voltooiingen + overslagen) + weekhistorie
-│   └── manage.js         # taken en personen beheren + sectie Weergave
+│   └── manage.js         # taken en personen beheren + secties Vakantie en Weergave
 ├── components/
 │   ├── task-card.js      # incl. deeltaakweergave (subtask-tracker is nooit los geworden)
 │   ├── contribution-bar.js
@@ -1005,6 +1105,24 @@ terugdraaien via dezelfde undo-buffer als afvinken (die heeft nu een
 staat de knop alleen achteraan in de rij "Wie heeft het gedaan?", voor
 taken die vandaag aan de beurt zijn of achterlopen.)*
 
+*(Aangevuld 04-10-2026, v2.6.0: **Vakantiemodus** is gebouwd (§3.6). Aan =
+alle taken staan stil: niets aan de beurt, niets achter, geen meldingen;
+afvinken, overslaan en snoozen weigeren, de rol van 03:00 slaat over en
+de undo-buffer wordt bij het aanzetten geleegd. Bij het einde schuiven
+intervaltaken precies de vakantieduur op en gaan kalendertaken naar de
+eerstvolgende keer vanaf de terugkomst; aan en uit op dezelfde dag
+verschuift niets. Met een laatste vakantiedag (`until`) eindigt hij de dag
+erna om 03:00 vanzelf, vóór de rol, en ook bij het opstarten. Weken in een
+vakantie zijn voor de streak neutraal (§5.3). Nieuw: tabellen `vacations`
+en `vacation_frozen` (de momentopname is een bewuste toevoeging, zodat een
+tijdens de vakantie nieuwe intervaltaak niet dubbel opschuift), WS
+`vacation/start`, `vacation/update` en `vacation/end` plus `vacation` in
+de state, services `chores_manager.start_vacation` en
+`chores_manager.end_vacation`, de schakelaar `switch.chores_vakantiemodus`
+(attributen `start_date`, `until`) en sensorattribuut `vacation` (state 0
+tijdens de vakantie). In het panel een sectie "Vakantie" bovenaan Beheer,
+een banner op Vandaag en "Staat stil" op Alles.)*
+
 **Later, misschien** (bewust niet gedaan; geen van alle nodig voor dagelijks
 gebruik):
 
@@ -1045,8 +1163,9 @@ gebruik):
    *(Het laatste gebeurde: alle 22 zijn in 3c verdwenen; `services.yaml`
    beschrijft nu het volledige aanbod van drie — vier sinds `mark_done`
    op 20-09-2026, zes sinds `undo_last` en `revert_completion` op
-   23-09-2026, acht sinds `skip` en `revert_skip` op 03-10-2026, zie §6
-   en §3.5.)*
+   23-09-2026, acht sinds `skip` en `revert_skip` op 03-10-2026, tien
+   sinds `start_vacation` en `end_vacation` op 04-10-2026, zie §6, §3.5
+   en §3.6.)*
 7. **Twee services worden geregistreerd maar niet opgeruimd.**
    `async_unregister_services` (`services/__init__.py:107-122`) noemt twintig
    namen, maar `get_pending_notifications` (`services/notification_services.py:101`)
@@ -1055,5 +1174,6 @@ gebruik):
    het niet opnieuw ontstaat als de servicelijst in fase 2 verandert.
    *(Met de oude app verdwenen; de huidige unload ruimt alle
    services op — mark_done meegenomen op 20-09-2026, undo_last en
-   revert_completion op 23-09-2026, skip en revert_skip op 03-10-2026; de
-   lijst staat nu als SERVICES in `__init__.py`.)*
+   revert_completion op 23-09-2026, skip en revert_skip op 03-10-2026,
+   start_vacation en end_vacation op 04-10-2026; de lijst staat nu als
+   SERVICES in `__init__.py`.)*

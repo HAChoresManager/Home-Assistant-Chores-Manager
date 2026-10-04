@@ -7,9 +7,21 @@
  * overgeslagen en blijven uit beeld tot de server het bevestigt of het
  * terugdraait. "Laatste activiteit" toont alleen voltooiingen (data.feed);
  * overslagen staan op Activiteit.
+ *
+ * Tijdens de vakantiemodus (data.vacation) is er niets aan de beurt: de kop
+ * wordt "Vakantie", een rustige banner zegt sinds wanneer en tot wanneer,
+ * en er staan geen taaksecties en geen "Alles gedaan" — er is niets gedaan
+ * of overgeslagen, de taken staan stil. Bijdragebalk en "Laatste
+ * activiteit" blijven: die gaan over wat er wél gebeurde.
  */
 import { html } from '../core/html.js';
-import { dateLong, feedWhen, formatDuration, taskCount } from '../core/format.js';
+import {
+  dateLong,
+  dayMonth,
+  feedWhen,
+  formatDuration,
+  taskCount,
+} from '../core/format.js';
 import { renderContributionBar } from '../components/contribution-bar.js';
 import { renderTaskCard } from '../components/task-card.js';
 
@@ -42,6 +54,16 @@ function renderSection(title, chores, ctx) {
     </section>`;
 }
 
+/** "Vakantiemodus sinds 3 oktober — tot en met 17 oktober". */
+function vacationBanner(vacation, todayIso) {
+  return html`
+    <p class="vacation-banner" role="status">
+      <span aria-hidden="true">🌴</span>
+      Vakantiemodus sinds ${dayMonth(vacation.start_date, todayIso)}${vacation.until
+        ? html` — tot en met ${dayMonth(vacation.until, todayIso)}` : ''}
+    </p>`;
+}
+
 export function renderToday(state) {
   if (state.loading) {
     return html`<div class="status">${state.connecting ? 'Verbinden…' : 'Taken laden…'}</div>`;
@@ -55,6 +77,17 @@ export function renderToday(state) {
   }
 
   const data = state.data;
+  if (data.vacation?.active) {
+    return html`
+      <header class="page-header">
+        <p class="page-date">${dateLong(data.today)}</p>
+        <h1 class="page-count">Vakantie</h1>
+      </header>
+      ${vacationBanner(data.vacation, data.today)}
+      ${renderContributionBar(data.leaderboard)}
+      ${renderFeed(data.feed, data.today)}`;
+  }
+
   const assigneesById = {};
   for (const person of data.assignees) assigneesById[person.id] = person;
   // A2 (fase 4): de kijker, voor de chip-default op 'anyone'-taken.
