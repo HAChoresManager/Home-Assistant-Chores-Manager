@@ -71,6 +71,33 @@ export function weekTitle(weekStartIso, todayIso) {
   return base;
 }
 
+/** "3 oktober" (+jaar als het een ander jaar is) — voor de vakantiebanner
+ * en de vakantie-instelling, waar de weekdag alleen ruis zou zijn. */
+export function dayMonth(isoDate, todayIso) {
+  const d = new Date(`${isoDate}T12:00:00`);
+  const base = `${d.getDate()} ${MONTHS_LONG[d.getMonth()]}`;
+  if (todayIso && isoDate.slice(0, 4) !== todayIso.slice(0, 4)) {
+    return `${base} ${d.getFullYear()}`;
+  }
+  return base;
+}
+
+/**
+ * Aantal kalenderdagen van de ene ISO-datum naar de andere (negatief als
+ * de tweede eerder ligt). Gerekend in UTC: een zomertijdwissel ertussen
+ * levert zo geen dag van 23 of 25 uur en dus geen afrondfout op.
+ */
+export function daysBetween(fromIso, toIso) {
+  const utc = (iso) => Date.UTC(
+    Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+  return Math.round((utc(toIso) - utc(fromIso)) / 86400000);
+}
+
+/** "1 dag" / "14 dagen". */
+export function dayCount(n) {
+  return n === 1 ? '1 dag' : `${n} dagen`;
+}
+
 /** "dinsdag 28 juli" — voor de kop van het scherm. */
 export function dateLong(isoDate) {
   const d = new Date(`${isoDate}T12:00:00`);

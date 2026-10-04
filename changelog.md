@@ -1,5 +1,100 @@
 # Changelog
 
+## v2.6.0 (2026-10-04)
+
+Vakantiemodus — alles staat stil, en bij terugkomst schuift het mee op.
+
+- Aan = alle taken staan stil: niets is aan de beurt, niets loopt achter,
+  er gaan geen meldingen uit. Afvinken, overslaan, snoozen en een overslag
+  terugdraaien weigeren met "Vakantiemodus staat aan; afvinken en
+  overslaan kan weer na de vakantie." — in de datalaag zelf, dus op elk
+  pad (panel, services, "Klaar"-knop). De nachtelijke rol slaat over; de
+  undo-buffer wordt bij het aanzetten geleegd.
+- Bij het einde schuiven de taken op: intervaltaken precies zoveel dagen
+  als de vakantie duurde (ook een achterstand blijft even groot); een
+  intervaltaak die tijdens de vakantie nieuw is of een andere datum kreeg,
+  komt op de laatste van zijn datum en de terugkomstdag, zonder dubbel op
+  te schuiven. Taken op vaste dagen (daily/weekly/monthly/yearly) die vóór
+  de terugkomst lagen, gaan naar de eerstvolgende keer vanaf de
+  terugkomst; een kalenderachterstand van vóór de vakantie vervalt. Aan en
+  uit op dezelfde dag verschuift niets. De beurt blijft staan.
+- Automatisch einde: met een laatste vakantiedag (`until`) gaat de modus
+  de dag erna om 03:00 vanzelf uit, vóór de rol; ook bij het opstarten,
+  als HA over die datum heen uit stond (dan draait de rol meteen mee).
+- Streaks: weken die (deels) in een vakantie vallen zijn neutraal — ze
+  verlengen niet en breken niet. Ranglijst en weektotalen blijven gewoon
+  wat er gedaan is.
+- Nieuwe tabellen `vacations` (historie, hooguit één actieve) en
+  `vacation_frozen` (momentopname van de datums bij het aanzetten); komen
+  er bij het opstarten vanzelf bij op een bestaande database.
+- Schakelaar `switch.chores_vakantiemodus` (nieuw platform `switch`): aan =
+  vakantie zonder einddatum, uit = einde. Attributen `start_date` en
+  `until`; volgt de stand live.
+- Services `chores_manager.start_vacation` (optioneel `until`) en
+  `chores_manager.end_vacation`, idempotent voor automatiseringen.
+- WebSocket: `vacation/start`, `vacation/update` en `vacation/end`;
+  `state` levert `vacation` (of `null`). Tijdens de vakantie geven
+  `complete`, `chore/skip`, `skip/revert` en `chore/snooze` de foutcode
+  `vacation_active`.
+- `sensor.chores_overview`: state 0 en `tasks_today` leeg tijdens de
+  vakantie; nieuw attribuut `vacation`.
+- Panel: sectie "Vakantie" bovenaan Beheer (schakelaar, optioneel "Tot en
+  met", uitleg wat er bij terugkomst gebeurt). Vandaag toont een rustige
+  banner in plaats van taken; Alles toont alle taken onder "Staat stil",
+  gedimd en zonder afvinkknoppen, met hun huidige datum.
+- Een overslag van vóór een vakantie kan daarna niet meer terug (anders
+  kwam een vervallen achterstand terug); een vakantie van nul dagen telt
+  daarbij niet.
+- Robuust bij gelijktijdigheid: de nachtelijke rol en het aanzetten van de
+  vakantie kruisen elkaar niet, een undo die al liep bij het aanzetten
+  weigert alsnog, en een taak die tijdens de vakantie uit het archief wordt
+  teruggezet schuift niet dubbel op.
+- De schakelaar staat meteen goed zodra `switch.turn_on`/`turn_off`
+  terugkeert (scripts en toggles zien de nieuwe stand).
+- Panel: een open keuzerij ("Wie heeft het gedaan?" en de creditkeuze)
+  staat op een eigen regel onder de taak. Ernaast drukte hij de taaknaam
+  samen tot één letter per regel — op de telefoon al eerder zo, met de
+  knop "Overslaan" erbij ook op een breed scherm.
+
+## v2.5.0 (2026-10-03)
+
+Overslaan — "deze keer doet niemand het", met terugdraaien.
+
+- Overslaan rolt een taak door naar de eerstvolgende geplande keer, zonder
+  voltooiing: geen minuten, geen invloed op ranglijst of streak, en bij een
+  roterende taak blijft dezelfde persoon aan de beurt. Alleen voor taken
+  die vandaag aan de beurt zijn of achterlopen. Een half afgevinkte
+  checklist of counter begint daarna opnieuw; de afgevinkte stappen blijven
+  in de historie.
+- Nieuwe tabel `skips` (wie, wanneer, datum ervoor en erna); komt er bij
+  het opstarten vanzelf bij op een bestaande database.
+- Panel: knop "Overslaan" achteraan in de rij "Wie heeft het gedaan?",
+  optimistisch zoals afvinken en met dezelfde "Ongedaan maken".
+  Activiteit toont overslagen als rustigere regel ("⏭ Laura sloeg Badkamer
+  over") met "Toch niet overslaan" zolang dat nog kan.
+- WebSocket: `chore/skip` en `skip/revert`; `state` levert ook `skips` en
+  `activity_since`. `undo` draait nu de laatste voltooiing óf overslag
+  terug.
+- Services `chores_manager.skip` en `chores_manager.revert_skip`;
+  `undo_last` draait ook een overslag terug.
+- `sensor.chores_overview`: nieuw attribuut `recent_skips` (laatste acht,
+  met `skip_id` voor `revert_skip`); `recent_completions` blijft alleen
+  voltooiingen.
+- `chore/snooze` met 'skip' wordt nu gelogd als overslag (zonder persoon,
+  zonder undo-buffer) en weigert een gearchiveerde taak.
+- Teruggedraaide voltooiing: was de taak daarna overgeslagen, dan blijft de
+  datum van de overslag staan. Undo van een voltooiing waarna via snooze is
+  overgeslagen, weigert met een nette melding.
+- Afvinken, overslaan en terugdraaien zijn per taak geserialiseerd (twee
+  apparaten tegelijk kruisen elkaar niet meer halverwege een ronde), en de
+  instantiegrens vergelijkt tijdstippen, niet strings — ook rond de
+  wintertijdwissel klopt de volgorde.
+- Undo wist niet langer de "Ongedaan maken" van iemand die intussen op een
+  ander apparaat iets afvinkte.
+- Vandaag zegt niet meer "Mooi werk." als er vandaag alleen is overgeslagen
+  ("Niets meer voor vandaag"); een rustige dag houdt "Alles gedaan".
+- `chores-panel.js` gesplitst: de mutaties staan nu in `actions.js`.
+
 ## v2.4.0 (2026-07-29)
 
 Fase 5 — polish en de doorgeschoven punten; hiermee is de refactor afgerond.

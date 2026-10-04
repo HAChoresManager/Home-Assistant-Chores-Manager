@@ -23,14 +23,22 @@ def conn():
     conn.close()
 
 
-def test_alle_vier_tabellen_en_indexen_bestaan(conn):
-    tabellen = {r[0] for r in conn.execute(
+def _tabellen(conn):
+    return {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")}
-    assert tabellen == {"assignees", "chores", "subtasks", "completions"}
-    indexen = {r[0] for r in conn.execute(
+
+
+def _indexen(conn):
+    return {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%'")}
-    assert indexen == {"idx_completions_completed_at", "idx_completions_assignee",
-                       "idx_completions_chore"}
+
+
+def test_alle_tabellen_en_indexen_bestaan(conn):
+    assert _tabellen(conn) == {"assignees", "chores", "subtasks", "completions", "skips",
+                               "vacations", "vacation_frozen"}
+    assert _indexen(conn) == {"idx_completions_completed_at", "idx_completions_assignee",
+                              "idx_completions_chore", "idx_skips_chore",
+                              "idx_skips_skipped_at", "idx_vacations_one_active"}
 
 
 def test_apply_schema_is_idempotent(conn):
@@ -101,3 +109,132 @@ class TestVerbindingslaag:
                 conn.execute(
                     "INSERT INTO completions (chore_id, assignee_id, completed_at, minutes)"
                     " VALUES ('nee', 'nee', '2026-07-28', 10)")
+
+
+class TestSkipsTabel:
+    """v2.5: de tabel skips komt via CREATE TABLE IF NOT EXISTS ook op een
+    bestaande database, en de foreign keys doen wat schema.py belooft."""
+
+    def test_bestaande_database_krijgt_skips(self, tmp_path):
+        pad = str(tmp_path / "chores.db")
+        create_database(pad)
+        # terug naar de toestand van vóór v2.5: alleen de vier oude tabellen
+        with get_connection(pad) as conn:
+            conn.execute("DROP TABLE skips")
+            _insert_assignee(conn)
+            _insert_chore(conn)
+            conn.execute(
+                "INSERT INTO completions (chore_id, assignee_id, completed_at, minutes)"
+                " VALUES ('was-draaien', 'martijn', '2026-07-28T20:00:00+02:00', 20)")
+        with get_connection(pad) as conn:
+            assert "skips" not in _tabellen(conn)
+            assert not {"idx_skips_chore", "idx_skips_skipped_at"} & _indexen(conn)
+
+        create_database(pad)  # wat bij elke start van de integratie draait
+
+        with get_connection(pad) as conn:
+            assert "skips" in _tabellen(conn)
+            assert {"idx_skips_chore", "idx_skips_skipped_at"} <= _indexen(conn)
+            # bestaande data onaangeroerd
+            assert conn.execute("SELECT COUNT(*) FROM completions").fetchone()[0] == 1
+            assert conn.execute("SELECT COUNT(*) FROM chores").fetchone()[0] == 1
+            kolommen = [r["name"] for r in conn.execute("PRAGMA table_info(skips)")]
+            assert kolommen == ["id", "chore_id", "assignee_id", "skipped_at",
+                                "previous_next_due", "new_next_due"]
+
+    def test_skip_vereist_bestaande_taak(self, conn):
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO skips (chore_id, skipped_at, previous_next_due, new_next_due)"
+                " VALUES ('bestaat-niet', '2026-07-28T10:00:00+02:00',"
+                " '2026-07-28', '2026-07-29')")
+
+    def test_skips_cascaden_mee_met_hun_taak(self, conn):
+        _insert_chore(conn)
+        conn.execute(
+            "INSERT INTO skips (chore_id, skipped_at, previous_next_due, new_next_due)"
+            " VALUES ('was-draaien', '2026-07-28T10:00:00+02:00', '2026-07-28', '2026-07-29')")
+        conn.execute("DELETE FROM chores WHERE id = 'was-draaien'")
+        assert conn.execute("SELECT COUNT(*) FROM skips").fetchone()[0] == 0
+
+    def test_persoon_weg_laat_skip_staan_zonder_persoon(self, conn):
+        _insert_assignee(conn)
+        _insert_chore(conn)
+        conn.execute(
+            "INSERT INTO skips (chore_id, assignee_id, skipped_at, previous_next_due,"
+            " new_next_due) VALUES ('was-draaien', 'martijn',"
+            " '2026-07-28T10:00:00+02:00', '2026-07-28', '2026-07-29')")
+        conn.execute("DELETE FROM assignees WHERE id = 'martijn'")
+        assert conn.execute("SELECT assignee_id FROM skips").fetchone()[0] is None
+
+
+class TestVakantieTabellen:
+    """v2.6: vacations en vacation_frozen komen via CREATE TABLE IF NOT EXISTS
+    ook op een bestaande database; de unieke index laat hooguit één actieve
+    vakantie toe."""
+
+    def test_bestaande_database_krijgt_vakantietabellen(self, tmp_path):
+        pad = str(tmp_path / "chores.db")
+        create_database(pad)
+        # terug naar de toestand van vóór v2.6: de vijf tabellen van v2.5
+        with get_connection(pad) as conn:
+            conn.execute("DROP TABLE vacation_frozen")
+            conn.execute("DROP TABLE vacations")
+            _insert_assignee(conn)
+            _insert_chore(conn)
+            conn.execute(
+                "INSERT INTO skips (chore_id, skipped_at, previous_next_due,"
+                " new_next_due) VALUES ('was-draaien', '2026-07-28T10:00:00+02:00',"
+                " '2026-07-28', '2026-07-29')")
+        with get_connection(pad) as conn:
+            assert not {"vacations", "vacation_frozen"} & _tabellen(conn)
+            assert "idx_vacations_one_active" not in _indexen(conn)
+
+        create_database(pad)  # wat bij elke start van de integratie draait
+
+        with get_connection(pad) as conn:
+            assert {"vacations", "vacation_frozen"} <= _tabellen(conn)
+            assert "idx_vacations_one_active" in _indexen(conn)
+            # bestaande data onaangeroerd
+            assert conn.execute("SELECT COUNT(*) FROM skips").fetchone()[0] == 1
+            assert conn.execute("SELECT COUNT(*) FROM chores").fetchone()[0] == 1
+            kolommen = [r["name"] for r in conn.execute("PRAGMA table_info(vacations)")]
+            assert kolommen == ["id", "start_date", "until", "ended_on", "created_at"]
+            kolommen = [r["name"] for r in
+                        conn.execute("PRAGMA table_info(vacation_frozen)")]
+            assert kolommen == ["vacation_id", "chore_id", "next_due"]
+
+    def test_hooguit_een_actieve_vakantie(self, conn):
+        conn.execute("INSERT INTO vacations (start_date, created_at)"
+                     " VALUES ('2026-10-01', '2026-10-01T09:00:00+02:00')")
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO vacations (start_date, created_at)"
+                         " VALUES ('2026-10-02', '2026-10-02T09:00:00+02:00')")
+
+    def test_beeindigde_vakanties_mogen_naast_een_actieve(self, conn):
+        for start in ("2026-08-01", "2026-09-01"):
+            conn.execute("INSERT INTO vacations (start_date, ended_on, created_at)"
+                         " VALUES (?, ?, ?)", (start, start, start + "T09:00:00+02:00"))
+        conn.execute("INSERT INTO vacations (start_date, created_at)"
+                     " VALUES ('2026-10-01', '2026-10-01T09:00:00+02:00')")
+        assert conn.execute("SELECT COUNT(*) FROM vacations").fetchone()[0] == 3
+
+    def test_momentopname_cascadet_mee_met_taak_en_vakantie(self, conn):
+        _insert_chore(conn)
+        _insert_chore(conn, "stofzuigen")
+        conn.execute("INSERT INTO vacations (id, start_date, created_at)"
+                     " VALUES (1, '2026-10-01', '2026-10-01T09:00:00+02:00')")
+        conn.execute("INSERT INTO vacation_frozen (vacation_id, chore_id, next_due)"
+                     " SELECT 1, id, next_due FROM chores")
+        conn.execute("DELETE FROM chores WHERE id = 'was-draaien'")
+        assert [r[0] for r in conn.execute(
+            "SELECT chore_id FROM vacation_frozen")] == ["stofzuigen"]
+        conn.execute("DELETE FROM vacations WHERE id = 1")
+        assert conn.execute("SELECT COUNT(*) FROM vacation_frozen").fetchone()[0] == 0
+
+    def test_momentopname_vereist_bestaande_taak(self, conn):
+        conn.execute("INSERT INTO vacations (id, start_date, created_at)"
+                     " VALUES (1, '2026-10-01', '2026-10-01T09:00:00+02:00')")
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO vacation_frozen (vacation_id, chore_id, next_due)"
+                         " VALUES (1, 'bestaat-niet', '2026-10-01')")

@@ -1,5 +1,5 @@
 /**
- * Dunne laag over hass.connection voor de tien WS-commando's (plan §2.3).
+ * Dunne laag over hass.connection voor de vijftien WS-commando's (plan §2.3).
  *
  * Geen fetch, geen tokens, geen headers: alles loopt over de WebSocket die HA
  * zelf al open heeft. subscribeMessage van home-assistant-js-websocket
@@ -72,7 +72,8 @@ class ChoresApi {
   }
 
   /**
-   * Volledige begintoestand: taken, personen, ranglijst, feed.
+   * Volledige begintoestand: taken, personen, ranglijst, feed, overslagen
+   * en de vakantiestand (data.vacation: {active, start_date, until} of null).
    * onWaiting (optioneel) wordt aangeroepen zodra er gewacht moet worden op
    * een backend die nog niet klaar is — voor de "Verbinden…"-melding.
    */
@@ -94,9 +95,45 @@ class ChoresApi {
     return this._send(message);
   }
 
-  /** Laatste voltooiing terugdraaien (venster: vijf minuten). */
+  /**
+   * Taak deze keer overslaan: hij rolt door naar de volgende geplande keer,
+   * zonder voltooiing en zonder de beurt te verschuiven. Geen persoon mee:
+   * wie oversloeg bepaalt de server via de koppeling van de kijker.
+   */
+  skip(choreId) {
+    return this._send({ type: 'chores_manager/chore/skip', chore_id: choreId });
+  }
+
+  /** "Toch niet overslaan": de vorige datum terug. De server weigert als er
+   * sindsdien iets met de taak gebeurde (afgevinkt, opnieuw overgeslagen). */
+  revertSkip(skipId) {
+    return this._send({ type: 'chores_manager/skip/revert', skip_id: skipId });
+  }
+
+  /** Laatste voltooiing of overslag terugdraaien (venster: vijf minuten). */
   undo() {
     return this._send({ type: 'chores_manager/undo' });
+  }
+
+  /**
+   * Vakantiemodus aanzetten; until is de laatste vakantiedag (YYYY-MM-DD)
+   * of null voor een open einde. Staat hij al aan, dan weigert de server.
+   */
+  vacationStart(until) {
+    return this._send({ type: 'chores_manager/vacation/start', until: until || null });
+  }
+
+  /** De "tot en met" van een lopende vakantie wijzigen; null wist hem. */
+  vacationUpdate(until) {
+    return this._send({ type: 'chores_manager/vacation/update', until: until || null });
+  }
+
+  /**
+   * Vakantiemodus uit, met vandaag als dag van terugkomst. De server
+   * verschuift de taken en geeft {ended_on, days, changed} terug.
+   */
+  vacationEnd() {
+    return this._send({ type: 'chores_manager/vacation/end' });
   }
 
   choreSave(chore) {

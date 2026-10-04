@@ -25,6 +25,12 @@ Die drie stappen staan in ``async_complete``. Dezelfde functie zit achter de
 service ``chores_manager.mark_done`` (``__init__.py``): de dunne laag voor
 Lovelace-kaarten, die alleen services kunnen aanroepen en geen WS-commando's.
 Zo is er precies één plek waar "afvinken buiten het panel" gebeurt.
+
+Tijdens de vakantiemodus (v2.6) gaat er niets uit: de ochtendmelding vindt
+niets (notification_summary is dan leeg) en de weeksamenvatting slaat
+zichzelf over. Een "Klaar"-knop op een oudere melding die nog op de
+telefoon staat, weigert dan (VacationActiveError); dat is een infologregel,
+geen waarschuwing — er is niets mis.
 """
 from __future__ import annotations
 
@@ -43,6 +49,7 @@ from .const import (
     MORNING_MINUTE,
     NOTIFY_ACTION_PREFIX,
     SIGNAL_UPDATED,
+    UNDO_KIND_COMPLETION,
     WEEKLY_DAY,
     WEEKLY_HOUR,
     WEEKLY_MINUTE,
@@ -50,6 +57,7 @@ from .const import (
 from .db.assignees import list_assignees
 from .db.completions import assignee_streaks, complete_chore, leaderboard
 from .db.overview import notification_summary, pick_notify_action
+from .db.vacations import VacationActiveError, get_active_vacation
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -164,7 +172,8 @@ async def async_send_daily(hass: HomeAssistant, database_path: str) -> int:
     """Ochtendmelding per persoon; alleen als er voor die persoon iets is.
 
     Geeft het aantal verzonden meldingen terug (handig voor de logregel van
-    de tijdelijke testservice).
+    de service send_daily_summary). Tijdens de vakantiemodus is
+    notification_summary leeg, dus gaat er niets uit.
     """
     today = dt_util.now().date()
     summary = await hass.async_add_executor_job(
@@ -185,7 +194,13 @@ async def async_send_daily(hass: HomeAssistant, database_path: str) -> int:
 
 
 async def async_send_weekly(hass: HomeAssistant, database_path: str) -> int:
-    """Weeksamenvatting naar iedereen met een service; de feiten van de week."""
+    """Weeksamenvatting naar iedereen met een service; de feiten van de week.
+
+    Tijdens de vakantiemodus gaat er niets uit (0).
+    """
+    if await hass.async_add_executor_job(get_active_vacation, database_path):
+        _LOGGER.debug("Chores Manager: vakantiemodus, geen weeksamenvatting")
+        return 0
     today = dt_util.now().date()
     board = await hass.async_add_executor_job(leaderboard, database_path, today)
     streaks = await hass.async_add_executor_job(
@@ -217,12 +232,16 @@ async def async_complete(
     persoon komt als ValueError (StoreError) terug; wat daarmee gebeurt
     bepaalt de aanroeper — een logregel bij een melding, een toast bij een
     service. Geeft de undo-gegevens van complete_chore terug.
+
+    De buffer krijgt kind completion (zie const.py): undo_last en het panel
+    draaien hiermee dezelfde voltooiing terug als na een tik in het panel.
     """
     now = dt_util.now()
     undo = await hass.async_add_executor_job(
         complete_chore, database_path, chore_id, assignee_id,
         now.date(), now.isoformat(), None, None)
-    hass.data[DOMAIN][DATA_UNDO] = {"undo": undo, "at": time.monotonic()}
+    hass.data[DOMAIN][DATA_UNDO] = {
+        "kind": UNDO_KIND_COMPLETION, "undo": undo, "at": time.monotonic()}
     async_dispatcher_send(hass, SIGNAL_UPDATED,
                           {"reason": "complete", "chore_id": chore_id})
     return undo
@@ -232,9 +251,16 @@ async def _async_complete_from_action(
     hass: HomeAssistant, database_path: str, chore_id: str, assignee_id: str,
 ) -> None:
     """De "Klaar"-knop: afvinken via async_complete; een fout blijft een
-    logregel, want er is niemand om een melding aan terug te geven."""
+    logregel, want er is niemand om een melding aan terug te geven. Tijdens
+    de vakantiemodus is dat een infologregel: een oude melding met knop kan
+    nog op de telefoon staan, en weigeren is dan het verwachte gedrag."""
     try:
         await async_complete(hass, database_path, chore_id, assignee_id)
+    except VacationActiveError:
+        _LOGGER.info(
+            "Chores Manager: afvinken via melding geweigerd (%s door %s): "
+            "vakantiemodus staat aan", chore_id, assignee_id)
+        return
     except ValueError as err:
         _LOGGER.warning(
             "Chores Manager: afvinken via melding mislukt (%s door %s): %s",

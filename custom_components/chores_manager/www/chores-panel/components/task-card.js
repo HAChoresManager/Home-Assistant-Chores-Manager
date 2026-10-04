@@ -13,8 +13,20 @@
  * Twee keuzemodi lopen door dezelfde personenrij: mode 'complete' vinkt af
  * bij de keuze (de anyone-flow), mode 'credit' zet alleen het chipje.
  *
+ * Overslaan (deze keer doet niemand het) staat uitsluitend achteraan in de
+ * rij "Wie heeft het gedaan?" op kaartniveau, en alleen als de taak vandaag
+ * aan de beurt is of achterloopt — niet bij de creditkeuze, niet bij een
+ * losse deelstap, en nergens als losse knop op de kaart (besluit van de
+ * gebruiker). Geen data-assignee: wie oversloeg bepaalt de server.
+ *
  * Op het scherm Alles (ctx.view 'tasks') toont de kaart vervaldatum en
  * planningsetiket, en staat de checklist ingeklapt achter "0 / 4 stappen".
+ *
+ * Tijdens de vakantiemodus (ctx.paused, alleen op Alles) is er een eigen,
+ * expliciete tak: een gedimde kaart zonder urgentie, zonder actie en zonder
+ * keuzerij — ook niet als die nog openstond toen de vakantie begon. Alles
+ * wat iets met de taak doet ontbreekt daar; alleen het in- en uitklappen
+ * van de checklist blijft, want dat is weergave.
  */
 import { html } from '../core/html.js';
 import {
@@ -26,7 +38,7 @@ import {
 
 /**
  * Maakt deze actie de taak in één keer af? Bepaalt of we optimistisch mogen
- * doen alsof de kaart weg is (chores-panel.js draait het terug bij een fout).
+ * doen alsof de kaart weg is (actions.js draait het terug bij een fout).
  */
 export function isFinalAction(chore, subtaskId) {
   if (chore.subtask_mode === 'counter') {
@@ -67,10 +79,20 @@ function personButtons(chore, ctx, subtaskId, action) {
       ${subtaskId !== undefined ? html`data-subtask="${subtaskId}"` : ''}>
       <span class="dot" style="--person-color: ${person.color}"></span>${person.name}
     </button>`);
+  // Laatste keuze ná de personen, vóór "Toch niet" (dat is annuleren).
+  const skip = action === 'pick' && subtaskId === undefined
+    && chore.urgency !== 'upcoming'
+    ? html`<button type="button" class="person skip" data-action="skip"
+        data-chore="${chore.id}">Overslaan</button>`
+    : '';
+  // Met Overslaan erbij is de rij meer dan een antwoord op de vraag; een
+  // schermlezer hoort dat in de groepsnaam (de zichtbare vraag blijft).
+  const groupLabel = skip ? `${label} Of sla deze keer over.` : label;
   return html`
-    <div class="chooser" role="group" aria-label="${label}">
+    <div class="chooser" role="group" aria-label="${groupLabel}">
       <span class="chooser-label">${label}</span>
       ${buttons}
+      ${skip}
       <button type="button" class="person cancel" data-action="cancel-choose">Toch niet</button>
     </div>`;
 }
@@ -139,7 +161,59 @@ function checklistBlock(chore, ctx, creditId) {
     </div>`;
 }
 
+/**
+ * Kaart tijdens de vakantiemodus: de taak staat stil. Geen urgentieklasse
+ * (de server levert de echte urgentie, maar er loopt niets achter), geen
+ * badge maar het label "staat stil", het chipje als gewone tekst, de
+ * huidige (nog niet verschoven) datum, en checkliststappen als platte
+ * tekst. Counter-voortgang mag blijven: dat is een feit, geen actie.
+ */
+function pausedCard(chore, ctx) {
+  const creditId = creditAssignee(chore, ctx);
+  const person = creditId ? ctx.assigneesById[creditId] : null;
+  const who = creditId
+    ? html`<span class="chip static"><span class="dot" style="--person-color: ${person ? person.color : 'var(--divider-color)'}"></span>${person ? person.name : creditId}</span>`
+    : html`<span class="chip static neutral">wie kan</span>`;
+  return html`
+    <article class="card paused" data-chore-card="${chore.id}">
+      <span class="card-icon" aria-hidden="true">${chore.icon}</span>
+      <div class="card-body">
+        <h3 class="card-name">${chore.name}</h3>
+        <p class="card-meta">
+          ${who}
+          <span class="meta-text">· ${formatDuration(chore.duration_minutes)}
+            · ${dueLabel(chore.next_due, ctx.todayIso)}
+            · ${scheduleLabel(chore.schedule_type, chore.schedule_config)}</span>
+          <span class="paused-label">staat stil</span>
+        </p>
+        ${chore.description ? html`<p class="card-description">${chore.description}</p>` : ''}
+        ${chore.subtask_mode === 'counter' ? counterBlock(chore) : ''}
+        ${chore.subtask_mode === 'checklist' ? pausedSteps(chore, ctx) : ''}
+      </div>
+    </article>`;
+}
+
+/** Checklist van een stilstaande taak: dezelfde in-/uitklapknop als op
+ * Alles, maar de stappen zijn tekst — niets om af te vinken. */
+function pausedSteps(chore, ctx) {
+  const done = new Set(chore.subtasks_done || []);
+  const total = (chore.subtasks || []).length;
+  const open = ctx.expanded.has(chore.id);
+  const toggle = html`<button type="button" class="steps-toggle" data-action="toggle-steps"
+    data-chore="${chore.id}" aria-expanded="${open ? 'true' : 'false'}">${done.size} / ${total} stappen<span class="chip-caret">${open ? '▾' : '▸'}</span></button>`;
+  if (!open) return toggle;
+  const rows = (chore.subtasks || []).map((step) => (done.has(step.id)
+    ? html`<li class="step done"><span class="step-mark">✓</span>${step.name}</li>`
+    : html`<li class="step plain"><span class="step-mark open"></span>${step.name}</li>`));
+  return html`
+    <div class="checklist">
+      ${toggle}
+      <ul class="steps">${rows}</ul>
+    </div>`;
+}
+
 export function renderTaskCard(chore, ctx) {
+  if (ctx.paused) return pausedCard(chore, ctx);
   const days = chore.overdue_days || 0;
   const badge = days > 0
     ? html`<span class="badge ${chore.urgency}">${overdueLabel(days, chore.next_due, ctx.todayIso)}</span>`
@@ -164,8 +238,11 @@ export function renderTaskCard(chore, ctx) {
     action = completeButton(chore, undefined, creditId);
   }
 
+  // Een open keuzerij krijgt een eigen regel onder de kaarttekst
+  // (chooser-open): naast de tekst drukt hij de taaknaam samen tot nul.
   return html`
-    <article class="card ${chore.urgency}" data-chore-card="${chore.id}">
+    <article class="card ${chore.urgency} ${cardChooser ? 'chooser-open' : ''}"
+      data-chore-card="${chore.id}">
       <span class="card-icon" aria-hidden="true">${chore.icon}</span>
       <div class="card-body">
         <h3 class="card-name">${chore.name}</h3>

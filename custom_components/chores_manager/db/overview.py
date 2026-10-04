@@ -3,6 +3,10 @@
 Puur compositie over de andere store-modules plus scheduling; geen HA. Alles
 hier is met pytest te testen — de HA-lagen (sensor.py, websocket.py) doen
 niets anders dan deze functies in een executor aanroepen.
+
+Tijdens de vakantiemodus (vacations.py) staat alles stil: de sensor telt
+niets open, tasks_today en de ochtendsamenvatting zijn leeg. De taken zelf
+houden hun echte velden — Alles toont de huidige, nog niet verschoven datum.
 """
 from __future__ import annotations
 
@@ -22,7 +26,9 @@ from .completions import (
     recent_full_completions,
     week_history,
 )
+from .skips import skip_feed
 from .subtasks import list_subtasks
+from .vacations import get_active_vacation
 
 
 def enrich_chore(database_path: str, chore: dict, today: date) -> dict:
@@ -131,6 +137,27 @@ def _recent_completions(database_path: str) -> list[dict]:
     ]
 
 
+_RECENT_SKIPS_LIMIT = 8
+
+
+def _recent_skips(database_path: str) -> list[dict]:
+    """De laatste acht overslagen voor Lovelace, nieuwste eerst, los van
+    recent_completions (een overslag is geen voltooiing). Met skip_id kan
+    een kaart chores_manager.revert_skip aanroepen; skipped_by is de
+    weergavenaam, of None als niet bekend is wie oversloeg."""
+    return [
+        {
+            "skip_id": row["id"],
+            "chore_id": row["chore_id"],
+            "name": row["chore_name"],
+            "icon": row["icon"],
+            "skipped_by": row["assignee_name"],
+            "skipped_at": row["skipped_at"],
+        }
+        for row in skip_feed(database_path, _RECENT_SKIPS_LIMIT)
+    ]
+
+
 def overview(database_path: str, today: date, now: Optional[datetime] = None,
              recent_done_seconds: int = 0) -> dict:
     """De samenvatting van §2.4: sensortoestand plus attributen.
@@ -140,16 +167,27 @@ def overview(database_path: str, today: date, now: Optional[datetime] = None,
     worden, want die importeert HA) bevat tasks_today ook net-afgevinkte
     taken met status "done". Zonder: alleen wat openstaat. De tellers
     (open_today, due_today, overdue) tellen done-rijen nooit mee.
+
+    Tijdens de vakantiemodus is er niets aan de beurt en loopt niets
+    achter: de drie tellers zijn 0 en tasks_today is leeg (ook geen
+    done-rijen — afvinken kan dan toch niet). "vacation" is de publieke vorm
+    van get_active_vacation, of None. completed_today, persons en de recente
+    lijsten blijven gewoon wat er gedaan is.
     """
-    chores = [enrich_chore(database_path, chore, today)
-              for chore in list_chores(database_path)]
+    vacation = get_active_vacation(database_path)
+    if vacation:
+        chores = []
+        recent_done = {}
+    else:
+        chores = [enrich_chore(database_path, chore, today)
+                  for chore in list_chores(database_path)]
+        recent_done = (
+            recent_full_completions(
+                database_path, now - timedelta(seconds=recent_done_seconds))
+            if now is not None and recent_done_seconds > 0 else {})
     due_today = sum(1 for c in chores if c["urgency"] == "due")
     overdue = sum(1 for c in chores if c["overdue_days"] > 0)
     assignees_by_id = {a["id"]: a for a in list_assignees(database_path)}
-    recent_done = (
-        recent_full_completions(
-            database_path, now - timedelta(seconds=recent_done_seconds))
-        if now is not None and recent_done_seconds > 0 else {})
     board = leaderboard(database_path, today)
     streaks = assignee_streaks(database_path, today)
     # Iedereen die iets deed telt mee, mét de ranglijstvlag erbij: filteren
@@ -175,6 +213,8 @@ def overview(database_path: str, today: date, now: Optional[datetime] = None,
         "persons": persons,
         "tasks_today": _tasks_today(chores, assignees_by_id, recent_done),
         "recent_completions": _recent_completions(database_path),
+        "recent_skips": _recent_skips(database_path),
+        "vacation": vacation,
     }
 
 
@@ -189,7 +229,12 @@ def notification_summary(database_path: str, today: date) -> dict:
     niet in een ochtendmelding. De lijsten zijn voorgesorteerd op
     belangrijkheid (achterstand op cyclusfractie, vandaag op prioriteit en
     dan duur), zodat pick_notify_action gewoon de kop pakt.
+
+    Tijdens de vakantiemodus een lege dict: er speelt niets, dus de
+    ochtendmelding gaat naar niemand.
     """
+    if get_active_vacation(database_path):
+        return {}
     chores = [enrich_chore(database_path, chore, today)
               for chore in list_chores(database_path)]
     summary = {}
@@ -225,6 +270,39 @@ def pick_notify_action(due: list, overdue: list):
     return None
 
 
+_SKIP_FEED_LIMIT = 100
+
+
+def activity_since(completions: list[dict], completions_limit: int,
+                   skips: list[dict], skips_limit: int) -> Optional[str]:
+    """Vanaf welk tijdstip de gemengde tijdlijn (voltooiingen plus
+    overslagen) compleet is, of None als hij helemaal compleet is.
+
+    Beide lijsten zijn nieuwste-eerst en afgekapt op hun limiet. Een lijst
+    die zijn limiet níet haalde, is volledig; een volle lijst is alleen
+    compleet tot en met zijn oudste regel — daarvóór kunnen regels
+    ontbreken. De grens is dus de jongste van de oudste regels van de volle
+    lijsten. De Activiteit-weergave laat alles ouder dan deze grens weg,
+    zodat er geen gaten in de menging vallen (honderd voltooiingen uit één
+    week naast overslagen van maanden terug). Vergeleken als tijdstip, niet
+    als string: rond de zomertijdwissel verschilt de offset.
+    """
+    cutoffs = []
+    if completions_limit > 0 and len(completions) >= completions_limit:
+        cutoffs.append(completions[-1]["completed_at"])
+    if skips_limit > 0 and len(skips) >= skips_limit:
+        cutoffs.append(skips[-1]["skipped_at"])
+    if not cutoffs:
+        return None
+    try:
+        return max(cutoffs, key=datetime.fromisoformat)
+    except (TypeError, ValueError):
+        # een oude regel zonder offset naast een nieuwe mét (of een
+        # onleesbare notatie): dan als string, zoals de rest van db/ — liever
+        # een grens die een uur scheelt dan een state die niet laadt
+        return max(cutoffs)
+
+
 def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
     """De volledige begintoestand voor chores_manager/state (§2.3).
 
@@ -232,6 +310,15 @@ def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
     beheer-UI nodig heeft om verwijderen eerlijk aan te kondigen: has_history
     per taak en in_use per persoon (archiveren versus echt weg, het
     2b-besluit).
+
+    Sinds v2.5: "feed" blijft alleen voltooiingen (Vandaag gebruikt hem zo);
+    "skips" is het overslaglog met can_revert per regel, en
+    "activity_since" de grens waarvóór de Activiteit-weergave de twee niet
+    meer mengt (zie activity_since).
+
+    Sinds v2.6: "vacation" is de actieve vakantie in publieke vorm
+    ({active, start_date, until}) of None. De taken houden hun echte velden
+    en urgentie; het panel toont ze tijdens de vakantie als stilstaand.
     """
     counts = history_counts(database_path)
     chores = []
@@ -260,13 +347,19 @@ def build_state(database_path: str, today: date, feed_limit: int = 100) -> dict:
         person = dict(person)
         person["in_use"] = assignee_in_use(database_path, person["id"])
         assignees.append(person)
+    completions = feed(database_path, feed_limit)
+    skips = skip_feed(database_path, _SKIP_FEED_LIMIT)
     return {
         "today": today.isoformat(),
         "chores": chores,
         "archived_chores": archived,
         "assignees": assignees,
         "leaderboard": board,
-        "feed": feed(database_path, feed_limit),
+        "feed": completions,
+        "skips": skips,
+        "activity_since": activity_since(
+            completions, feed_limit, skips, _SKIP_FEED_LIMIT),
         "week_history": week_history(database_path, today),
         "completed_today": completed_today_count(database_path, today),
+        "vacation": get_active_vacation(database_path),
     }

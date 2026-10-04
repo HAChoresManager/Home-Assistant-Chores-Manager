@@ -3,11 +3,25 @@
  * dan de achterstand, onderaan de laatste voltooiingen.
  *
  * De kop toont het totaal ("8 taken") — één stapel werk, geen twee losse
- * tellers (§2.4). Taken in `pending` zijn optimistisch afgevinkt en blijven
- * uit beeld tot de server het bevestigt of het terugdraait.
+ * tellers (§2.4). Taken in `pending` zijn optimistisch afgevinkt of
+ * overgeslagen en blijven uit beeld tot de server het bevestigt of het
+ * terugdraait. "Laatste activiteit" toont alleen voltooiingen (data.feed);
+ * overslagen staan op Activiteit.
+ *
+ * Tijdens de vakantiemodus (data.vacation) is er niets aan de beurt: de kop
+ * wordt "Vakantie", een rustige banner zegt sinds wanneer en tot wanneer,
+ * en er staan geen taaksecties en geen "Alles gedaan" — er is niets gedaan
+ * of overgeslagen, de taken staan stil. Bijdragebalk en "Laatste
+ * activiteit" blijven: die gaan over wat er wél gebeurde.
  */
 import { html } from '../core/html.js';
-import { dateLong, feedWhen, formatDuration, taskCount } from '../core/format.js';
+import {
+  dateLong,
+  dayMonth,
+  feedWhen,
+  formatDuration,
+  taskCount,
+} from '../core/format.js';
 import { renderContributionBar } from '../components/contribution-bar.js';
 import { renderTaskCard } from '../components/task-card.js';
 
@@ -40,6 +54,16 @@ function renderSection(title, chores, ctx) {
     </section>`;
 }
 
+/** "Vakantiemodus sinds 3 oktober — tot en met 17 oktober". */
+function vacationBanner(vacation, todayIso) {
+  return html`
+    <p class="vacation-banner" role="status">
+      <span aria-hidden="true">🌴</span>
+      Vakantiemodus sinds ${dayMonth(vacation.start_date, todayIso)}${vacation.until
+        ? html` — tot en met ${dayMonth(vacation.until, todayIso)}` : ''}
+    </p>`;
+}
+
 export function renderToday(state) {
   if (state.loading) {
     return html`<div class="status">${state.connecting ? 'Verbinden…' : 'Taken laden…'}</div>`;
@@ -53,6 +77,17 @@ export function renderToday(state) {
   }
 
   const data = state.data;
+  if (data.vacation?.active) {
+    return html`
+      <header class="page-header">
+        <p class="page-date">${dateLong(data.today)}</p>
+        <h1 class="page-count">Vakantie</h1>
+      </header>
+      ${vacationBanner(data.vacation, data.today)}
+      ${renderContributionBar(data.leaderboard)}
+      ${renderFeed(data.feed, data.today)}`;
+  }
+
   const assigneesById = {};
   for (const person of data.assignees) assigneesById[person.id] = person;
   // A2 (fase 4): de kijker, voor de chip-default op 'anyone'-taken.
@@ -77,22 +112,35 @@ export function renderToday(state) {
   const late = open.filter((c) => c.urgency !== 'due')
     .sort((a, b) => (b.cycle_fraction || 0) - (a.cycle_fraction || 0));
 
+  // Leeg doordat er vandaag alleen is overgeslagen: geen lof voor werk dat
+  // niemand deed. Een rustige dag zonder taken houdt "Alles gedaan".
+  const onlySkipped = open.length === 0 && !(data.completed_today > 0)
+    && (data.skips || []).some((s) => s.skipped_at.slice(0, 10) === data.today);
+
+  let heading = taskCount(open.length);
+  if (open.length === 0) heading = onlySkipped ? 'Niets meer voor vandaag' : 'Alles gedaan';
   const header = html`
     <header class="page-header">
       <p class="page-date">${dateLong(data.today)}</p>
-      <h1 class="page-count">${open.length === 0 ? 'Alles gedaan' : taskCount(open.length)}</h1>
+      <h1 class="page-count">${heading}</h1>
     </header>`;
 
-  const empty = open.length === 0
-    ? html`
+  let empty = '';
+  if (onlySkipped) {
+    empty = html`
+      <section class="all-done">
+        <p>Overgeslagen taken komen op hun volgende keer terug.</p>
+      </section>`;
+  } else if (open.length === 0) {
+    empty = html`
       <section class="all-done">
         <p class="all-done-big" aria-hidden="true">✨</p>
         <p>Mooi werk.</p>
         ${data.completed_today > 0
           ? html`<p class="all-done-sub">Vandaag ${data.completed_today === 1 ? '1 taak' : `${data.completed_today} taken`} afgevinkt.</p>`
           : ''}
-      </section>`
-    : '';
+      </section>`;
+  }
 
   return html`
     ${header}

@@ -15,9 +15,19 @@ in_leaderboard-vlag per persoon. Filteren is presentatie: een Lovelace-kaart
 die alleen de ranglijst wil, filtert zelf op die vlag — de sensor verzwijgt
 geen bijdragen.
 
-tasks_today en recent_completions dragen ids, zodat een Lovelace-kaart met
-één tik chores_manager.mark_done respectievelijk
-chores_manager.revert_completion kan aanroepen.
+tasks_today, recent_completions en recent_skips dragen ids, zodat een
+Lovelace-kaart met één tik chores_manager.mark_done,
+chores_manager.revert_completion respectievelijk chores_manager.revert_skip
+kan aanroepen. recent_skips staat bewust los van recent_completions: een
+overslag is geen voltooiing (geen minuten, geen ranglijst). Per item exact
+skip_id, chore_id, name, icon, skipped_by (weergavenaam, of None als niet
+bekend is wie oversloeg) en skipped_at.
+
+Tijdens de vakantiemodus (v2.6) is de state 0 en tasks_today leeg: er is
+niets aan de beurt en niets loopt achter (db.overview). Het attribuut
+vacation is dan {active, start_date, until} — dezelfde vorm als in de
+WS-state — en anders None. completed_today, persons en de recente lijsten
+blijven gewoon wat er gedaan is.
 
 Net-afgevinkte taken staan RECENT_DONE_SECONDS lang als "done" in
 tasks_today. Omdat er dan geen mutatie (en dus geen SIGNAL_UPDATED) volgt,
@@ -130,6 +140,10 @@ class ChoresOverviewSensor(SensorEntity):
             "tasks_today": data["tasks_today"],
             # laatste acht voltooiingen, voor revert_completion vanaf een kaart
             "recent_completions": data["recent_completions"],
+            # laatste acht overslagen, voor revert_skip vanaf een kaart (v2.5)
+            "recent_skips": data["recent_skips"],
+            # actieve vakantie {active, start_date, until} of None (v2.6)
+            "vacation": data["vacation"],
         }
         self._schedule_done_refresh(data["tasks_today"])
         if write:

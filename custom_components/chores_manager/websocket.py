@@ -1,4 +1,7 @@
-"""De tien WS-commando's uit §2.3 (negen uit fase 2b, chore/restore uit fase 5).
+"""De vijftien WS-commando's uit §2.3 (negen uit fase 2b, chore/restore uit
+fase 5, chore/skip en skip/revert uit v2.5, vacation/start, /update en /end
+uit v2.6). De drie vakantiecommando's en hun kernen staan in vacation.py;
+COMMANDS hieronder neemt ze mee, zodat de registratie op één plek blijft.
 
 Authenticatie is de standaard van websocket_api: elke ingelogde gebruiker mag
 ze aanroepen, geen admin vereist — Laura en Noud moeten kunnen afvinken. Alle
@@ -9,6 +12,20 @@ Na elke mutatie gaat SIGNAL_UPDATED over de dispatcher: de v2-sensor
 ververst zichzelf en abonnees van chores_manager/subscribe krijgen een event.
 Abonnees halen daarna zelf de verse staat op met chores_manager/state — de
 events dragen alleen de reden, geen payload.
+
+Foutregel voor de hele HA-laag: een ValueError (StoreError) uit de datalaag
+wordt hier "invalid_input" met de Nederlandse tekst, en in een service een
+ServiceValidationError. Een VacationActiveError (afvinken, overslaan,
+snoozen of terugdraaien tijdens de vakantiemodus) krijgt de eigen code
+"vacation_active", zodat het panel hem kan herkennen; in een service blijft
+het een ServiceValidationError met dezelfde tekst. Een kale exceptie mag HA
+nooit bereiken — die wordt "Unknown error" met een traceback in de log, en
+de snackbar kan er niets mee.
+
+Een paar kernen zijn gedeeld met de services in __init__.py, zodat panel,
+Lovelace-kaart en automatisering precies hetzelfde doen: async_undo_last,
+async_skip, async_revert_skip en resolve_caller. De drie vakantiekernen
+(ook voor de schakelaar in switch.py) staan in vacation.py.
 """
 from __future__ import annotations
 
@@ -28,9 +45,11 @@ from .const import (
     DATA_UNDO,
     DOMAIN,
     SIGNAL_UPDATED,
+    UNDO_KIND_COMPLETION,
+    UNDO_KIND_SKIP,
     UNDO_WINDOW_SECONDS,
 )
-from .db.assignees import delete_assignee, save_assignee
+from .db.assignees import delete_assignee, list_assignees, save_assignee
 from .db.chores import (
     delete_chore,
     get_chore,
@@ -40,7 +59,10 @@ from .db.chores import (
 )
 from .db.completions import complete_chore, undo_completion
 from .db.overview import build_state
+from .db.skips import revert_skip, skip_chore
 from .db.subtasks import set_subtasks
+from .db.vacations import VacationActiveError
+from .vacation import VACATION_COMMANDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,6 +74,19 @@ def _path(hass: HomeAssistant) -> str:
 @callback
 def _notify(hass: HomeAssistant, reason: str, **extra) -> None:
     async_dispatcher_send(hass, SIGNAL_UPDATED, {"reason": reason, **extra})
+
+
+class VacationActiveServiceError(ServiceValidationError):
+    """Een VacationActiveError uit async_undo_last of async_revert_skip
+    (die altijd een ServiceValidationError opwerpen). Een service toont de
+    tekst; WS herkent de klasse en stuurt "vacation_active"."""
+
+
+def _error_code(err: Exception) -> str:
+    """De WS-foutcode bij een weigering, volgens de foutregel hierboven."""
+    if isinstance(err, (VacationActiveError, VacationActiveServiceError)):
+        return "vacation_active"
+    return "invalid_input"
 
 
 @websocket_api.websocket_command({vol.Required("type"): "chores_manager/state"})
@@ -79,9 +114,10 @@ async def ws_complete(hass, connection, msg):
             complete_chore, _path(hass), msg["chore_id"], msg["assignee_id"],
             now.date(), now.isoformat(), msg.get("subtask_id"), msg.get("note"))
     except ValueError as err:
-        connection.send_error(msg["id"], "invalid_input", str(err))
+        connection.send_error(msg["id"], _error_code(err), str(err))
         return
-    hass.data[DOMAIN][DATA_UNDO] = {"undo": undo, "at": time.monotonic()}
+    hass.data[DOMAIN][DATA_UNDO] = {
+        "kind": UNDO_KIND_COMPLETION, "undo": undo, "at": time.monotonic()}
     _notify(hass, "complete", chore_id=msg["chore_id"])
     connection.send_result(msg["id"], {
         "chore_id": msg["chore_id"],
@@ -91,12 +127,12 @@ async def ws_complete(hass, connection, msg):
     })
 
 
-NOTHING_TO_UNDO = "Geen voltooiing om terug te draaien; het venster is vijf minuten."
+NOTHING_TO_UNDO = "Niets om terug te draaien; het venster is vijf minuten."
 
 
 async def async_undo_last(hass: HomeAssistant) -> str:
-    """Laatste voltooiing terugdraaien, binnen vijf minuten (§2.3). Geeft het
-    chore_id terug.
+    """De laatste voltooiing óf overslag terugdraaien, binnen vijf minuten
+    (§2.3). Geeft het chore_id terug.
 
     Gedeeld door het WS-commando chores_manager/undo en de service
     chores_manager.undo_last: zelfde buffer, zelfde venster, zelfde signaal.
@@ -105,14 +141,45 @@ async def async_undo_last(hass: HomeAssistant) -> str:
     foutmelding van. De buffer leeft in het geheugen; na een herstart van HA
     is er niets meer om terug te draaien. Dat past bij een venster van vijf
     minuten.
+
+    Een voltooiing gaat terug via undo_completion (de momentopname van vóór
+    het afvinken). Een overslag gaat via revert_skip, met dezelfde
+    bewakingen als "Toch niet overslaan": is er binnen het venster al aan de
+    taak gewerkt of is zijn datum gewijzigd, dan weigert die. Ook
+    undo_completion kan weigeren (de taak is daarna via snooze overgeslagen).
+    De reden komt dan als ServiceValidationError terug; tijdens de
+    vakantiemodus (buffer normaal al leeg) als VacationActiveServiceError.
+
+    De buffer wordt vóór het wachten op de executor geleegd: deze undo heeft
+    hem dan "in handen". Een actie die intussen (op een ander apparaat) een
+    nieuwe buffer zet, wordt zo niet gewist, en een tweede undo-tik vindt
+    niets meer. Weigert het terugdraaien, dan blijft hij leeg — opnieuw
+    proberen gaf toch hetzelfde antwoord. Alleen bij een onverwachte fout
+    komt hij terug, als er intussen niets nieuws in staat.
     """
-    buffered = hass.data[DOMAIN].get(DATA_UNDO)
+    domain_data = hass.data[DOMAIN]
+    buffered = domain_data.get(DATA_UNDO)
     if not buffered or time.monotonic() - buffered["at"] > UNDO_WINDOW_SECONDS:
         raise ServiceValidationError(NOTHING_TO_UNDO)
-    await hass.async_add_executor_job(
-        undo_completion, _path(hass), buffered["undo"])
-    hass.data[DOMAIN][DATA_UNDO] = None
-    chore_id = buffered["undo"]["chore_id"]
+    domain_data[DATA_UNDO] = None
+    undo = buffered["undo"]
+    try:
+        if buffered["kind"] == UNDO_KIND_SKIP:
+            # geen now_iso: updated_at volgt de regel van revert_skip, net
+            # als bij undo_completion is het een momentopname terugzetten
+            await hass.async_add_executor_job(
+                revert_skip, _path(hass), undo["skip_id"])
+        else:
+            await hass.async_add_executor_job(undo_completion, _path(hass), undo)
+    except VacationActiveError as err:
+        raise VacationActiveServiceError(str(err)) from err
+    except ValueError as err:
+        raise ServiceValidationError(str(err)) from err
+    except Exception:
+        if domain_data.get(DATA_UNDO) is None:
+            domain_data[DATA_UNDO] = buffered
+        raise
+    chore_id = undo["chore_id"]
     _notify(hass, "undo", chore_id=chore_id)
     return chore_id
 
@@ -120,13 +187,140 @@ async def async_undo_last(hass: HomeAssistant) -> str:
 @websocket_api.websocket_command({vol.Required("type"): "chores_manager/undo"})
 @websocket_api.async_response
 async def ws_undo(hass, connection, msg):
-    """Laatste voltooiing terugdraaien; zie async_undo_last."""
+    """Laatste voltooiing of overslag terugdraaien; zie async_undo_last.
+
+    Foutcodes: "nothing_to_undo" als de buffer leeg of verlopen is,
+    "vacation_active" tijdens de vakantiemodus, en "invalid_input" als het
+    terugdraaien geweigerd wordt (een overslag waaraan al gewerkt is, een
+    voltooiing waarna overgeslagen is). De tekst is steeds de Nederlandse
+    reden.
+    """
     try:
         chore_id = await async_undo_last(hass)
     except ServiceValidationError as err:
-        connection.send_error(msg["id"], "nothing_to_undo", str(err))
+        code = ("nothing_to_undo" if str(err) == NOTHING_TO_UNDO
+                else _error_code(err))
+        connection.send_error(msg["id"], code, str(err))
         return
     connection.send_result(msg["id"], {"chore_id": chore_id})
+
+
+async def resolve_caller(hass: HomeAssistant, user_id: str | None) -> str | None:
+    """Het assignee-id van de actieve persoon die aan deze HA-gebruiker
+    gekoppeld is (ha_user_id), of None: geen gebruiker (automatisering) of
+    niemand gekoppeld (bijvoorbeeld een tabletaccount).
+
+    Gedeeld door WS chore/skip en de services skip en mark_done. Wat None
+    betekent bepaalt de aanroeper: overslaan legt dan "onbekend" vast,
+    mark_done weigert met een eigen tekst (afvinken heeft een persoon nodig).
+    """
+    if not user_id:
+        return None
+    # list_assignees geeft alleen actieve personen
+    assignees = await hass.async_add_executor_job(list_assignees, _path(hass))
+    match = next((a for a in assignees if a.get("ha_user_id") == user_id), None)
+    return match["id"] if match else None
+
+
+async def async_skip(
+    hass: HomeAssistant, chore_id: str, assignee_id: str | None,
+) -> dict:
+    """Overslaan zoals het panel het doet: skip_chore in de executor, de
+    undo-buffer op deze overslag, en het signaal "skip".
+
+    Gedeeld door WS chore/skip en de service chores_manager.skip.
+    assignee_id is wie oversloeg; None wordt NULL ("onbekend"). Alleen voor
+    een taak die vandaag aan de beurt is of achterloopt. Een weigering komt
+    als ValueError (StoreError) terug; WS of service maakt er hun eigen fout
+    van. Geeft het resultaat van skip_chore terug: skip_id, chore_id,
+    previous_next_due, new_next_due.
+    """
+    now = dt_util.now()
+    result = await hass.async_add_executor_job(
+        skip_chore, _path(hass), chore_id, assignee_id,
+        now.date(), now.isoformat())
+    hass.data[DOMAIN][DATA_UNDO] = {
+        "kind": UNDO_KIND_SKIP,
+        "undo": {"skip_id": result["skip_id"], "chore_id": chore_id},
+        "at": time.monotonic(),
+    }
+    _notify(hass, "skip", chore_id=chore_id, skip_id=result["skip_id"])
+    return result
+
+
+async def async_revert_skip(hass: HomeAssistant, skip_id: int) -> dict:
+    """"Toch niet overslaan", ook buiten het undo-venster: revert_skip in de
+    executor en het signaal "skip_revert". Geeft {chore_id, next_due} terug.
+
+    Gedeeld door WS skip/revert en de service chores_manager.revert_skip.
+    Een weigering (al aan gewerkt, opnieuw overgeslagen, datum gewijzigd,
+    onbekend id) wordt een ServiceValidationError met de reden; tijdens de
+    vakantiemodus de subklasse VacationActiveServiceError, zodat WS er
+    "vacation_active" van kan maken. Wijst de undo-buffer naar deze
+    overslag, dan vervalt hij: anders zou undo_last daarna een overslag
+    terugdraaien die er niet meer is.
+    """
+    try:
+        result = await hass.async_add_executor_job(
+            revert_skip, _path(hass), skip_id, dt_util.now().isoformat())
+    except VacationActiveError as err:
+        raise VacationActiveServiceError(str(err)) from err
+    except ValueError as err:
+        raise ServiceValidationError(str(err)) from err
+    domain_data = hass.data[DOMAIN]
+    buffered = domain_data.get(DATA_UNDO)
+    if (buffered and buffered["kind"] == UNDO_KIND_SKIP
+            and buffered["undo"]["skip_id"] == skip_id):
+        domain_data[DATA_UNDO] = None
+    _notify(hass, "skip_revert", chore_id=result["chore_id"], skip_id=skip_id)
+    return result
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "chores_manager/chore/skip",
+    vol.Required("chore_id"): str,
+    vol.Optional("assignee_id"): vol.Any(None, str),
+})
+@websocket_api.async_response
+async def ws_chore_skip(hass, connection, msg):
+    """Taak overslaan: deze keer doet niemand hem (zie async_skip).
+
+    Zonder assignee_id bepaalt de server wie oversloeg, via de koppeling van
+    de ingelogde kijker (resolve_caller); is die aan niemand gekoppeld, dan
+    blijft het "onbekend". Het panel stuurt daarom geen persoon mee.
+    """
+    assignee_id = msg.get("assignee_id")
+    if not assignee_id:
+        assignee_id = await resolve_caller(
+            hass, connection.user.id if connection.user else None)
+    try:
+        result = await async_skip(hass, msg["chore_id"], assignee_id)
+    except ValueError as err:
+        connection.send_error(msg["id"], _error_code(err), str(err))
+        return
+    connection.send_result(msg["id"], {
+        "chore_id": msg["chore_id"],
+        "skip_id": result["skip_id"],
+        "next_due": result["new_next_due"],
+        "undo_available": True,
+    })
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "chores_manager/skip/revert",
+    # bovengrens: sqlite kent geen grotere gehele getallen (OverflowError)
+    vol.Required("skip_id"): vol.All(int, vol.Range(min=1, max=2**63 - 1)),
+})
+@websocket_api.async_response
+async def ws_skip_revert(hass, connection, msg):
+    """"Toch niet overslaan" vanuit Activiteit; zie async_revert_skip."""
+    try:
+        result = await async_revert_skip(hass, msg["skip_id"])
+    except ServiceValidationError as err:
+        connection.send_error(msg["id"], _error_code(err), str(err))
+        return
+    connection.send_result(msg["id"], {
+        "chore_id": result["chore_id"], "next_due": result["next_due"]})
 
 
 @websocket_api.websocket_command({
@@ -179,14 +373,21 @@ async def ws_chore_delete(hass, connection, msg):
 })
 @websocket_api.async_response
 async def ws_chore_snooze(hass, connection, msg):
-    """Naar morgen ('tomorrow') of naar de volgende geplande keer ('skip')."""
+    """Naar morgen ('tomorrow') of naar de volgende geplande keer ('skip').
+
+    Achterwaarts compatibel. 'skip' loopt sinds v2.5 via skips.skip_chore
+    (in snooze_chore) en staat dus in de activiteit, zonder persoon. Hij
+    vult bewust níet de undo-buffer — snooze bood nooit undo, en anders zou
+    een automatisering met snooze de "Ongedaan maken" van iemands afvinken
+    overschrijven. Terugdraaien kan wel met "Toch niet overslaan".
+    """
     now = dt_util.now()
     try:
         new_due = await hass.async_add_executor_job(
             snooze_chore, _path(hass), msg["chore_id"], msg["mode"],
             now.date(), now.isoformat())
     except ValueError as err:
-        connection.send_error(msg["id"], "invalid_input", str(err))
+        connection.send_error(msg["id"], _error_code(err), str(err))
         return
     _notify(hass, "snooze", chore_id=msg["chore_id"])
     connection.send_result(msg["id"], {
@@ -259,7 +460,10 @@ async def ws_subscribe(hass, connection, msg):
 COMMANDS = (
     ws_state, ws_complete, ws_undo,
     ws_chore_save, ws_chore_delete, ws_chore_snooze, ws_chore_restore,
+    ws_chore_skip, ws_skip_revert,
     ws_assignee_save, ws_assignee_delete, ws_subscribe,
+    # vacation/start, /update en /end staan in vacation.py
+    *VACATION_COMMANDS,
 )
 
 

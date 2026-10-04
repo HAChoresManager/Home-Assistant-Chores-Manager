@@ -12,8 +12,12 @@
  *               core/api.js herstelt dit vanzelf
  *   error     foutmelding (string) of null
  *   data      het volledige antwoord van chores_manager/state, of null
- *   pending   Set van chore-ids die optimistisch als afgevinkt gelden
- *             (verdwenen uit de lijst vóór de server bevestigt)
+ *   pending   Set van chore-ids die optimistisch als afgevinkt of
+ *             overgeslagen gelden (verdwenen uit de lijst vóór de server
+ *             bevestigt)
+ *   reverting Set van skip-ids waarvoor "Toch niet overslaan" loopt; de
+ *             knop in Activiteit staat dan uit, zodat een dubbele tik geen
+ *             tweede aanroep stuurt
  *   chooser   {choreId, subtaskId, mode} als de persoonskeuze openstaat;
  *             mode 'complete' vinkt af bij keuze, mode 'credit' zet alleen
  *             het chipje
@@ -29,6 +33,20 @@
  *                  'anyone'-taken via de ha_user_id-koppeling (fase 4)
  *   haOptions {users, services} voor het personenformulier, vers gezet
  *             bij het openen ervan; null tot die tijd
+ *   vacationDraft  gekozen "tot en met" in Beheer die nog niet bij de server
+ *                  ligt: 'YYYY-MM-DD', '' (bewust leeggemaakt) of null (toon
+ *                  de serverwaarde). Hier en niet in de DOM, zodat een
+ *                  binnenkomende refresh de keuze niet wist
+ *   vacationBusy   false, of de bedoeling van de vakantie-aanroep die nu
+ *                  loopt: 'start' | 'end' | 'update'. Schakelaar, datumveld
+ *                  en "Datum opslaan" staan dan uit, en de schakelaar toont
+ *                  de bedoeling (niet de oude serverstand) tot de nieuwe
+ *                  staat binnen is
+ *
+ * set(patch, { quiet: true }) werkt de toestand bij zonder de luisteraars
+ * te wekken — dus zonder render. Alleen voor invoer die de DOM al toont
+ * (het concept in het vakantiedatumveld): een render zou dat veld onder de
+ * vingers van de typende gebruiker vervangen.
  */
 
 let state = {
@@ -37,6 +55,7 @@ let state = {
   error: null,
   data: null,
   pending: new Set(),
+  reverting: new Set(),
   chooser: null,
   credits: {},
   view: 'vandaag',
@@ -46,6 +65,8 @@ let state = {
   themes: null,
   currentUserId: null,
   haOptions: null,
+  vacationDraft: null,
+  vacationBusy: false,
 };
 
 const listeners = new Set();
@@ -55,8 +76,9 @@ export const store = {
     return state;
   },
 
-  set(patch) {
+  set(patch, { quiet = false } = {}) {
     state = { ...state, ...patch };
+    if (quiet) return;
     for (const listener of listeners) listener(state);
   },
 

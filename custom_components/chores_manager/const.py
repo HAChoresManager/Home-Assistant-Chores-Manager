@@ -6,7 +6,8 @@ FREQ_TYPES, PRIORITY_TYPES enzovoort) zijn met die app verdwenen.
 from homeassistant.const import Platform
 
 DOMAIN = "chores_manager"
-PLATFORMS = [Platform.SENSOR]
+# sensor: de overzichtssensor; switch: de vakantieschakelaar (v2.6)
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
 
 # De bestandsnaam stamt uit fase 2b, toen v2 naast de oude app draaide.
 # Hernoemen zou de bestaande data wegzetten, dus hij blijft chores_v2.db.
@@ -15,8 +16,23 @@ DB_FILENAME = "chores_v2.db"
 # Dispatchersignaal na elke mutatie: sensor en WS-abonnees verversen hierop.
 SIGNAL_UPDATED = "chores_manager_updated"
 
-# Undo-venster (§2.3): laatste voltooiing terugdraaien binnen 5 minuten.
+# Undo-venster (§2.3): de laatste voltooiing of overslag terugdraaien
+# binnen 5 minuten.
 UNDO_WINDOW_SECONDS = 300
+
+# De undo-buffer (hass.data[DOMAIN][DATA_UNDO]) is één plek voor beide
+# soorten: {"kind": UNDO_KIND_*, "undo": {...}, "at": time.monotonic()}.
+# - kind completion: "undo" is de dict van completions.complete_chore
+#   (geschreven door websocket.ws_complete en notify.async_complete);
+# - kind skip: "undo" is {skip_id, chore_id} (websocket.async_skip).
+# Lezers: websocket.async_undo_last, websocket.async_revert_skip en
+# handle_revert_completion in __init__.py — die laatste twee legen hem
+# alleen als hij naar precies hun regel wijst. Een snooze 'skip' vult hem
+# niet: snooze bood nooit undo. vacation.async_start_vacation leegt hem bij
+# het aanzetten van de vakantiemodus; daarna kan hij tot het einde niet
+# opnieuw vullen (afvinken en overslaan zijn dan geblokkeerd).
+UNDO_KIND_COMPLETION = "completion"
+UNDO_KIND_SKIP = "skip"
 
 # Net-afgevinkte taken blijven zo lang in tasks_today staan, als "done"
 # (sensor.py plant na afloop zelf een verversing).

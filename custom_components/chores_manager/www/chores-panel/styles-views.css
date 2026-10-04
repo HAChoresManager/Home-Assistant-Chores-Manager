@@ -1,8 +1,135 @@
 /*
- * Stijlen voor de 3b-schermen: Activiteit en Beheer (formulieren).
+ * Stijlen voor de 3b-schermen: Activiteit en Beheer (formulieren), plus
+ * de knoppen en feedregels van Overslaan en alles van de vakantiemodus
+ * (banner op Vandaag, stilstaande kaarten op Alles, sectie in Beheer).
  * Apart bestand om styles.css onder de 600-regelgrens te houden; zelfde
  * regels: uitsluitend HA-variabelen, telefoon eerst, 44px-raakvlakken.
  */
+
+/* --- Vakantiemodus: banner op Vandaag ----------------------------------- */
+
+/* Rustig: geen waarschuwingskleur, er is niets mis. */
+.vacation-banner {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: var(--card-background-color);
+  border: 1px solid var(--divider-color);
+  border-radius: var(--ha-card-border-radius, 12px);
+  color: var(--primary-text-color);
+}
+
+/* --- Vakantiemodus: stilstaande kaarten op Alles ------------------------ */
+
+/* Gedimd met kleur, niet met opacity op tekst (contrast blijft leesbaar).
+   Geen urgentierand: .paused komt in plaats van de urgentieklasse. */
+.card.paused {
+  background: none;
+}
+
+.card.paused .card-name {
+  color: var(--secondary-text-color);
+}
+
+/* Chipje als tekst: geen rand, geen pijltje — er valt niets te kiezen. */
+.chip.static {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  vertical-align: middle;
+}
+
+.paused-label {
+  margin-left: 6px;
+  white-space: nowrap;
+  font-style: italic;
+}
+
+.step.plain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  color: var(--secondary-text-color);
+}
+
+/* --- Vakantiemodus: sectie in Beheer ------------------------------------ */
+
+.vacation {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vacation .section-title {
+  margin-bottom: 0;
+}
+
+button.vacation-save {
+  align-self: flex-start;
+}
+
+/* verborgen zolang er geen gewijzigde datum is (het element zet hidden bij
+   het typen, zonder render); de knopstijlen mogen dat niet overschrijven */
+button.vacation-save[hidden] {
+  display: none;
+}
+
+button.vacation-save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.field input:disabled {
+  opacity: 0.6;
+}
+
+/* --- Overslaan: keuze in de personenrij --------------------------------- */
+
+/* Een open keuzerij ("Wie heeft het gedaan?" of de creditkeuze) op een eigen
+   regel onder de kaarttekst. Naast de tekst nam de rij de volle breedte van
+   zijn knoppen in en hield de taaknaam 0 px over (één letter per regel). */
+.card.chooser-open {
+  flex-wrap: wrap;
+}
+
+.card.chooser-open > .card-action {
+  flex: 1 1 100%;
+}
+
+/* Secundair: geen stip, geen persoonskleur — het is geen persoon. */
+button.person.skip {
+  color: var(--secondary-text-color);
+}
+
+/* --- Activiteit: overslagen in de feed ---------------------------------- */
+
+/* Rustiger dan een voltooiing: secundaire tekst, lege stip, geen duur. */
+.feed-row.skip {
+  flex-wrap: wrap;
+  color: var(--secondary-text-color);
+}
+
+.feed-row.skip strong {
+  font-weight: 500;
+}
+
+.dot.skip-dot {
+  background: none;
+  border: 1px solid var(--divider-color);
+  box-sizing: border-box;
+}
+
+button.revert-skip {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--primary-text-color);
+}
+
+button.revert-skip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 /* --- Activiteit: weekhistorie ----------------------------------------- */
 
@@ -274,6 +401,53 @@ button.danger {
 }
 
 .arrow:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* --- schakelaar (vakantiemodus) ---------------------------------------- */
+
+/* Een gewone checkbox met role="switch", als schakelaar getekend. Na
+   ".check input" zodat breedte en hoogte hier winnen. */
+.check input[role='switch'] {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 22px;
+  margin: 0;
+  border-radius: 11px;
+  background: var(--divider-color);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.check input[role='switch']::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--card-background-color, #fff);
+  transition: transform 0.15s;
+}
+
+.check input[role='switch']:checked {
+  background: var(--primary-color);
+}
+
+.check input[role='switch']:checked::before {
+  transform: translateX(18px);
+}
+
+.check input[role='switch']:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.check input[role='switch']:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }
